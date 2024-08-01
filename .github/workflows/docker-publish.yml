@@ -1,0 +1,45 @@
+name: Build & publish
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-${{ github.ref_name }}
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login into ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build container
+        run: |
+          export GITHUB_RUN_ID=${{ github.run_id }}
+          echo ${DOCKER_CONFIG}
+          cd server-ce/
+          make build-base
+          make build-community
+
+      - name: Publish
+        run: |
+          export ghcr_registry="ghcr.io/${IMAGE_NAME}"
+          docker tag docker.io/sharelatex/sharelatex:${{ github.ref_name }} ${ghcr_registry}:latest
+          docker tag docker.io/sharelatex/sharelatex:${{ github.ref_name }} ${ghcr_registry}:${{ github.sha }}
+          echo "Publishing ${ghcr_registry}:${{ github.sha }}"
+          docker push ${ghcr_registry}:latest
