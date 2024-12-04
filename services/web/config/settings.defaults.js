@@ -1115,6 +1115,9 @@ module.exports = {
     'launchpad',
     'server-ce-scripts',
     'user-activate',
+    'sandboxed-compiles',
+    'symbol-palette',
+    'track-changes'
   ],
   viewIncludes: {},
 
@@ -1143,6 +1146,25 @@ module.exports = {
   },
 
   enablePandocConversions: process.env.ENABLE_PANDOC_CONVERSIONS === 'true',
+
+  splitTestOverrides: {
+    ...(process.env.ENABLE_EDITOR_TABS?.toLowerCase() === 'true' ? {
+      'editor-tabs': 'enabled',
+    } : {}),
+    ...(process.env.ENABLE_PANDOC_CONVERSIONS === 'true' ? {
+      'import-docx': 'enabled',
+      'import-markdown': 'enabled',
+      'export-docx': 'enabled',
+      'export-html': 'enabled',
+      'export-markdown': 'enabled',
+    } : {}),
+    ...(process.env.OVERLEAF_HISTORY_RESTORE?.toLowerCase() === 'true' ? {
+      'history-ranges-support': 'enabled',
+      'revert-file': 'enabled',
+      'revert-project': 'enabled',
+    } : {}),
+  },
+
 }
 
 module.exports.mergeWith = function (overrides) {
