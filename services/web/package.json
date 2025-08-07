@@ -168,6 +168,7 @@
     "p-queue": "^8.1.0",
     "parse-data-url": "^2.0.0",
     "passport": "^0.6.0",
+    "passport-gitlab2": "^5.0.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-ldapauth": "^2.1.4",
     "passport-local": "^1.0.0",
