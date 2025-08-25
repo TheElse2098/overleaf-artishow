@@ -89,8 +89,11 @@ async function compile(projectId, userId, options = {}) {
     clsiCacheShard,
   } = await ClsiManager.promises.sendRequest(projectId, compileAsUser, options)
 
-const { gitUpdate } = require('../Git/GitController')
-  await gitUpdate(projectId, userId)
+  if(userId){
+    const { gitUpdate } = require('../Git/GitController')
+    await gitUpdate(projectId, userId)
+  }
+
   return {
     status,
     outputFiles,
