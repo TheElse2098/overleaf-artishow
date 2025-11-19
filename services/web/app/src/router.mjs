@@ -286,7 +286,7 @@ var sstrat = new MultiSamlStrategy({
                        case "x":
                                ans= {
                                        cert: [fs.readFileSync(certDir + 'x.cert', 'utf8'), fs.readFileSync(certDir + 'x2.cert', 'utf8') ],
-                                       entryPoint:"https://idp.polytechnique.fr/idp/profile/SAML2/Redirect/SSO",
+                                       entryPoint:"https://egide.polytechnique.fr/idp/profile/SAML2/Redirect/SSO",
                                        additionalParams: { 'RelayState': org },
                                }
                                break
