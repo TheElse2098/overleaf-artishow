@@ -1119,10 +1119,10 @@ module.exports = {
     'history-v1',
     'launchpad',
     'server-ce-scripts',
-    'user-activate',
     'sandboxed-compiles',
     'symbol-palette',
-    'track-changes'
+    'track-changes',
+    'admin-tools' // import after authentication
   ],
   viewIncludes: {},
 
@@ -1162,6 +1162,9 @@ module.exports = {
       'export-docx': 'enabled',
       'export-html': 'enabled',
       'export-markdown': 'enabled',
+    } : {}),
+    ...(process.env.OVERLEAF_THEMED_DASHBOARD?.toLowerCase() === 'true' ? {
+      'themed-project-dashboard': 'enabled',
     } : {}),
     ...(process.env.OVERLEAF_HISTORY_RESTORE?.toLowerCase() === 'true' ? {
       'history-ranges-support': 'enabled',
