@@ -1,10 +1,13 @@
-version: '2.2'
+
 services:
     sharelatex:
         restart: always
         # Server Pro users:
         # image: quay.io/sharelatex/sharelatex-pro
-        image: sharelatex/sharelatex
+        image: sharelatex/sharelatex:latest
+        dns:
+          - 8.8.8.8
+          - 8.8.4.4
         container_name: sharelatex
         depends_on:
             mongo:
@@ -16,6 +19,9 @@ services:
         stop_grace_period: 60s
         volumes:
             - ~/sharelatex_data:/var/lib/overleaf
+            - ./servivew:/app/servives
+            - ./libraries:/app/libraries
+            - ./packages.json:/app/packages.json
             ########################################################################
             ####  Server Pro: Uncomment the following line to mount the docker  ####
             ####             socket, required for Sibling Containers to work    ####
@@ -106,7 +112,7 @@ services:
 
     mongo:
         restart: always
-        image: mongo:6.0
+        image: mongo:8.0
         container_name: mongo
         command: '--replSet overleaf'
         volumes:
@@ -119,10 +125,14 @@ services:
           # This override is not needed when running the setup after starting up mongo.
           - mongo:127.0.0.1
         healthcheck:
-            test: echo 'db.stats().ok' | mongosh localhost:27017/test --quiet
+            test: ["CMD", "mongosh", "--quiet", "127.0.0.1:27017/test", "--eval", "db.adminCommand('ping').ok"]
             interval: 10s
             timeout: 10s
             retries: 5
+            start_period: 20s
+        dns:
+            - 8.8.8.8
+            - 8.8.4.4
 
     redis:
         restart: always
@@ -130,6 +140,9 @@ services:
         container_name: redis
         volumes:
             - ~/redis_data:/data
+        dns:
+            - 8.8.8.8
+            - 8.8.4.4
 
     # ldap:
     #    restart: always
@@ -150,3 +163,4 @@ services:
     #     volumes:
     #       - /var/run/docker.sock:/tmp/docker.sock:ro
     #       - /home/overleaf/tmp:/etc/nginx/certs
+

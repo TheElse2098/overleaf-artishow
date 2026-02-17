@@ -1,0 +1,44 @@
+This package was debianized by Alan Baghumian <alan@technotux.org> on
+Sat, 18 Aug 2007 08:31:45 +0330.
+
+It was downloaded from http://wiki.services.openoffice.org/wiki/Dictionaries
+
+Copyright 2004 Gostareh Negar Co. <info@gnco.ir>
+               Babak Mahmoudi <babak@gnco.ir>
+               EDwin Hakopian <edwin@gnco.ir>
+               Sharareh Kheiri <shery@pariansoft.com>
+
+  The original word list used for this package was generated
+  using Gostareh Negar Farsi spell-checker.
+
+Copyright 2006 Alan Baghumian <alan@technotux.org>
+
+  For fa-scientific word list.
+      
+Copyright 2006 Rouzbeh Pournader <roozbeh@farsiweb.info>
+	       Sharif FarsiWeb, Inc. <info@farsiweb.info>
+
+  For fa-generic word list.
+
+Copyright 2007 Mohammad Sadegh Shirazi <msadegh.shirazi@gmail.com>
+               Laszlo Nemeth <nemeth@openoffice.org>
+
+  For converting Aspell-fa to Myspell-fa
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; either version 2 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software 
+    Foundation, Inc., 51 Franklin St, Fifth Floor, Boston,
+    MA 02110-1301, USA.
+
+On Debian systems, the complete text of the GNU General
+Public License can be found in `/usr/share/common-licenses/GPL'.

@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+set -e
+
+# Usage
+#
+# ./release
+#
+
+# publish to npm
+npm publish
+
