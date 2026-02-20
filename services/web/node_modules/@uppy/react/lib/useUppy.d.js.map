@@ -1,1 +1,0 @@
-{"version":3,"names":[],"sources":["useUppy.d.ts"],"sourcesContent":["import type Uppy from '@uppy/core'\n\n/**\n * @deprecated Initialize Uppy outside of the component.\n */\ndeclare function useUppy(factory: () => Uppy): Uppy\n\nexport default useUppy\n"],"mappings":""}
