@@ -74,17 +74,6 @@ const ClsiCookieManager = ClsiCookieManagerFactory(
 const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
   UnsupportedBrowserMiddleware
 
-import bodyParser from "body-parser";
-import passport from 'passport';
-import {MultiSamlStrategy, Strategy as samlStrategy} from 'passport-saml';
-import {Strategy as gitlabStrategy} from 'passport-gitlab2';
-import fs from 'fs';
-import { User } from './models/User.js';
-import UserCreator from './Features/User/UserCreator.js'
-import UserUpdater from './Features/User/UserUpdater.js'
-const certDir = '/var/lib/overleaf/certs/'
-
-
 const rateLimiters = {
   addEmail: new RateLimiter('add-email', {
     points: 10,
@@ -240,6 +229,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthenticationController.passportLogin
   )
 
+<<<<<<< HEAD
 var oldstrat = new samlStrategy({
        //callbackUrl: "http://137.194.211.16/login/callback",
        callbackUrl: "https://overleaf.enst.fr/login/callback",
@@ -387,6 +377,8 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab/callback')
 AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
 
 
+=======
+>>>>>>> parent of c81ab3def9 (Add SAML login)
   webRouter.get(
     '/compromised-password',
     AuthenticationController.requireLogin(),
