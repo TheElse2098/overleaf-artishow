@@ -38,7 +38,7 @@ jobs:
 
       - name: Publish
         run: |
-          export ghcr_registry="ghcr.io/mclegrand/overleaf"
+          export ghcr_registry="ghcr.io/theelse2098/overleaf-artishow"
           docker tag docker.io/sharelatex/sharelatex:main ${ghcr_registry}:latest
           docker tag docker.io/sharelatex/sharelatex:main ${ghcr_registry}:${{ github.sha }}
           echo "Publishing ${ghcr_registry}:${{ github.sha }}"
