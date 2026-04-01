@@ -185,7 +185,29 @@ export default LinkedFilesController = {
   refreshLinkedFile: expressify(refreshLinkedFile),
 
   handleError(error, req, res, next) {
-    if (error instanceof AccessDeniedError) {
+    if (
+      error instanceof AccessDeniedError &&
+      error.message === 'Zotero account not linked'
+    ) {
+      res.status(400)
+      plainTextResponse(
+        res,
+        res.locals.translate(
+          'zotero_reference_loading_error_not_linked'
+        )
+      )
+    } else if (
+      error instanceof AccessDeniedError &&
+      error.message === 'Zotero access denied'
+    ) {
+      res.status(403)
+      plainTextResponse(
+        res,
+        res.locals.translate(
+          'zotero_reference_loading_error_forbidden'
+        )
+      )
+    } else if (error instanceof AccessDeniedError) {
       res.status(403)
       plainTextResponse(
         res,
@@ -227,8 +249,7 @@ export default LinkedFilesController = {
       } else {
         plainTextResponse(
           res,
-          `Your URL could not be reached (${
-            error.info?.status || error.cause?.info?.status
+          `Your URL could not be reached (${error.info?.status || error.cause?.info?.status
           } status code). Please check it and try again.`
         )
       }

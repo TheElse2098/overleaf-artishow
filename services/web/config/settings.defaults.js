@@ -1024,14 +1024,39 @@ module.exports = {
     //
     // Restart webpack after making changes.
     //
-    createFileModes: [],
+    createFileModes: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/zotero-create-file'
+      ),
+    ],
     devToolbar: [],
     gitBridge: [],
     publishModal: [],
-    tprFileViewInfo: [],
-    tprFileViewRefreshError: [],
-    tprFileViewRefreshButton: [],
-    tprFileViewNotOriginalImporter: [],
+    tprFileViewInfo: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/tpr-file-view-info'
+      ),
+    ],
+    tprFileViewRefreshError: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/tpr-file-view-refresh-error'
+      ),
+    ],
+    tprFileViewRefreshButton: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/tpr-file-view-refresh-button'
+      ),
+    ],
+    tprFileViewNotOriginalImporter: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/tpr-file-view-not-original-importer'
+      ),
+    ],
     contactUsModal: [],
     sourceEditorExtensions: [],
     sourceEditorVisualExtensions: [],
@@ -1059,7 +1084,12 @@ module.exports = {
     langFeedbackLinkingWidgets: [],
     labsExperiments: [],
     integrationLinkingWidgets: [],
-    referenceLinkingWidgets: [],
+    referenceLinkingWidgets: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/zotero-widget'
+      ),
+    ],
     importProjectFromGithubModalWrapper: [],
     importProjectFromGithubMenu: [],
     editorLeftMenuSync: [],
@@ -1103,7 +1133,12 @@ module.exports = {
         '../modules/full-project-search/frontend/js/components/full-project-search.tsx'
       ),
     ],
-    integrationPanelComponents: [],
+    integrationPanelComponents: [
+      Path.resolve(
+        __dirname,
+        '../modules/zotero/frontend/js/components/zotero-integration-card.tsx'
+      ),
+    ],
     referenceSearchSetting: [],
     settingsModalEditorTabSections: [],
     settingsModalSpellcheckSections: [],
@@ -1122,7 +1157,8 @@ module.exports = {
     'sandboxed-compiles',
     'symbol-palette',
     'track-changes',
-    'admin-tools' // import after authentication
+    'admin-tools', // import after authentication
+    'zotero',
   ],
   viewIncludes: {},
 
