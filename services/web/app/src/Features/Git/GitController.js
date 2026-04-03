@@ -487,10 +487,10 @@ GitController = {
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
     console.log("compiling in pull")
-    try {
+    /*try {
       compileProject(projectId, userId)
     }
-    catch(error){console.log("error when compiling in git pull")}
+    catch(error){console.log("error when compiling in git pull")}*/
     console.log("Pulling")
     getKey(userId, 'private')
       .then(key => {
