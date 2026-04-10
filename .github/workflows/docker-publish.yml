@@ -84,4 +84,4 @@ jobs:
           docker tag $SOURCE_IMAGE ${ghcr_registry}:${{ github.sha }}
       
           docker push ${ghcr_registry}:${TAG}
-          docker push ${ghcr_registry}:${{ github.sha }}
+
