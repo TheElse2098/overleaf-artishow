@@ -42,6 +42,9 @@ jobs:
           make build-base
           make build-community
 
+      - name: List Docker images
+        run: docker images
+
       - name: Set image tag based on branch
         run: |
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
@@ -58,15 +61,25 @@ jobs:
           fi
       
           echo "TAG=$TAG" >> $GITHUB_ENV
-    
+  
+
       - name: Publish
         run: |
-          export ghcr_registry="ghcr.io/theelse2098/overleaf-artishow"
-          docker tag docker.io/sharelatex/sharelatex:main ${ghcr_registry}:${TAG}
-          docker tag docker.io/sharelatex/sharelatex:main ${ghcr_registry}:${{ github.sha }}
-          
+          set -e
+
+          ghcr_registry="ghcr.io/theelse2098/overleaf-artishow"
+
+          echo "Using TAG=$TAG"
+
+          docker images
+
+          SOURCE_IMAGE="sharelatex/sharelatex:main"
+
+          docker tag $SOURCE_IMAGE ${ghcr_registry}:${TAG}
+          docker tag $SOURCE_IMAGE ${ghcr_registry}:${{ github.sha }}
+
           echo "Publishing ${ghcr_registry}:${TAG}"
           echo "Publishing ${ghcr_registry}:${{ github.sha }}"
-          
+
           docker push ${ghcr_registry}:${TAG}
           docker push ${ghcr_registry}:${{ github.sha }}
