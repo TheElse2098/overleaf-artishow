@@ -66,20 +66,22 @@ jobs:
       - name: Publish
         run: |
           set -e
-
+      
           ghcr_registry="ghcr.io/theelse2098/overleaf-artishow"
-
+      
           echo "Using TAG=$TAG"
-
+      
           docker images
-
-          SOURCE_IMAGE="sharelatex/sharelatex:main"
-
+      
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/_/g')
+      
+          SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
+      
+          echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"
+      
           docker tag $SOURCE_IMAGE ${ghcr_registry}:${TAG}
           docker tag $SOURCE_IMAGE ${ghcr_registry}:${{ github.sha }}
-
-          echo "Publishing ${ghcr_registry}:${TAG}"
-          echo "Publishing ${ghcr_registry}:${{ github.sha }}"
-
+      
           docker push ${ghcr_registry}:${TAG}
           docker push ${ghcr_registry}:${{ github.sha }}
