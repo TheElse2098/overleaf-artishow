@@ -80,4 +80,4 @@ The code in this repository is released under the GNU AFFERO GENERAL PUBLIC LICE
 
 Copyright (c) Overleaf, 2014-2025.
 
-## Test pour voir si les paquets sont communs
+## Test pour voir si les paquets sont communs 
