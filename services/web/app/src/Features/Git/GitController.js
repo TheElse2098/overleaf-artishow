@@ -232,12 +232,18 @@ async function getNotStaged(projectId,userId) {
     }
 }
 
+async function setupSshForProject(projectId, userId) {
+  const key = await getKey(userId, 'private')
+  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
+  const repoPath = dataPath + projectId + "-" + userId
+  const repoGit = simpleGit({ baseDir: repoPath })
+  await repoGit.addConfig('core.sshCommand', sshCommand)
+}
+
 async function getBranches(projectId, userId) {
     try {
-      const key = await getKey(userId, 'private')
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit({ allowUnsafeSshCommand: true }).env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
       move(projectId, userId);
+      await setupSshForProject(projectId, userId)
       await git.fetch('origin');
       console.log("fetched");
       const branches = await git.branch(['-r']);
@@ -251,10 +257,8 @@ async function getBranches(projectId, userId) {
 
 async function getCurrentBranch(projectId, userId) {
   try {
-    const key = await getKey(userId, 'private')
-    const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-    git = simpleGit({ allowUnsafeSshCommand: true }).env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
     move(projectId, userId);
+    await setupSshForProject(projectId, userId)
     const br = await git.branch(["-r"]);
     const stat = await git.status();
     console.log("Current Branch: ", br.current);
@@ -353,25 +357,34 @@ async function rebuildProjectAfterRollback(projectPath, projectId, ownerId) {
 }
 
 async function gitClone(projectId, ownerId, link){
-  const path = dataPath + projectId + "-" + ownerId
+  const repoPath = dataPath + projectId + "-" + ownerId
 
-  if (!fs.existsSync(path)) {
-    fs.mkdirSync(path)
+  if (!fs.existsSync(repoPath)) {
+    fs.mkdirSync(repoPath)
   }
 
   const key = await getKey(ownerId, 'private')
+  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
 
-  const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-  git = simpleGit({ allowUnsafeSshCommand: true }).env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND})
+  // process.env contourne la validation de simple-git sur GIT_SSH_COMMAND
+  // nécessaire pour le clone car le dépôt n'existe pas encore
+  const prevSSH = process.env.GIT_SSH_COMMAND
+  process.env.GIT_SSH_COMMAND = sshCommand
+  try {
+    await simpleGit({ baseDir: dataPath }).clone(link, repoPath)
+    console.log("Repository: " + link + " cloned successfully!")
+  } catch (error) {
+    console.error('Error when cloning:', error)
+    throw error
+  } finally {
+    if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
+    else delete process.env.GIT_SSH_COMMAND
+  }
 
-  await git.clone(link, path, (error, result) => {
-     if (error) {
-       console.error('Error when cloning:', error)
-     } else {
-       console.log("Repository: " + link + " cloned successfully! " + result)
-     }
-  })
-  await buildProject(path, projectId, ownerId, getRootId(projectId))
+  // Stocker la commande SSH dans la config locale du dépôt pour les opérations futures
+  await simpleGit({ baseDir: repoPath }).addConfig('core.sshCommand', sshCommand)
+
+  await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -551,12 +564,8 @@ GitController = {
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
     console.log("Pulling")
-    getKey(userId, 'private')
-      .then(key => {
-        const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-        git = simpleGit({ allowUnsafeSshCommand: true }).env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
-        return move(projectId, userId)
-      })
+    move(projectId, userId)
+    setupSshForProject(projectId, userId)
       .then(() => git.pull({'--no-rebase': null}))
       .then(async update => {
         console.log("Repository pulled");
@@ -638,13 +647,7 @@ GitController = {
     const userId = req.body.userId
     console.log("Pushing")
     move(projectId, userId)
-
-    getKey(userId, 'private')
-      .then(key => {
-        const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-        git = simpleGit({ allowUnsafeSshCommand: true }).env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
-        return move(projectId, userId)
-      })
+    setupSshForProject(projectId, userId)
       .then(() => git.push())
       .then(() => {
         console.log('Push successful')
@@ -776,10 +779,9 @@ GitController = {
 
     try {
 
-      const key = await getKey(userId, 'private');
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit(projectPath, { allowUnsafeSshCommand: true }).env({ GIT_SSH_COMMAND });
-      await move(projectId, userId);
+      git = simpleGit(projectPath);
+      move(projectId, userId);
+      await setupSshForProject(projectId, userId);
       await git.fetch('origin');
 
       const [, localBranch] = branchName.split('/');
@@ -819,11 +821,9 @@ GitController = {
     const { projectId, userId, newBranchName } = req.body;
     const projectPath = dataPath + projectId + "-" + userId;
     try {
-      const key = await getKey(userId, 'private');
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit(projectPath, { allowUnsafeSshCommand: true }).env({GIT_SSH_COMMAND});
-
-      await move(projectId, userId);
+      git = simpleGit(projectPath);
+      move(projectId, userId);
+      await setupSshForProject(projectId, userId);
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
       console.log("created new branch: ", newBranchName)
 
