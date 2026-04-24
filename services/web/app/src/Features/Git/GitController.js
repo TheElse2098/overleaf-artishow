@@ -498,7 +498,7 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
   }
 
   // Récupérer la liste des fichiers déjà trackés par Git
-  const localGit = getGitForProject(projectId, ownerId)
+  const localGit = await getGitForProject(projectId, ownerId)
   let trackedFiles = []
   try {
     const result = await localGit.raw(['ls-files'])
