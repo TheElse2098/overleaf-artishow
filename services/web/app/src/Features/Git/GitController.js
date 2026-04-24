@@ -16,7 +16,7 @@ const gitOptions = {
   baseDir: dataPath,
   privateKey: ""
 }
-const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.synctex.gz', '.project-sync-state'];
+const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stdout', 'output.stderr', 'output.synctex.gz', 'output.synctex(busy)', '.project-sync-state'];
 
 var git = simpleGit(gitOptions)
 
@@ -91,6 +91,24 @@ async function createFile(projectId, ownerId, parentId, name, content) {
   }
 }
 
+async function createBinaryFile(projectId, ownerId, parentId, name, fsPath) {
+  try {
+    const file = await EditorController.promises.addFile(
+      projectId,
+      parentId,
+      name,
+      fsPath,
+      null,
+      'editor',
+      ownerId
+    )
+    return file._id.toString()
+  } catch (err) {
+    console.error('Error adding binary file:', err.message)
+    return '0'
+  }
+}
+
 async function resetDatabase(projectId, userId, projectPath) {
 
   const items = await fs.readdir(projectPath)
@@ -115,9 +133,26 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
       const newFolderId = await createFolder(projectId, ownerId, parentId, item)
       await buildProject(itemPath, projectId, ownerId, newFolderId)
     } else if (stat.isFile()) {
-      const data = fs.readFileSync(itemPath, 'utf8')
-      const lines = data.split(/\r?\n/)
-      const docId = await createFile(projectId, ownerId, parentId, item, lines)
+      // Ignorer les fichiers de compilation qui auraient pu passer à travers
+      if (bannedFiles.includes(item)) {
+        console.log('Skipping banned file in buildProject:', item)
+        continue
+      }
+      // Détecter les fichiers binaires (images, etc.) et les ignorer
+      // Overleaf gère les fichiers binaires séparément via l'upload,
+      // seuls les fichiers texte (.tex, .bib, .md, etc.) sont importés via addDoc
+      const textExtensions = ['.tex', '.bib', '.txt', '.md', '.cls', '.sty', '.def', '.cfg', '.ist', '.bst', '.tikz', '.pgf']
+      const ext = path.extname(item).toLowerCase()
+      if (textExtensions.includes(ext)) {
+        // Fichier texte : importé ligne par ligne via addDoc
+        const data = fs.readFileSync(itemPath, 'utf8')
+        const lines = data.split(/\r?\n/)
+        await createFile(projectId, ownerId, parentId, item, lines)
+      } else {
+        // Fichier binaire (image, etc.) : importé via addFile avec le chemin disque
+        console.log('Importing binary file:', item)
+        await createBinaryFile(projectId, ownerId, parentId, item, itemPath)
+      }
     }
   }
 }
@@ -444,34 +479,57 @@ function resetFolder(src) {
     console.log(`${src} folder reset`)
 }
 
-async function gitUpdate(projectId, ownerId) {
+async function gitUpdate(projectId, ownerId, extraFiles = []) {
   console.log("Copying")
   const src = outputPath + projectId + "-" + ownerId
   const dest = dataPath + projectId + "-" + ownerId
 
-  resetFolder(dest)
-
-  // Ensure the destination exists
   await fs.ensureDir(dest);
 
-  // Read all files in the source directory
-  const files = await fs.readdir(src);
+  if (!await fs.pathExists(src)) {
+    console.log(`Source folder ${src} does not exist yet, skipping gitUpdate`)
+    return
+  }
 
-  for (const file of files) {
-    if (bannedFiles.includes(file)) {
-      // Optionally, remove the banned file from the destination if it exists
-      const destFile = path.join(dest, file);
-      if (await fs.pathExists(destFile)) {
-        await fs.remove(destFile);
-      }
-      continue;
+  // Récupérer la liste des fichiers déjà trackés par Git
+  const localGit = getGitForProject(projectId, ownerId)
+  let trackedFiles = []
+  try {
+    const result = await localGit.raw(['ls-files'])
+    trackedFiles = result.split('').filter(f => f.trim() !== '')
+    console.log(`Git tracked files: ${trackedFiles}`)
+  } catch (err) {
+    console.log('Could not get tracked files from git, skipping gitUpdate:', err.message)
+    return
+  }
+
+  // Fusionner les fichiers trackés avec les fichiers extra (ex: nouveau fichier à git add)
+  const filesToCopy = [...new Set([...trackedFiles, ...extraFiles])]
+
+  // Supprimer les fichiers bannis s'ils traînent dans le dossier Git
+  for (const banned of bannedFiles) {
+    const bannedPath = path.join(dest, banned)
+    if (await fs.pathExists(bannedPath)) {
+      await fs.remove(bannedPath)
+      console.log(`Removed banned file from git folder: ${banned}`)
     }
+  }
 
-    // Copy file from src to dest
+  // Copier les fichiers depuis compiles/ vers git/
+  for (const file of filesToCopy) {
     const srcFile = path.join(src, file);
     const destFile = path.join(dest, file);
-    await fs.copy(srcFile, destFile, { overwrite: true });
+
+    if (await fs.pathExists(srcFile)) {
+      await fs.ensureDir(path.dirname(destFile))
+      await fs.copy(srcFile, destFile, { overwrite: true });
+      console.log(`Updated file: ${file}`)
+    } else {
+      console.log(`File not found in compiles, skipping: ${file}`)
+    }
   }
+
+  console.log("gitUpdate done")
 }
 
 
@@ -486,11 +544,6 @@ GitController = {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
-    console.log("compiling in pull")
-    /*try {
-      compileProject(projectId, userId)
-    }
-    catch(error){console.log("error when compiling in git pull")}*/
     console.log("Pulling")
     getKey(userId, 'private')
       .then(key => {
@@ -499,13 +552,21 @@ GitController = {
         return move(projectId, userId)
       })
       .then(() => git.pull({'--no-rebase': null}))
-      .then(update => {
+      .then(async update => {
         console.log("Repository pulled");
-        buildProject(projectPath, projectId, userId, getRootId(projectId));
+        // Supprimer les fichiers de compilation parasites du dossier Git
+        // avant de reconstruire Overleaf pour éviter qu'ils soient importés
+        for (const banned of bannedFiles) {
+          const bannedPath = path.join(projectPath, banned)
+          if (await fs.pathExists(bannedPath)) {
+            await fs.remove(bannedPath)
+            console.log(`Removed banned file after pull: ${banned}`)
+          }
+        }
+        await buildProject(projectPath, projectId, userId, getRootId(projectId));
       })
       .then(() => res.sendStatus(200))
       .catch(error => {
-
         console.error("Error.git: ", error.git);
         console.error("Error.message: ", error.message);
         if (error.git?.message === "Exiting because of an unresolved conflict." ||
@@ -524,11 +585,12 @@ GitController = {
     const filePath = req.body.filePath
     console.log("Adding " + filePath)
     move(projectId, userId)
-    console.log("compiling because add")
     try {
-      await compileProject(projectId,userId)
+      // Synchroniser le fichier depuis compiles/ vers git/ sans passer par une compilation
+      await gitUpdate(projectId, userId, [filePath])
+    } catch(error) {
+      console.log("error when syncing in git add", error)
     }
-    catch(error){console.log("error when compiling in git add")}
     git.add(filePath, (error) => {
         if (error) {
           console.error("Could not add the file", error)
