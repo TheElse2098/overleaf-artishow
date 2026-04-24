@@ -526,8 +526,12 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
   for (const banned of bannedFiles) {
     const bannedPath = path.join(dest, banned)
     if (await fs.pathExists(bannedPath)) {
-      await fs.remove(bannedPath)
-      console.log(`Removed banned file from git folder: ${banned}`)
+      try {
+        await fs.remove(bannedPath)
+        console.log(`Removed banned file from git folder: ${banned}`)
+      } catch (err) {
+        console.error(`Could not remove banned file ${banned} (permission issue?):`, err.message)
+      }
     }
   }
 
@@ -537,9 +541,13 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
     const destFile = path.join(dest, file);
 
     if (await fs.pathExists(srcFile)) {
-      await fs.ensureDir(path.dirname(destFile))
-      await fs.copy(srcFile, destFile, { overwrite: true });
-      console.log(`Updated file: ${file}`)
+      try {
+        await fs.ensureDir(path.dirname(destFile))
+        await fs.copy(srcFile, destFile, { overwrite: true });
+        console.log(`Updated file: ${file}`)
+      } catch (err) {
+        console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
+      }
     } else {
       console.log(`File not found in compiles, skipping: ${file}`)
     }
