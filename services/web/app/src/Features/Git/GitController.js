@@ -26,14 +26,10 @@ function getRootId(projectId) {
   let decrementedHexString = decrementedValue.toString(16)
   return decrementedHexString
 }
-async function getGitForProject(projectId, userId) {
+function getGitForProject(projectId, userId) {
   const repoPath = dataPath + projectId + "-" + userId;
-  try {
-    await simpleGit({ baseDir: '/tmp' }).raw(['config', '--global', '--add', 'safe.directory', repoPath])
-  } catch (e) {
-    console.error('Could not add safe.directory:', e.message)
-  }
-  return simpleGit({ baseDir: repoPath });
+  // Passe safe.directory via -c (pas d'écriture dans le gitconfig global, évite permission denied)
+  return simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`] });
 }
 
 async function createFolder(projectId, ownerId, parentId, name) {
@@ -165,12 +161,8 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
 
 function move(projectId, userId) {
   const fullPath = dataPath + projectId + "-" + userId
-  const newGitOptions = {
-      baseDir: fullPath,
-    }
-  //git = simpleGit(newGitOptions)
-
-  git.cwd(fullPath)
+  // Recrée l'instance avec safe.directory en -c flag pour éviter l'erreur dubious ownership
+  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`] })
   git.addConfig('user.name', 'overleaf')
   git.addConfig('user.email', 'overleaf@overleaf.com')
 }
@@ -236,7 +228,11 @@ async function setupSshForProject(projectId, userId) {
   const key = await getKey(userId, 'private')
   const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
   const repoPath = dataPath + projectId + "-" + userId
-  const repoGit = simpleGit({ baseDir: repoPath })
+  const repoGit = simpleGit({
+    baseDir: repoPath,
+    allowUnsafeSshCommand: true,
+    config: [`safe.directory=${repoPath}`]
+  })
   await repoGit.addConfig('core.sshCommand', sshCommand)
 }
 
@@ -779,7 +775,6 @@ GitController = {
 
     try {
 
-      git = simpleGit(projectPath);
       move(projectId, userId);
       await setupSshForProject(projectId, userId);
       await git.fetch('origin');
@@ -821,7 +816,6 @@ GitController = {
     const { projectId, userId, newBranchName } = req.body;
     const projectPath = dataPath + projectId + "-" + userId;
     try {
-      git = simpleGit(projectPath);
       move(projectId, userId);
       await setupSshForProject(projectId, userId);
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
