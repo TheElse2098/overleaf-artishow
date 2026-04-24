@@ -55,6 +55,8 @@ jobs:
             TAG="git"
           elif [ "$BRANCH_NAME" = "template_integration" ]; then
             tag="template"
+          elif [ "$BRANCH_NAME" = "git_compilation" ]; then
+            tag="git_compilation"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
