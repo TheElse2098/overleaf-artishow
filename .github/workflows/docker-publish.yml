@@ -6,6 +6,7 @@ on:
       - main
       - git_integration
       - template_integration
+      - git_compilation
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
