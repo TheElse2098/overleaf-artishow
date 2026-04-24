@@ -28,8 +28,7 @@ function getRootId(projectId) {
 }
 function getGitForProject(projectId, userId) {
   const repoPath = dataPath + projectId + "-" + userId;
-  // Passe safe.directory via -c (pas d'écriture dans le gitconfig global, évite permission denied)
-  return simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`] });
+  return simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'] });
 }
 
 async function createFolder(projectId, ownerId, parentId, name) {
@@ -94,6 +93,12 @@ async function createFile(projectId, ownerId, parentId, name, content) {
 
 async function createBinaryFile(projectId, ownerId, parentId, name, fsPath) {
   try {
+    const stat = await fs.stat(fsPath)
+    console.log(`Uploading binary file: ${name}, size=${stat.size} bytes, path=${fsPath}`)
+    if (stat.size === 0) {
+      console.error(`Binary file is empty, skipping: ${name}`)
+      return '0'
+    }
     const file = await EditorController.promises.addFile(
       projectId,
       parentId,
@@ -103,22 +108,26 @@ async function createBinaryFile(projectId, ownerId, parentId, name, fsPath) {
       'editor',
       ownerId
     )
+    console.log(`Binary file uploaded successfully: ${name}, fileId=${file._id}`)
     return file._id.toString()
   } catch (err) {
-    console.error('Error adding binary file:', err.message)
+    console.error(`Error adding binary file ${name}:`, err.message)
     return '0'
   }
 }
 
 async function resetDatabase(projectId, userId, projectPath) {
-
   const items = await fs.readdir(projectPath)
 
-  for (const item of items) {
-    if(!bannedFiles.includes(item)) {
-    EditorController.deleteEntityWithPath(projectId, item, 'unknown', userId, () => {})
-    }
-  }
+  await Promise.all(
+    items
+      .filter(item => !bannedFiles.includes(item))
+      .map(item =>
+        new Promise(resolve => {
+          EditorController.deleteEntityWithPath(projectId, item, 'unknown', userId, () => resolve())
+        })
+      )
+  )
 }
 
 async function buildProject(currentPath, projectId, ownerId, parentId, rollbacked = false) {
@@ -161,8 +170,7 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
 
 function move(projectId, userId) {
   const fullPath = dataPath + projectId + "-" + userId
-  // Recrée l'instance avec safe.directory en -c flag pour éviter l'erreur dubious ownership
-  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`] })
+  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
   git.addConfig('user.name', 'overleaf')
   git.addConfig('user.email', 'overleaf@overleaf.com')
 }
@@ -371,7 +379,7 @@ async function gitClone(projectId, ownerId, link){
   const prevSSH = process.env.GIT_SSH_COMMAND
   process.env.GIT_SSH_COMMAND = sshCommand
   try {
-    await simpleGit({ baseDir: dataPath }).clone(link, repoPath)
+    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath)
     console.log("Repository: " + link + " cloned successfully!")
   } catch (error) {
     console.error('Error when cloning:', error)
