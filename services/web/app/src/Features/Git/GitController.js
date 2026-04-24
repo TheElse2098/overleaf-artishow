@@ -224,27 +224,30 @@ async function getNotStaged(projectId,userId) {
     }
 }
 
-async function setupSshForProject(projectId, userId) {
+// Exécute fn() avec GIT_SSH_COMMAND défini dans process.env
+// Contourne les validations simple-git sur GIT_SSH_COMMAND et core.sshCommand
+async function withSshKey(userId, fn) {
   const key = await getKey(userId, 'private')
-  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
-  const repoPath = dataPath + projectId + "-" + userId
-  const repoGit = simpleGit({
-    baseDir: repoPath,
-    allowUnsafeSshCommand: true,
-    config: [`safe.directory=${repoPath}`]
-  })
-  await repoGit.addConfig('core.sshCommand', sshCommand)
+  const prev = process.env.GIT_SSH_COMMAND
+  process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
+  try {
+    return await fn()
+  } finally {
+    if (prev !== undefined) process.env.GIT_SSH_COMMAND = prev
+    else delete process.env.GIT_SSH_COMMAND
+  }
 }
 
 async function getBranches(projectId, userId) {
     try {
       move(projectId, userId);
-      await setupSshForProject(projectId, userId)
-      await git.fetch('origin');
-      console.log("fetched");
-      const branches = await git.branch(['-r']);
-      console.log('Remote branches:', branches.all);
-      return branches.all;
+      return await withSshKey(userId, async () => {
+        await git.fetch('origin');
+        console.log("fetched");
+        const branches = await git.branch(['-r']);
+        console.log('Remote branches:', branches.all);
+        return branches.all;
+      })
     } catch (err) {
       console.error("Error fetching branches:", err);
       return []
@@ -254,12 +257,13 @@ async function getBranches(projectId, userId) {
 async function getCurrentBranch(projectId, userId) {
   try {
     move(projectId, userId);
-    await setupSshForProject(projectId, userId)
-    const br = await git.branch(["-r"]);
-    const stat = await git.status();
-    console.log("Current Branch: ", br.current);
-    console.log("Current Branch (status): ", stat.current);
-    return `origin/${stat.current}`;
+    return await withSshKey(userId, async () => {
+      const br = await git.branch(["-r"]);
+      const stat = await git.status();
+      console.log("Current Branch: ", br.current);
+      console.log("Current Branch (status): ", stat.current);
+      return `origin/${stat.current}`;
+    })
   } catch (err) {
     console.error("Error fetching current branches:", err);
     return "";
@@ -376,9 +380,6 @@ async function gitClone(projectId, ownerId, link){
     if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
     else delete process.env.GIT_SSH_COMMAND
   }
-
-  // Stocker la commande SSH dans la config locale du dépôt pour les opérations futures
-  await simpleGit({ baseDir: repoPath }).addConfig('core.sshCommand', sshCommand)
 
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
 }
@@ -511,7 +512,7 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
   let trackedFiles = []
   try {
     const result = await localGit.raw(['ls-files'])
-    trackedFiles = result.split('').filter(f => f.trim() !== '')
+    trackedFiles = result.split('\n').filter(f => f.trim() !== '')
     console.log(`Git tracked files: ${trackedFiles}`)
   } catch (err) {
     console.log('Could not get tracked files from git, skipping gitUpdate:', err.message)
@@ -561,8 +562,7 @@ GitController = {
     const projectPath = dataPath + projectId + "-" + userId
     console.log("Pulling")
     move(projectId, userId)
-    setupSshForProject(projectId, userId)
-      .then(() => git.pull({'--no-rebase': null}))
+    withSshKey(userId, () => git.pull({'--no-rebase': null}))
       .then(async update => {
         console.log("Repository pulled");
         // Supprimer les fichiers de compilation parasites du dossier Git
@@ -643,8 +643,7 @@ GitController = {
     const userId = req.body.userId
     console.log("Pushing")
     move(projectId, userId)
-    setupSshForProject(projectId, userId)
-      .then(() => git.push())
+    withSshKey(userId, () => git.push())
       .then(() => {
         console.log('Push successful')
         res.sendStatus(200);
@@ -776,8 +775,7 @@ GitController = {
     try {
 
       move(projectId, userId);
-      await setupSshForProject(projectId, userId);
-      await git.fetch('origin');
+      await withSshKey(userId, () => git.fetch('origin'));
 
       const [, localBranch] = branchName.split('/');
       const localBranches = await git.branchLocal();
@@ -817,11 +815,10 @@ GitController = {
     const projectPath = dataPath + projectId + "-" + userId;
     try {
       move(projectId, userId);
-      await setupSshForProject(projectId, userId);
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
       console.log("created new branch: ", newBranchName)
 
-      await git.push(['-u', 'origin', newBranchName])
+      await withSshKey(userId, () => git.push(['-u', 'origin', newBranchName]))
       console.log(`Branch '${newBranchName}' pushed to origin`)
 
       res.sendStatus(200);
