@@ -116,6 +116,8 @@ async function createBinaryFile(projectId, ownerId, parentId, name, fsPath) {
   }
 }
 
+const textExtensions = ['.tex', '.bib', '.txt', '.md', '.cls', '.sty', '.def', '.cfg', '.ist', '.bst', '.tikz', '.pgf']
+
 async function resetDatabase(projectId, userId, projectPath) {
   const items = await fs.readdir(projectPath)
 
@@ -130,41 +132,83 @@ async function resetDatabase(projectId, userId, projectPath) {
   )
 }
 
-async function buildProject(currentPath, projectId, ownerId, parentId, rollbacked = false) {
-  rollbacked ? await resetDatabase(projectId, ownerId, outputPath + "/" + projectId + "-" + ownerId) : await resetDatabase(projectId, ownerId, currentPath)
-
+// Used only for rollback: clears then rebuilds from scratch (entities get new IDs)
+async function _buildProjectFromScratch(currentPath, projectId, ownerId, parentId) {
   const items = await fs.readdir(currentPath)
-
   for (const item of items) {
     const itemPath = path.join(currentPath, item)
     const stat = await fs.stat(itemPath)
-
-    if (stat.isDirectory() && item != ".git") {
+    if (stat.isDirectory() && item !== '.git') {
       const newFolderId = await createFolder(projectId, ownerId, parentId, item)
-      await buildProject(itemPath, projectId, ownerId, newFolderId)
+      await _buildProjectFromScratch(itemPath, projectId, ownerId, newFolderId)
     } else if (stat.isFile()) {
-      // Ignorer les fichiers de compilation qui auraient pu passer à travers
-      if (bannedFiles.includes(item)) {
-        console.log('Skipping banned file in buildProject:', item)
-        continue
-      }
-      // Détecter les fichiers binaires (images, etc.) et les ignorer
-      // Overleaf gère les fichiers binaires séparément via l'upload,
-      // seuls les fichiers texte (.tex, .bib, .md, etc.) sont importés via addDoc
-      const textExtensions = ['.tex', '.bib', '.txt', '.md', '.cls', '.sty', '.def', '.cfg', '.ist', '.bst', '.tikz', '.pgf']
+      if (bannedFiles.includes(item)) continue
       const ext = path.extname(item).toLowerCase()
       if (textExtensions.includes(ext)) {
-        // Fichier texte : importé ligne par ligne via addDoc
         const data = fs.readFileSync(itemPath, 'utf8')
         const lines = data.split(/\r?\n/)
         await createFile(projectId, ownerId, parentId, item, lines)
       } else {
-        // Fichier binaire (image, etc.) : importé via addFile avec le chemin disque
-        console.log('Importing binary file:', item)
         try { await fs.chmod(itemPath, 0o644) } catch (e) {}
         await createBinaryFile(projectId, ownerId, parentId, item, itemPath)
       }
     }
+  }
+}
+
+// Used for pull/clone: upserts entities in place so open documents keep their IDs
+async function _buildProjectWithUpsert(currentPath, gitRootPath, projectId, ownerId) {
+  const items = await fs.readdir(currentPath)
+  for (const item of items) {
+    if (item === '.git') continue
+    const itemPath = path.join(currentPath, item)
+    const stat = await fs.stat(itemPath)
+    if (stat.isDirectory()) {
+      await _buildProjectWithUpsert(itemPath, gitRootPath, projectId, ownerId)
+      continue
+    }
+    if (!stat.isFile() || bannedFiles.includes(item)) continue
+
+    const relPath = '/' + path.relative(gitRootPath, itemPath).replace(/\\/g, '/')
+    const ext = path.extname(item).toLowerCase()
+    if (textExtensions.includes(ext)) {
+      try {
+        const data = fs.readFileSync(itemPath, 'utf8')
+        const lines = data.split(/\r?\n/)
+        await EditorController.promises.upsertDocWithPath(projectId, relPath, lines, 'editor', ownerId)
+        console.log(`Upserted doc: ${relPath}`)
+      } catch (err) {
+        console.error(`Error upserting doc ${relPath}:`, err.message)
+      }
+    } else {
+      try { await fs.chmod(itemPath, 0o644) } catch (e) {}
+      const fileStat = await fs.stat(itemPath)
+      // Log les 8 premiers octets pour vérifier l'intégrité du fichier (JPEG : FF D8 FF, PNG : 89 50 4E 47)
+      try {
+        const fd = await fs.open(itemPath, 'r')
+        const buf = Buffer.alloc(8)
+        await fs.read(fd, buf, 0, 8, 0)
+        await fs.close(fd)
+        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=${buf.toString('hex')}`)
+      } catch (e) {
+        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=unreadable`)
+      }
+      try {
+        await EditorController.promises.upsertFileWithPath(projectId, relPath, itemPath, null, 'editor', ownerId)
+        console.log(`Upserted binary: ${relPath}`)
+      } catch (err) {
+        console.error(`Error upserting file ${relPath}:`, err.message)
+      }
+    }
+  }
+}
+
+async function buildProject(currentPath, projectId, ownerId, parentId, rollbacked = false) {
+  if (rollbacked) {
+    await resetDatabase(projectId, ownerId, outputPath + '/' + projectId + '-' + ownerId)
+    await _buildProjectFromScratch(currentPath, projectId, ownerId, parentId)
+  } else {
+    await _buildProjectWithUpsert(currentPath, currentPath, projectId, ownerId)
   }
 }
 
@@ -364,6 +408,18 @@ async function rebuildProjectAfterRollback(projectPath, projectId, ownerId) {
     }
 }
 
+async function disableBinaryConversion(repoPath) {
+  // Empêche toute conversion de fin de ligne par git, quels que soient les paramètres .gitattributes
+  // .git/info/attributes a la priorité maximale dans git et écrase le .gitattributes du dépôt
+  try {
+    await fs.ensureDir(path.join(repoPath, '.git', 'info'))
+    await fs.writeFile(path.join(repoPath, '.git', 'info', 'attributes'), '* -text\n', 'utf8')
+    console.log(`Git info/attributes written for ${repoPath}`)
+  } catch (err) {
+    console.error('Could not write git info/attributes:', err.message)
+  }
+}
+
 async function gitClone(projectId, ownerId, link){
   const repoPath = dataPath + projectId + "-" + ownerId
 
@@ -379,8 +435,9 @@ async function gitClone(projectId, ownerId, link){
   const prevSSH = process.env.GIT_SSH_COMMAND
   process.env.GIT_SSH_COMMAND = sshCommand
   try {
-    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath)
-    console.log("Repository: " + link + " cloned successfully!")
+    // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
+    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, ['--no-checkout'])
+    console.log("Repository: " + link + " cloned (no checkout) successfully!")
   } catch (error) {
     console.error('Error when cloning:', error)
     throw error
@@ -389,6 +446,16 @@ async function gitClone(projectId, ownerId, link){
     else delete process.env.GIT_SSH_COMMAND
   }
 
+  // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
+  await disableBinaryConversion(repoPath)
+  const localGit = getGitForProject(projectId, ownerId)
+  try {
+    await localGit.raw(['checkout', 'HEAD', '--', '.'])
+    console.log("Initial checkout done with binary attributes applied")
+  } catch (checkoutErr) {
+    console.error("Initial checkout failed:", checkoutErr.message)
+    throw checkoutErr
+  }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
 }
 
@@ -578,9 +645,18 @@ GitController = {
     const projectPath = dataPath + projectId + "-" + userId
     console.log("Pulling")
     move(projectId, userId)
-    withSshKey(userId, () => git.pull({'--no-rebase': null}))
+    disableBinaryConversion(projectPath)
+      .then(() => withSshKey(userId, () => git.pull({'--no-rebase': null})))
       .then(async update => {
         console.log("Repository pulled");
+        // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
+        const localGit = getGitForProject(projectId, userId)
+        try {
+          await localGit.raw(['checkout', 'HEAD', '--', '.'])
+          console.log("Files re-checked out with binary attributes applied")
+        } catch (recheckoutErr) {
+          console.error("Re-checkout failed:", recheckoutErr.message)
+        }
         // Supprimer les fichiers de compilation parasites du dossier Git
         // avant de reconstruire Overleaf pour éviter qu'ils soient importés
         for (const banned of bannedFiles) {
