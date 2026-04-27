@@ -5,6 +5,7 @@ const dataPath = "/var/lib/overleaf/data/git/"
 const outputPath = "/var/lib/overleaf/data/compiles/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController')
+const HistoryManager = require('../History/HistoryManager')
 const CompileManager = require('../Compile/CompileManager');
 const ClsiCookieManager = require('../Compile/ClsiCookieManager');
 const Errors = require('../Errors/Errors')
@@ -209,6 +210,27 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
     await _buildProjectFromScratch(currentPath, projectId, ownerId, parentId)
   } else {
     await _buildProjectWithUpsert(currentPath, currentPath, projectId, ownerId)
+  }
+}
+
+// Resynchronise l'historique Overleaf avec l'état réel du projet après un pull/clone git.
+// Séquence en deux étapes pour gérer les projets dont l'état project-history est corrompu :
+//   1. Supprimer l'état project-history (file Redis, record d'erreur MongoDB, état de resync)
+//   2. Déclencher une resynchronisation forcée pour reconstruire l'historique depuis la structure actuelle
+// Appelé en arrière-plan pour ne pas bloquer la réponse HTTP.
+async function resyncHistory(projectId) {
+  try {
+    // Effacer l'état corrompu avant de resynchroniser (vide la file Redis + l'erreur MongoDB)
+    await HistoryManager.promises.deleteProjectHistory(projectId)
+    console.log(`État project-history effacé pour le projet ${projectId}`)
+  } catch (err) {
+    console.error(`Échec de l'effacement de l'état project-history pour ${projectId}:`, err.message)
+  }
+  try {
+    await HistoryManager.promises.resyncProject(projectId, { force: true })
+    console.log(`Historique resynchronisé (force) pour le projet ${projectId}`)
+  } catch (err) {
+    console.error(`Échec de la resynchronisation de l'historique pour ${projectId}:`, err.message)
   }
 }
 
@@ -457,6 +479,7 @@ async function gitClone(projectId, ownerId, link){
     throw checkoutErr
   }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
+  resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -667,6 +690,7 @@ GitController = {
           }
         }
         await buildProject(projectPath, projectId, userId, getRootId(projectId));
+        resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
       })
       .then(() => res.sendStatus(200))
       .catch(error => {

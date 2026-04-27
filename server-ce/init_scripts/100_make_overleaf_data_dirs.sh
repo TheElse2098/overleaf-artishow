@@ -24,7 +24,7 @@ mkdir -p /var/lib/overleaf/data/template_files
 chown www-data:www-data /var/lib/overleaf/data/template_files
 
 mkdir -p /var/lib/overleaf/data/history
-chown www-data:www-data /var/lib/overleaf/data/history
+chown -R www-data:www-data /var/lib/overleaf/data/history
 
 # git
 mkdir -p /var/lib/overleaf/data/git
