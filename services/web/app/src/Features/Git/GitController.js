@@ -5,6 +5,7 @@ const dataPath = "/var/lib/overleaf/data/git/"
 const outputPath = "/var/lib/overleaf/data/compiles/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController')
+const HistoryManager = require('../History/HistoryManager')
 const CompileManager = require('../Compile/CompileManager');
 const ClsiCookieManager = require('../Compile/ClsiCookieManager');
 const Errors = require('../Errors/Errors')
@@ -16,7 +17,7 @@ const gitOptions = {
   baseDir: dataPath,
   privateKey: ""
 }
-const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.synctex.gz', '.project-sync-state'];
+const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stdout', 'output.stderr', 'output.synctex.gz', 'output.synctex(busy)', '.project-sync-state'];
 
 var git = simpleGit(gitOptions)
 
@@ -28,7 +29,7 @@ function getRootId(projectId) {
 }
 function getGitForProject(projectId, userId) {
   const repoPath = dataPath + projectId + "-" + userId;
-  return simpleGit({ baseDir: repoPath });
+  return simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'] });
 }
 
 async function createFolder(projectId, ownerId, parentId, name) {
@@ -91,45 +92,151 @@ async function createFile(projectId, ownerId, parentId, name, content) {
   }
 }
 
-async function resetDatabase(projectId, userId, projectPath) {
+async function createBinaryFile(projectId, ownerId, parentId, name, fsPath) {
+  try {
+    const stat = await fs.stat(fsPath)
+    console.log(`Uploading binary file: ${name}, size=${stat.size} bytes, path=${fsPath}`)
+    if (stat.size === 0) {
+      console.error(`Binary file is empty, skipping: ${name}`)
+      return '0'
+    }
+    const file = await EditorController.promises.addFile(
+      projectId,
+      parentId,
+      name,
+      fsPath,
+      null,
+      'editor',
+      ownerId
+    )
+    console.log(`Binary file uploaded successfully: ${name}, fileId=${file._id}`)
+    return file._id.toString()
+  } catch (err) {
+    console.error(`Error adding binary file ${name}:`, err.message)
+    return '0'
+  }
+}
 
+const textExtensions = ['.tex', '.bib', '.txt', '.md', '.cls', '.sty', '.def', '.cfg', '.ist', '.bst', '.tikz', '.pgf']
+
+async function resetDatabase(projectId, userId, projectPath) {
   const items = await fs.readdir(projectPath)
 
+  await Promise.all(
+    items
+      .filter(item => !bannedFiles.includes(item))
+      .map(item =>
+        new Promise(resolve => {
+          EditorController.deleteEntityWithPath(projectId, item, 'unknown', userId, () => resolve())
+        })
+      )
+  )
+}
+
+// Used only for rollback: clears then rebuilds from scratch (entities get new IDs)
+async function _buildProjectFromScratch(currentPath, projectId, ownerId, parentId) {
+  const items = await fs.readdir(currentPath)
   for (const item of items) {
-    if(!bannedFiles.includes(item)) {
-    EditorController.deleteEntityWithPath(projectId, item, 'unknown', userId, () => {})
+    const itemPath = path.join(currentPath, item)
+    const stat = await fs.stat(itemPath)
+    if (stat.isDirectory() && item !== '.git') {
+      const newFolderId = await createFolder(projectId, ownerId, parentId, item)
+      await _buildProjectFromScratch(itemPath, projectId, ownerId, newFolderId)
+    } else if (stat.isFile()) {
+      if (bannedFiles.includes(item)) continue
+      const ext = path.extname(item).toLowerCase()
+      if (textExtensions.includes(ext)) {
+        const data = fs.readFileSync(itemPath, 'utf8')
+        const lines = data.split(/\r?\n/)
+        await createFile(projectId, ownerId, parentId, item, lines)
+      } else {
+        try { await fs.chmod(itemPath, 0o644) } catch (e) {}
+        await createBinaryFile(projectId, ownerId, parentId, item, itemPath)
+      }
+    }
+  }
+}
+
+// Used for pull/clone: upserts entities in place so open documents keep their IDs
+async function _buildProjectWithUpsert(currentPath, gitRootPath, projectId, ownerId) {
+  const items = await fs.readdir(currentPath)
+  for (const item of items) {
+    if (item === '.git') continue
+    const itemPath = path.join(currentPath, item)
+    const stat = await fs.stat(itemPath)
+    if (stat.isDirectory()) {
+      await _buildProjectWithUpsert(itemPath, gitRootPath, projectId, ownerId)
+      continue
+    }
+    if (!stat.isFile() || bannedFiles.includes(item)) continue
+
+    const relPath = '/' + path.relative(gitRootPath, itemPath).replace(/\\/g, '/')
+    const ext = path.extname(item).toLowerCase()
+    if (textExtensions.includes(ext)) {
+      try {
+        const data = fs.readFileSync(itemPath, 'utf8')
+        const lines = data.split(/\r?\n/)
+        await EditorController.promises.upsertDocWithPath(projectId, relPath, lines, 'editor', ownerId)
+        console.log(`Upserted doc: ${relPath}`)
+      } catch (err) {
+        console.error(`Error upserting doc ${relPath}:`, err.message)
+      }
+    } else {
+      try { await fs.chmod(itemPath, 0o644) } catch (e) {}
+      const fileStat = await fs.stat(itemPath)
+      // Log les 8 premiers octets pour vérifier l'intégrité du fichier (JPEG : FF D8 FF, PNG : 89 50 4E 47)
+      try {
+        const fd = await fs.open(itemPath, 'r')
+        const buf = Buffer.alloc(8)
+        await fs.read(fd, buf, 0, 8, 0)
+        await fs.close(fd)
+        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=${buf.toString('hex')}`)
+      } catch (e) {
+        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=unreadable`)
+      }
+      try {
+        await EditorController.promises.upsertFileWithPath(projectId, relPath, itemPath, null, 'editor', ownerId)
+        console.log(`Upserted binary: ${relPath}`)
+      } catch (err) {
+        console.error(`Error upserting file ${relPath}:`, err.message)
+      }
     }
   }
 }
 
 async function buildProject(currentPath, projectId, ownerId, parentId, rollbacked = false) {
-  rollbacked ? await resetDatabase(projectId, ownerId, outputPath + "/" + projectId + "-" + ownerId) : await resetDatabase(projectId, ownerId, currentPath)
+  if (rollbacked) {
+    await resetDatabase(projectId, ownerId, outputPath + '/' + projectId + '-' + ownerId)
+    await _buildProjectFromScratch(currentPath, projectId, ownerId, parentId)
+  } else {
+    await _buildProjectWithUpsert(currentPath, currentPath, projectId, ownerId)
+  }
+}
 
-  const items = await fs.readdir(currentPath)
-
-  for (const item of items) {
-    const itemPath = path.join(currentPath, item)
-    const stat = await fs.stat(itemPath)
-
-    if (stat.isDirectory() && item != ".git") {
-      const newFolderId = await createFolder(projectId, ownerId, parentId, item)
-      await buildProject(itemPath, projectId, ownerId, newFolderId)
-    } else if (stat.isFile()) {
-      const data = fs.readFileSync(itemPath, 'utf8')
-      const lines = data.split(/\r?\n/)
-      const docId = await createFile(projectId, ownerId, parentId, item, lines)
-    }
+// Resynchronise l'historique Overleaf avec l'état réel du projet après un pull/clone git.
+// Séquence en deux étapes pour gérer les projets dont l'état project-history est corrompu :
+//   1. Supprimer l'état project-history (file Redis, record d'erreur MongoDB, état de resync)
+//   2. Déclencher une resynchronisation forcée pour reconstruire l'historique depuis la structure actuelle
+// Appelé en arrière-plan pour ne pas bloquer la réponse HTTP.
+async function resyncHistory(projectId) {
+  try {
+    // Effacer l'état corrompu avant de resynchroniser (vide la file Redis + l'erreur MongoDB)
+    await HistoryManager.promises.deleteProjectHistory(projectId)
+    console.log(`État project-history effacé pour le projet ${projectId}`)
+  } catch (err) {
+    console.error(`Échec de l'effacement de l'état project-history pour ${projectId}:`, err.message)
+  }
+  try {
+    await HistoryManager.promises.resyncProject(projectId, { force: true })
+    console.log(`Historique resynchronisé (force) pour le projet ${projectId}`)
+  } catch (err) {
+    console.error(`Échec de la resynchronisation de l'historique pour ${projectId}:`, err.message)
   }
 }
 
 function move(projectId, userId) {
   const fullPath = dataPath + projectId + "-" + userId
-  const newGitOptions = {
-      baseDir: fullPath,
-    }
-  //git = simpleGit(newGitOptions)
-
-  git.cwd(fullPath)
+  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
   git.addConfig('user.name', 'overleaf')
   git.addConfig('user.email', 'overleaf@overleaf.com')
 }
@@ -163,7 +270,7 @@ async function safeGitCheckout(branchName) {
 }
 
 async function getStaged(projectId, userId) {
-  const git = getGitForProject(projectId, userId);
+  const git = await getGitForProject(projectId, userId);
     try {
         const status = await git.status()
         const stagedFiles = status.staged
@@ -176,7 +283,7 @@ async function getStaged(projectId, userId) {
 }
 
 async function getNotStaged(projectId,userId) {
-  const git = getGitForProject(projectId, userId);
+  const git = await getGitForProject(projectId, userId);
     console.log('OK')
     try {
         const status = await git.status()
@@ -191,17 +298,30 @@ async function getNotStaged(projectId,userId) {
     }
 }
 
+// Exécute fn() avec GIT_SSH_COMMAND défini dans process.env
+// Contourne les validations simple-git sur GIT_SSH_COMMAND et core.sshCommand
+async function withSshKey(userId, fn) {
+  const key = await getKey(userId, 'private')
+  const prev = process.env.GIT_SSH_COMMAND
+  process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
+  try {
+    return await fn()
+  } finally {
+    if (prev !== undefined) process.env.GIT_SSH_COMMAND = prev
+    else delete process.env.GIT_SSH_COMMAND
+  }
+}
+
 async function getBranches(projectId, userId) {
     try {
-      const key = await getKey(userId, 'private')
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit().env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
       move(projectId, userId);
-      await git.fetch('origin');
-      console.log("fetched");
-      const branches = await git.branch(['-r']);
-      console.log('Remote branches:', branches.all);
-      return branches.all;
+      return await withSshKey(userId, async () => {
+        await git.fetch('origin');
+        console.log("fetched");
+        const branches = await git.branch(['-r']);
+        console.log('Remote branches:', branches.all);
+        return branches.all;
+      })
     } catch (err) {
       console.error("Error fetching branches:", err);
       return []
@@ -210,15 +330,14 @@ async function getBranches(projectId, userId) {
 
 async function getCurrentBranch(projectId, userId) {
   try {
-    const key = await getKey(userId, 'private')
-    const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-    git = simpleGit().env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
     move(projectId, userId);
-    const br = await git.branch(["-r"]);
-    const stat = await git.status();
-    console.log("Current Branch: ", br.current);
-    console.log("Current Branch (status): ", stat.current);
-    return `origin/${stat.current}`;
+    return await withSshKey(userId, async () => {
+      const br = await git.branch(["-r"]);
+      const stat = await git.status();
+      console.log("Current Branch: ", br.current);
+      console.log("Current Branch (status): ", stat.current);
+      return `origin/${stat.current}`;
+    })
   } catch (err) {
     console.error("Error fetching current branches:", err);
     return "";
@@ -311,26 +430,56 @@ async function rebuildProjectAfterRollback(projectPath, projectId, ownerId) {
     }
 }
 
-async function gitClone(projectId, ownerId, link){
-  const path = dataPath + projectId + "-" + ownerId
+async function disableBinaryConversion(repoPath) {
+  // Empêche toute conversion de fin de ligne par git, quels que soient les paramètres .gitattributes
+  // .git/info/attributes a la priorité maximale dans git et écrase le .gitattributes du dépôt
+  try {
+    await fs.ensureDir(path.join(repoPath, '.git', 'info'))
+    await fs.writeFile(path.join(repoPath, '.git', 'info', 'attributes'), '* -text\n', 'utf8')
+    console.log(`Git info/attributes written for ${repoPath}`)
+  } catch (err) {
+    console.error('Could not write git info/attributes:', err.message)
+  }
+}
 
-  if (!fs.existsSync(path)) {
-    fs.mkdirSync(path)
+async function gitClone(projectId, ownerId, link){
+  const repoPath = dataPath + projectId + "-" + ownerId
+
+  if (!fs.existsSync(repoPath)) {
+    fs.mkdirSync(repoPath)
   }
 
   const key = await getKey(ownerId, 'private')
+  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
 
-  const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-  git = simpleGit().env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND})
+  // process.env contourne la validation de simple-git sur GIT_SSH_COMMAND
+  // nécessaire pour le clone car le dépôt n'existe pas encore
+  const prevSSH = process.env.GIT_SSH_COMMAND
+  process.env.GIT_SSH_COMMAND = sshCommand
+  try {
+    // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
+    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, ['--no-checkout'])
+    console.log("Repository: " + link + " cloned (no checkout) successfully!")
+  } catch (error) {
+    console.error('Error when cloning:', error)
+    throw error
+  } finally {
+    if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
+    else delete process.env.GIT_SSH_COMMAND
+  }
 
-  await git.clone(link, path, (error, result) => {
-     if (error) {
-       console.error('Error when cloning:', error)
-     } else {
-       console.log("Repository: " + link + " cloned successfully! " + result)
-     }
-  })
-  await buildProject(path, projectId, ownerId, getRootId(projectId))
+  // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
+  await disableBinaryConversion(repoPath)
+  const localGit = getGitForProject(projectId, ownerId)
+  try {
+    await localGit.raw(['checkout', 'HEAD', '--', '.'])
+    console.log("Initial checkout done with binary attributes applied")
+  } catch (checkoutErr) {
+    console.error("Initial checkout failed:", checkoutErr.message)
+    throw checkoutErr
+  }
+  await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
+  resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -444,34 +593,65 @@ function resetFolder(src) {
     console.log(`${src} folder reset`)
 }
 
-async function gitUpdate(projectId, ownerId) {
+async function gitUpdate(projectId, ownerId, extraFiles = []) {
   console.log("Copying")
   const src = outputPath + projectId + "-" + ownerId
   const dest = dataPath + projectId + "-" + ownerId
 
-  resetFolder(dest)
-
-  // Ensure the destination exists
   await fs.ensureDir(dest);
 
-  // Read all files in the source directory
-  const files = await fs.readdir(src);
+  if (!await fs.pathExists(src)) {
+    console.log(`Source folder ${src} does not exist yet, skipping gitUpdate`)
+    return
+  }
 
-  for (const file of files) {
-    if (bannedFiles.includes(file)) {
-      // Optionally, remove the banned file from the destination if it exists
-      const destFile = path.join(dest, file);
-      if (await fs.pathExists(destFile)) {
-        await fs.remove(destFile);
+  // Récupérer la liste des fichiers déjà trackés par Git
+  const localGit = await getGitForProject(projectId, ownerId)
+  let trackedFiles = []
+  try {
+    const result = await localGit.raw(['ls-files'])
+    trackedFiles = result.split('\n').filter(f => f.trim() !== '')
+    console.log(`Git tracked files: ${trackedFiles}`)
+  } catch (err) {
+    console.log('Could not get tracked files from git, skipping gitUpdate:', err.message)
+    return
+  }
+
+  // Fusionner les fichiers trackés avec les fichiers extra (ex: nouveau fichier à git add)
+  const filesToCopy = [...new Set([...trackedFiles, ...extraFiles])]
+
+  // Supprimer les fichiers bannis s'ils traînent dans le dossier Git
+  for (const banned of bannedFiles) {
+    const bannedPath = path.join(dest, banned)
+    if (await fs.pathExists(bannedPath)) {
+      try {
+        await fs.remove(bannedPath)
+        console.log(`Removed banned file from git folder: ${banned}`)
+      } catch (err) {
+        console.error(`Could not remove banned file ${banned} (permission issue?):`, err.message)
       }
-      continue;
     }
+  }
 
-    // Copy file from src to dest
+  // Copier les fichiers depuis compiles/ vers git/
+  for (const file of filesToCopy) {
     const srcFile = path.join(src, file);
     const destFile = path.join(dest, file);
-    await fs.copy(srcFile, destFile, { overwrite: true });
+
+    if (await fs.pathExists(srcFile)) {
+      try {
+        await fs.ensureDir(path.dirname(destFile))
+        await fs.copy(srcFile, destFile, { overwrite: true });
+        console.log(`Updated file: ${file}`)
+      } catch (err) {
+        console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
+      }
+    } else {
+      console.log(`File not found in compiles, skipping: ${file}`)
+    }
   }
+
+  console.log("gitUpdate done")
 }
 
 
@@ -492,20 +672,33 @@ GitController = {
     }
     catch(error){console.log("error when compiling in git pull")}
     console.log("Pulling")
-    getKey(userId, 'private')
-      .then(key => {
-        const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-        git = simpleGit().env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
-        return move(projectId, userId)
-      })
-      .then(() => git.pull({'--no-rebase': null}))
-      .then(update => {
+    move(projectId, userId)
+    disableBinaryConversion(projectPath)
+      .then(() => withSshKey(userId, () => git.pull({'--no-rebase': null})))
+      .then(async update => {
         console.log("Repository pulled");
-        buildProject(projectPath, projectId, userId, getRootId(projectId));
+        // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
+        const localGit = getGitForProject(projectId, userId)
+        try {
+          await localGit.raw(['checkout', 'HEAD', '--', '.'])
+          console.log("Files re-checked out with binary attributes applied")
+        } catch (recheckoutErr) {
+          console.error("Re-checkout failed:", recheckoutErr.message)
+        }
+        // Supprimer les fichiers de compilation parasites du dossier Git
+        // avant de reconstruire Overleaf pour éviter qu'ils soient importés
+        for (const banned of bannedFiles) {
+          const bannedPath = path.join(projectPath, banned)
+          if (await fs.pathExists(bannedPath)) {
+            await fs.remove(bannedPath)
+            console.log(`Removed banned file after pull: ${banned}`)
+          }
+        }
+        await buildProject(projectPath, projectId, userId, getRootId(projectId));
+        resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
       })
       .then(() => res.sendStatus(200))
       .catch(error => {
-
         console.error("Error.git: ", error.git);
         console.error("Error.message: ", error.message);
         if (error.git?.message === "Exiting because of an unresolved conflict." ||
@@ -524,11 +717,12 @@ GitController = {
     const filePath = req.body.filePath
     console.log("Adding " + filePath)
     move(projectId, userId)
-    console.log("compiling because add")
     try {
-      await compileProject(projectId,userId)
+      // Synchroniser le fichier depuis compiles/ vers git/ sans passer par une compilation
+      await gitUpdate(projectId, userId, [filePath])
+    } catch(error) {
+      console.log("error when syncing in git add", error)
     }
-    catch(error){console.log("error when compiling in git add")}
     git.add(filePath, (error) => {
         if (error) {
           console.error("Could not add the file", error)
@@ -570,14 +764,7 @@ GitController = {
     const userId = req.body.userId
     console.log("Pushing")
     move(projectId, userId)
-
-    getKey(userId, 'private')
-      .then(key => {
-        const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-        git = simpleGit().env({'GIT_SSH_COMMAND': GIT_SSH_COMMAND});
-        return move(projectId, userId)
-      })
-      .then(() => git.push())
+    withSshKey(userId, () => git.push())
       .then(() => {
         console.log('Push successful')
         res.sendStatus(200);
@@ -708,11 +895,8 @@ GitController = {
 
     try {
 
-      const key = await getKey(userId, 'private');
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit(projectPath).env({ GIT_SSH_COMMAND });
-      await move(projectId, userId);
-      await git.fetch('origin');
+      move(projectId, userId);
+      await withSshKey(userId, () => git.fetch('origin'));
 
       const [, localBranch] = branchName.split('/');
       const localBranches = await git.branchLocal();
@@ -751,15 +935,11 @@ GitController = {
     const { projectId, userId, newBranchName } = req.body;
     const projectPath = dataPath + projectId + "-" + userId;
     try {
-      const key = await getKey(userId, 'private');
-      const GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`;
-      git = simpleGit(projectPath).env({GIT_SSH_COMMAND});
-
-      await move(projectId, userId);
+      move(projectId, userId);
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
       console.log("created new branch: ", newBranchName)
 
-      await git.push(['-u', 'origin', newBranchName])
+      await withSshKey(userId, () => git.push(['-u', 'origin', newBranchName]))
       console.log(`Branch '${newBranchName}' pushed to origin`)
 
       res.sendStatus(200);

@@ -12,7 +12,7 @@ mkdir -p /var/lib/overleaf/data/user_files
 chown www-data:www-data /var/lib/overleaf/data/user_files
 
 mkdir -p /var/lib/overleaf/data/compiles
-chown www-data:www-data /var/lib/overleaf/data/compiles
+chown -R www-data:www-data /var/lib/overleaf/data/compiles
 
 mkdir -p /var/lib/overleaf/data/output
 chown www-data:www-data /var/lib/overleaf/data/output
@@ -24,13 +24,12 @@ mkdir -p /var/lib/overleaf/data/template_files
 chown www-data:www-data /var/lib/overleaf/data/template_files
 
 mkdir -p /var/lib/overleaf/data/history
-chown www-data:www-data /var/lib/overleaf/data/history
+chown -R www-data:www-data /var/lib/overleaf/data/history
 
 # git
 mkdir -p /var/lib/overleaf/data/git
-chown www-data:www-data /var/lib/overleaf/data/git
 mkdir -p /var/lib/overleaf/data/git/keys
-chown www-data:www-data /var/lib/overleaf/data/git/keys
+chown -R www-data:www-data /var/lib/overleaf/data/git
 
 mkdir -p /var/lib/overleaf/tmp/projectHistories
 chown www-data:www-data /var/lib/overleaf/tmp/projectHistories
