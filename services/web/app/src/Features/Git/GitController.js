@@ -234,6 +234,45 @@ async function resyncHistory(projectId) {
   }
 }
 
+// Détecte si une erreur git est due à un conflit de merge
+function isConflictError(error) {
+  const msg = (error.git?.message || error.message || '').toLowerCase()
+  return (
+    msg.includes('conflict') ||
+    msg.includes('automatic merge failed') ||
+    msg.includes('unresolved conflict') ||
+    msg.includes('unfinished merge')
+  )
+}
+
+// Annule le merge en cours et retourne la liste des fichiers en conflit
+async function abortMergeAndGetConflicts(projectId, userId, knownConflicts) {
+  const localGit = getGitForProject(projectId, userId)
+  let conflictedFiles = [...knownConflicts]
+  if (conflictedFiles.length === 0) {
+    try {
+      const status = await localGit.status()
+      conflictedFiles = status.conflicted
+    } catch (_) {}
+  }
+  try {
+    await localGit.merge(['--abort'])
+    console.log(`Merge annulé pour le projet ${projectId}`)
+  } catch (abortErr) {
+    console.error("Impossible d'annuler le merge:", abortErr.message)
+  }
+  return conflictedFiles
+}
+
+// Formate le message d'erreur retourné à l'utilisateur en cas de conflit
+function formatConflictMessage(conflictedFiles) {
+  if (conflictedFiles.length === 0) {
+    return 'Conflit de merge détecté. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.'
+  }
+  const fileList = conflictedFiles.join(', ')
+  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
+}
+
 function move(projectId, userId) {
   const fullPath = dataPath + projectId + "-" + userId
   git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
@@ -671,7 +710,11 @@ GitController = {
     disableBinaryConversion(projectPath)
       .then(() => withSshKey(userId, () => git.pull({'--no-rebase': null})))
       .then(async update => {
-        console.log("Repository pulled");
+        if (update.conflicts && update.conflicts.length > 0) {
+          const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, update.conflicts)
+          return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+        }
+        console.log("Repository pulled")
         // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
         const localGit = getGitForProject(projectId, userId)
         try {
@@ -689,21 +732,21 @@ GitController = {
             console.log(`Removed banned file after pull: ${banned}`)
           }
         }
-        await buildProject(projectPath, projectId, userId, getRootId(projectId));
+        await buildProject(projectPath, projectId, userId, getRootId(projectId))
         resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+        res.sendStatus(200)
       })
-      .then(() => res.sendStatus(200))
-      .catch(error => {
-        console.error("Error.git: ", error.git);
-        console.error("Error.message: ", error.message);
-        if (error.git?.message === "Exiting because of an unresolved conflict." ||
-          error.git?.message === "Exiting because of unfinished merge.") {
-          HttpErrorHandler.gitMethodError(req, res, "Please fix all conflicts before merging")
-        } else {
-          HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
+      .catch(async error => {
+        if (res.headersSent) return // conflit déjà traité dans le bloc .then()
+        if (isConflictError(error)) {
+          const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, [])
+          return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
         }
-        return buildProject(projectPath, projectId, userId, getRootId(projectId));
-      });
+        console.error("Error.git: ", error.git)
+        console.error("Error.message: ", error.message)
+        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
+        return buildProject(projectPath, projectId, userId, getRootId(projectId))
+      })
   },
 
   async add(req, res) {
