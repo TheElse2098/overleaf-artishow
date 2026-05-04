@@ -666,6 +666,11 @@ GitController = {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
+    console.log("compiling in pull")
+    try {
+      compileProject(projectId, userId)
+    }
+    catch(error){console.log("error when compiling in git pull")}
     console.log("Pulling")
     move(projectId, userId)
     disableBinaryConversion(projectPath)
