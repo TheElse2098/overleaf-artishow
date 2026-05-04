@@ -6,6 +6,7 @@ on:
       - main
       - git_integration
       - template_integration
+      - git_compilation
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -54,7 +55,9 @@ jobs:
           elif [ "$BRANCH_NAME" = "git_integration" ]; then
             TAG="git"
           elif [ "$BRANCH_NAME" = "template_integration" ]; then
-            tag="template"
+            TAG="template"
+          elif [ "$BRANCH_NAME" = "git_compilation" ]; then
+            TAG="git-compilation"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
