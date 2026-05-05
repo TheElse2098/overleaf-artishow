@@ -481,7 +481,7 @@ async function disableBinaryConversion(repoPath) {
   }
 }
 
-async function gitClone(projectId, ownerId, link){
+async function gitClone(projectId, ownerId, link, branch = null){
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
@@ -497,7 +497,9 @@ async function gitClone(projectId, ownerId, link){
   process.env.GIT_SSH_COMMAND = sshCommand
   try {
     // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
-    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, ['--no-checkout'])
+    const cloneOptions = ['--no-checkout']
+    if (branch) cloneOptions.push('--branch', branch)
+    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
     console.log("Repository: " + link + " cloned (no checkout) successfully!")
   } catch (error) {
     console.error('Error when cloning:', error)
@@ -932,44 +934,36 @@ GitController = {
   },
 
   async switch_branch(req, res) {
-    const { projectId, userId, branchName } = req.body;
-    const projectPath = dataPath + projectId + "-" + userId;
-    console.log("switch branch to: ", branchName)
+    const { projectId, userId, branchName } = req.body
+    const projectPath = dataPath + projectId + "-" + userId
+    console.log("switch branch to:", branchName)
 
     try {
+      move(projectId, userId)
+      await withSshKey(userId, () => git.fetch('origin'))
 
-      move(projectId, userId);
-      await withSshKey(userId, () => git.fetch('origin'));
-
-      const [, localBranch] = branchName.split('/');
-      const localBranches = await git.branchLocal();
-
-      var stat = await git.status();
-      var br = await git.branch();
-      console.log("Current Branch:", br.current);
-      console.log("Current Branch (status): ",stat.current)
+      // branchName est au format "origin/ma-branche", on extrait la partie locale
+      const [, localBranch] = branchName.split('/')
+      const localBranches = await git.branchLocal()
 
       if (localBranches.all.includes(localBranch)) {
-        await git.checkout(localBranch);
+        await git.checkout(localBranch)
       } else {
-        await git.checkout(['-b', localBranch, branchName]);
+        await git.checkout(['-b', localBranch, branchName])
       }
+      console.log("Switched to branch:", localBranch)
 
-      br = await git.branch();
-      stat = await git.status();
-      console.log("Switched to Branch:", br.current);
-      console.log("Switched to Branch (status): ", stat.current);
-      console.log("Status: ", stat)
+      // Appliquer les attributs binaires et ré-extraire pour éviter la corruption des fichiers binaires
+      await disableBinaryConversion(projectPath)
+      const localGit = getGitForProject(projectId, userId)
+      await localGit.raw(['checkout', 'HEAD', '--', '.'])
 
-      await buildProject(projectPath, projectId, userId, getRootId(projectId));
-
-      res.sendStatus(200);
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+      res.sendStatus(200)
     } catch (error) {
-      console.error("Git checkout failed:", error);
-      HttpErrorHandler.gitMethodError(req, res, error);
-
-      // still attempt to build the project in case of partial failure
-      await buildProject(projectPath, projectId, userId, getRootId(projectId));
+      console.error("Git checkout failed:", error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
 
