@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs-extra')
 const dataPath = "/var/lib/overleaf/data/git/"
 const outputPath = "/var/lib/overleaf/data/compiles/"
+const uploadsPath = "/var/lib/overleaf/tmp/uploads/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController')
 const HistoryManager = require('../History/HistoryManager')
@@ -184,21 +185,21 @@ async function _buildProjectWithUpsert(currentPath, gitRootPath, projectId, owne
     } else {
       try { await fs.chmod(itemPath, 0o644) } catch (e) {}
       const fileStat = await fs.stat(itemPath)
-      // Log les 8 premiers octets pour vérifier l'intégrité du fichier (JPEG : FF D8 FF, PNG : 89 50 4E 47)
+      console.log(`Upserting binary: ${relPath}, size=${fileStat.size}`)
+      // Copier vers le dossier uploads standard avant l'upsert pour reproduire exactement
+      // le chemin d'un upload manuel (qui fonctionne). Un upload direct depuis le dossier git
+      // peut échouer silencieusement au niveau du filestore selon les permissions/contexte.
+      const tmpName = `${Date.now()}_${path.basename(itemPath)}`
+      const tmpPath = path.join(uploadsPath, tmpName)
       try {
-        const fd = await fs.open(itemPath, 'r')
-        const buf = Buffer.alloc(8)
-        await fs.read(fd, buf, 0, 8, 0)
-        await fs.close(fd)
-        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=${buf.toString('hex')}`)
-      } catch (e) {
-        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=unreadable`)
-      }
-      try {
-        await EditorController.promises.upsertFileWithPath(projectId, relPath, itemPath, null, 'editor', ownerId)
+        await fs.ensureDir(uploadsPath)
+        await fs.copy(itemPath, tmpPath)
+        await EditorController.promises.upsertFileWithPath(projectId, relPath, tmpPath, null, 'editor', ownerId)
         console.log(`Upserted binary: ${relPath}`)
       } catch (err) {
         console.error(`Error upserting file ${relPath}:`, err.message)
+      } finally {
+        try { await fs.remove(tmpPath) } catch (_) {}
       }
     }
   }
