@@ -524,6 +524,72 @@ async function gitClone(projectId, ownerId, link, branch = null){
   resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 }
 
+// Vérifie si le dossier projet est déjà lié à un repo git
+async function isGitRepo(projectId, ownerId) {
+  const repoPath = dataPath + projectId + "-" + ownerId
+  const gitDir = path.join(repoPath, '.git')
+  return fs.pathExists(gitDir)
+}
+
+
+// Initialise un repo git local pour le projet, puis y attache un remote et pousse la branche initiale.
+// Si le dossier n'existe pas encore, il est créé.
+// remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
+async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main') {
+  const repoPath = dataPath + projectId + "-" + ownerId
+ 
+  await fs.ensureDir(repoPath)
+ 
+  const alreadyRepo = await isGitRepo(projectId, ownerId)
+  if (alreadyRepo) {
+    console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
+    return { created: false, remoteLinked: false }
+  }
+ 
+  // Initialiser le repo
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf']
+  })
+  await localGit.init()
+  await localGit.addConfig('user.name', 'overleaf')
+  await localGit.addConfig('user.email', 'overleaf@overleaf.com')
+ 
+  // Écrire les attributs binaires pour éviter toute conversion de fins de ligne
+  await disableBinaryConversion(repoPath)
+ 
+  // Commit initial vide pour que la branche existe
+  await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
+ 
+  // Renommer la branche par défaut si besoin (git init crée "master" par défaut)
+  try {
+    await localGit.raw(['branch', '-M', defaultBranch])
+  } catch (err) {
+    console.warn(`Impossible de renommer la branche en "${defaultBranch}":`, err.message)
+  }
+ 
+  console.log(`Repo git initialisé dans ${repoPath} (branche: ${defaultBranch})`)
+ 
+  // Lier le remote et pousser si une URL est fournie
+  let remoteLinked = false
+  if (remoteUrl) {
+    await localGit.addRemote('origin', remoteUrl)
+    console.log(`Remote "origin" configuré sur ${remoteUrl}`)
+    try {
+      await withSshKey(ownerId, () =>
+        localGit.push(['-u', 'origin', defaultBranch])
+      )
+      console.log(`Branche "${defaultBranch}" poussée sur origin`)
+      remoteLinked = true
+    } catch (pushErr) {
+      console.error('Push initial échoué (le remote est configuré mais pas synchronisé):', pushErr.message)
+      // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
+    }
+  }
+ 
+  return { created: true, remoteLinked }
+}
+
 function convertPemToOpenSSH(pemKey) {
   try {
 
@@ -702,6 +768,39 @@ GitController = {
   test(req, res){
     console.log("[TEST COMPLETED]")
     res.sendStatus(200)
+  },
+
+    // Initialise un repo git local pour le projet et, si remoteUrl est fourni, le lie au remote.
+  // Body attendu : { projectId, userId, remoteUrl? (optionnel), branch? (défaut: "main") }
+  async init(req, res) {
+    const { projectId, userId, remoteUrl = null, branch = 'main' } = req.body
+ 
+    if (!projectId || !userId) {
+      return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    }
+ 
+    try {
+      const alreadyRepo = await isGitRepo(projectId, userId)
+      if (alreadyRepo) {
+        console.log(`Projet ${projectId} déjà lié à un repo git.`)
+        return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
+      }
+ 
+      const result = await gitInit(projectId, userId, remoteUrl, branch)
+      console.log(`gitInit terminé pour ${projectId}:`, result)
+ 
+      return res.status(200).json({
+        ...result,
+        message: result.created
+          ? (result.remoteLinked
+              ? `Repo créé et lié au remote ${remoteUrl} (branche: ${branch}).`
+              : `Repo créé localement${remoteUrl ? ', mais le push initial a échoué (vérifiez l\'URL et les droits SSH).' : '.'}`)
+          : 'Ce projet est déjà un repo git.'
+      })
+    } catch (error) {
+      console.error('Erreur dans gitInit:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
   },
 
   async pull(req, res) {
