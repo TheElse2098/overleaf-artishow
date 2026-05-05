@@ -113,6 +113,12 @@ function FileTreeToolbarLeft() {
         overlayProps={{ placement: 'bottom' }}
       >
       <Button onClick={() => {
+        const confirmed = window.confirm(
+          'Le pull va remplacer votre contenu Overleaf par la version du dépôt git distant.\n\n' +
+          'Les modifications non commit et push dans git seront perdues.\n\n' +
+          'Voulez-vous continuer ?'
+        )
+        if (!confirmed) return
         runAsync(
             postJSON('/git-pull', {
               body:{
