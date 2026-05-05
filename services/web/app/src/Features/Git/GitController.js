@@ -703,57 +703,117 @@ GitController = {
     res.sendStatus(200)
   },
 
-  pull(req, res) {
+  async pull(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
-    console.log("compiling in pull")
-    try {
-      compileProject(projectId, userId)
-    }
-    catch(error){console.log("error when compiling in git pull")}
+
     console.log("Pulling")
     move(projectId, userId)
-    disableBinaryConversion(projectPath)
-      .then(() => withSshKey(userId, () => git.pull({'--no-rebase': null})))
-      .then(async update => {
-        if (update.conflicts && update.conflicts.length > 0) {
-          const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, update.conflicts)
-          return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+    const localGit = getGitForProject(projectId, userId)
+
+    // Compiler pour copier le contenu actuel de l'éditeur Overleaf (MongoDB) vers compiles/,
+    // puis gitUpdate copie compiles/ → dossier git. Sans cette étape, des éditions non compilées
+    // seraient invisibles pour le stash et seraient perdues lors du pull.
+    try {
+      await compileProject(projectId, userId)
+      console.log("Compilation réussie avant pull")
+    } catch (compileError) {
+      console.log("Compilation échouée avant pull, on utilise le dernier état compilé:", compileError.message)
+    }
+
+    // Synchroniser le contenu Overleaf (compiles/) → dossier git avant de stasher.
+    try {
+      await gitUpdate(projectId, userId)
+      console.log("gitUpdate effectué avant stash")
+    } catch (updateError) {
+      console.log("gitUpdate échoué avant stash, on continue:", updateError.message)
+    }
+
+    // Sauvegarder les changements locaux non commités pour les restaurer après le pull
+    let stashed = false
+    try {
+      const status = await localGit.status()
+      if (status.files.length > 0) {
+        await localGit.stash(['push', '-u', '-m', 'overleaf-auto-stash-before-pull'])
+        stashed = true
+        console.log(`${status.files.length} fichier(s) stashé(s) avant pull`)
+      }
+    } catch (stashErr) {
+      console.log("Stash échoué, on continue:", stashErr.message)
+    }
+
+    try {
+      await disableBinaryConversion(projectPath)
+      const update = await withSshKey(userId, () => git.pull({'--no-rebase': null}))
+
+      if (update.conflicts && update.conflicts.length > 0) {
+        // Conflit de merge : restaurer le stash avant d'abandonner le merge
+        if (stashed) {
+          try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
         }
-        console.log("Repository pulled")
-        // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
-        const localGit = getGitForProject(projectId, userId)
+        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, update.conflicts)
+        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+      }
+
+      console.log("Repository pulled")
+      // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
+      try {
+        await localGit.raw(['checkout', 'HEAD', '--', '.'])
+        console.log("Files re-checked out with binary attributes applied")
+      } catch (recheckoutErr) {
+        console.error("Re-checkout failed:", recheckoutErr.message)
+      }
+
+      // Restaurer les changements stashés par-dessus le résultat du pull
+      let stashConflict = false
+      if (stashed) {
         try {
-          await localGit.raw(['checkout', 'HEAD', '--', '.'])
-          console.log("Files re-checked out with binary attributes applied")
-        } catch (recheckoutErr) {
-          console.error("Re-checkout failed:", recheckoutErr.message)
+          await localGit.stash(['pop'])
+          console.log("Stash restauré après pull")
+        } catch (stashPopErr) {
+          stashConflict = true
+          console.error("Conflit lors de la restauration du stash:", stashPopErr.message)
+          // Le stash entre en conflit avec le remote : abandonner le stash, garder l'état pullé
+          try {
+            await localGit.raw(['reset', '--hard', 'HEAD'])
+            await localGit.stash(['drop'])
+          } catch (_) {}
         }
-        // Supprimer les fichiers de compilation parasites du dossier Git
-        // avant de reconstruire Overleaf pour éviter qu'ils soient importés
-        for (const banned of bannedFiles) {
-          const bannedPath = path.join(projectPath, banned)
-          if (await fs.pathExists(bannedPath)) {
-            await fs.remove(bannedPath)
-            console.log(`Removed banned file after pull: ${banned}`)
-          }
+      }
+
+      // Supprimer les fichiers de compilation parasites du dossier Git
+      for (const banned of bannedFiles) {
+        const bannedPath = path.join(projectPath, banned)
+        if (await fs.pathExists(bannedPath)) {
+          await fs.remove(bannedPath)
+          console.log(`Removed banned file after pull: ${banned}`)
         }
-        await buildProject(projectPath, projectId, userId, getRootId(projectId))
-        resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
-        res.sendStatus(200)
-      })
-      .catch(async error => {
-        if (res.headersSent) return // conflit déjà traité dans le bloc .then()
-        if (isConflictError(error)) {
-          const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, [])
-          return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
-        }
-        console.error("Error.git: ", error.git)
-        console.error("Error.message: ", error.message)
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
-        return buildProject(projectPath, projectId, userId, getRootId(projectId))
-      })
+      }
+
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+
+      if (stashConflict) {
+        return HttpErrorHandler.gitMethodError(req, res,
+          'Pull effectué, mais vos modifications locales non commitées étaient en conflit avec le dépôt distant et ont été écartées.')
+      }
+      res.sendStatus(200)
+
+    } catch (error) {
+      if (res.headersSent) return
+      // En cas d'erreur, tenter de restaurer le stash
+      if (stashed) {
+        try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
+      }
+      if (isConflictError(error)) {
+        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, [])
+        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+      }
+      console.error("Error.git: ", error.git)
+      console.error("Error.message: ", error.message)
+      HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
+    }
   },
 
   async add(req, res) {

@@ -114,8 +114,9 @@ function FileTreeToolbarLeft() {
       >
       <Button onClick={() => {
         const confirmed = window.confirm(
-          'Le pull va remplacer votre contenu Overleaf par la version du dépôt git distant.\n\n' +
-          'Les modifications non commit et push dans git seront perdues.\n\n' +
+          'Le pull va intégrer les modifications du dépôt git distant.\n\n' +
+          'Vos modifications locales commitées dans git seront conservées via un merge.\n' +
+          'Les modifications en cours non commitées seront sauvegardées (stash) et restaurées automatiquement après le pull.\n\n' +
           'Voulez-vous continuer ?'
         )
         if (!confirmed) return
