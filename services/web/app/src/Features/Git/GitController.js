@@ -1167,4 +1167,4 @@ GitController = {
   }
 }
 
-module.exports = {GitController, gitClone, gitUpdate}
+module.exports = {GitController, gitClone, gitUpdate, gitInit}
