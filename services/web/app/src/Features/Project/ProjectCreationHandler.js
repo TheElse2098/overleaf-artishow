@@ -106,6 +106,80 @@ async function createExampleProject(ownerId, projectName) {
   return project
 }
 
+const LOCAL_TEMPLATE_TEXT_EXTENSIONS = new Set([
+  '.tex', '.bib', '.sty', '.cls', '.txt', '.md', '.yaml', '.yml',
+])
+
+async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
+  const safeTemplateId = path.basename(templateId)
+  if (!/^[a-zA-Z0-9_-]+$/.test(safeTemplateId)) {
+    throw new Error('Invalid template id')
+  }
+
+  const templateDir = path.join(
+    __dirname,
+    `/../../../templates/general_templates/${safeTemplateId}`
+  )
+
+  if (!fs.existsSync(templateDir)) {
+    return createExampleProject(ownerId, projectName)
+  }
+
+  const project = await _createBlankProject(ownerId, projectName)
+
+  const user = await User.findById(ownerId, 'first_name last_name')
+  const templateData = {
+    project_name: projectName,
+    user,
+    year: new Date().getUTCFullYear(),
+    month: MONTH_NAMES[new Date().getUTCMonth()],
+  }
+
+  const files = fs.readdirSync(templateDir).filter(f => f !== 'info.json')
+  let rootDocId = null
+
+  for (const filename of files) {
+    const ext = path.extname(filename).toLowerCase()
+    const filePath = path.join(templateDir, filename)
+
+    if (LOCAL_TEMPLATE_TEXT_EXTENSIONS.has(ext)) {
+      const content = fs.readFileSync(filePath).toString()
+      const lines = _.template(content)(templateData).split('\n')
+      const { doc } = await ProjectEntityUpdateHandler.promises.addDoc(
+        project._id,
+        project.rootFolder[0]._id,
+        filename,
+        lines,
+        ownerId,
+        null
+      )
+      if (filename === 'main.tex' || rootDocId == null) {
+        rootDocId = doc._id
+      }
+    } else {
+      await ProjectEntityUpdateHandler.promises.addFile(
+        project._id,
+        project.rootFolder[0]._id,
+        filename,
+        filePath,
+        null,
+        ownerId,
+        null
+      )
+    }
+  }
+
+  if (rootDocId) {
+    await ProjectEntityUpdateHandler.promises.setRootDoc(project._id, rootDocId)
+  }
+
+  AnalyticsManager.recordEventForUserInBackground(ownerId, 'project-created', {
+    projectId: project._id,
+  })
+
+  return project
+}
+
 async function createGitProject(ownerId, projectLink) {
   console.log("Importing git project")
   const regexGithub = /^git@github\.com:(.+?)\/(.+?)\.git$/;
@@ -273,11 +347,13 @@ module.exports = {
   createBasicProject: callbackify(createBasicProject),
   createExampleProject: callbackify(createExampleProject),
   createGitProject: callbackify(createGitProject),
+  createProjectFromLocalTemplate: callbackify(createProjectFromLocalTemplate),
   promises: {
     createBlankProject,
     createProjectFromSnippet,
     createBasicProject,
     createExampleProject,
     createGitProject,
+    createProjectFromLocalTemplate,
   },
 }

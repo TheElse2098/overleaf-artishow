@@ -1,4 +1,5 @@
 const path = require('path')
+const fs = require('fs')
 const SessionManager = require('../Authentication/SessionManager')
 const TemplatesManager = require('./TemplatesManager')
 const ProjectHelper = require('../Project/ProjectHelper')
@@ -34,6 +35,33 @@ const TemplatesController = {
     )
   },
 
+  async getLocalTemplates(req, res) {
+    const templateDir = path.resolve(
+      __dirname,
+      '../../../templates/general_templates'
+    )
+    const templates = []
+    if (fs.existsSync(templateDir)) {
+      const entries = fs.readdirSync(templateDir, { withFileTypes: true })
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue
+        const infoPath = path.join(templateDir, entry.name, 'info.json')
+        if (!fs.existsSync(infoPath)) continue
+        try {
+          const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'))
+          templates.push({
+            id: entry.name,
+            name: info.name,
+            description: info.description,
+          })
+        } catch (err) {
+          logger.warn({ err, templateId: entry.name }, 'failed to parse template info.json')
+        }
+      }
+    }
+    res.json({ templates })
+  },
+
   async createProjectFromV1Template(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const project = await TemplatesManager.promises.createProjectFromV1Template(
@@ -59,4 +87,5 @@ module.exports = {
   createProjectFromV1Template: expressify(
     TemplatesController.createProjectFromV1Template
   ),
+  getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
 }

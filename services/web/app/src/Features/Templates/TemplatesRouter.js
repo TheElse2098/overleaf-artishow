@@ -14,6 +14,12 @@ module.exports = {
   rateLimiter,
   apply(app) {
     app.get(
+      '/project/templates',
+      AuthenticationController.requireLogin(),
+      TemplatesController.getLocalTemplates
+    )
+
+    app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>
         AnalyticsRegistrationSourceMiddleware.setSource(

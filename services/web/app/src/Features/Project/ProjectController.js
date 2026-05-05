@@ -244,13 +244,17 @@ const _ProjectController = {
     } = currentUser
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
-    const { template } = req.body
+    const { template, templateId } = req.body
 
     const project = await (
-        (template === 'example') ? ProjectCreationHandler.promises.createExampleProject(userId, projectName) : (
-        (template === 'git') ? ProjectCreationHandler.promises.createGitProject(userId, projectName) :
-        ProjectCreationHandler.promises.createBasicProject(userId, projectName)
-    ))
+        (template === 'example' && templateId)
+          ? ProjectCreationHandler.promises.createProjectFromLocalTemplate(userId, projectName, templateId)
+          : (template === 'example')
+            ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
+            : (template === 'git')
+              ? ProjectCreationHandler.promises.createGitProject(userId, projectName)
+              : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
+    )
 
     res.json({
       project_id: project._id,

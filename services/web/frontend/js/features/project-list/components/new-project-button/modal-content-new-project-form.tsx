@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import useAsync from '../../../../shared/hooks/use-async'
 import {
   getUserFacingMessage,
+  getJSON,
   postJSON,
 } from '../../../../infrastructure/fetch-json'
 import { useRefWithAutoFocus } from '../../../../shared/hooks/use-ref-with-auto-focus'
@@ -15,6 +16,7 @@ import {
   OLModalTitle,
 } from '@/features/ui/components/ol/ol-modal'
 import OLFormControl from '@/features/ui/components/ol/ol-form-control'
+import OLFormSelect from '@/features/ui/components/ol/ol-form-select'
 import OLButton from '@/features/ui/components/ol/ol-button'
 import OLForm from '@/features/ui/components/ol/ol-form'
 
@@ -29,6 +31,12 @@ type NewProjectData = {
   }
 }
 
+type LocalTemplate = {
+  id: string
+  name: string
+  description?: string
+}
+
 type Props = {
   onCancel: () => void
   template?: string
@@ -39,17 +47,29 @@ function ModalContentNewProjectForm({ onCancel, template = 'none' }: Props) {
   const { autoFocusedRef } = useRefWithAutoFocus<HTMLInputElement>()
   const [projectName, setProjectName] = useState('')
   const [redirecting, setRedirecting] = useState(false)
+  const [localTemplates, setLocalTemplates] = useState<LocalTemplate[]>([])
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const { isLoading, isError, error, runAsync } = useAsync<NewProjectData>()
   const location = useLocation()
 
-  const createNewProject = () => {
-    runAsync(
-      postJSON('/project/new', {
-        body: {
-          projectName,
-          template,
-        },
+  useEffect(() => {
+    if (template !== 'example') return
+    getJSON('/project/templates')
+      .then((data: { templates: LocalTemplate[] }) => {
+        const templates = data.templates ?? []
+        setLocalTemplates(templates)
+        if (templates.length > 0) setSelectedTemplateId(templates[0].id)
       })
+      .catch(() => {})
+  }, [template])
+
+  const createNewProject = () => {
+    const body: Record<string, string> = { projectName, template }
+    if (template === 'example' && selectedTemplateId) {
+      body.templateId = selectedTemplateId
+    }
+    runAsync(
+      postJSON('/project/new', { body })
     )
       .then(data => {
         if (data.project_id) {
@@ -93,6 +113,19 @@ function ModalContentNewProjectForm({ onCancel, template = 'none' }: Props) {
             onChange={handleChangeName}
             value={projectName}
           />
+          {template === 'example' && localTemplates.length > 0 && (
+            <OLFormSelect
+              className="mt-2"
+              value={selectedTemplateId}
+              onChange={e => setSelectedTemplateId(e.target.value)}
+            >
+              {localTemplates.map(tmpl => (
+                <option key={tmpl.id} value={tmpl.id}>
+                  {tmpl.name}
+                </option>
+              ))}
+            </OLFormSelect>
+          )}
         </OLForm>
       </OLModalBody>
 
