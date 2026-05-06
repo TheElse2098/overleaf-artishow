@@ -178,15 +178,15 @@ async function _addLocalTemplateFilesRecursive(
 }
 
 async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
-  const safeTemplateId = path.basename(templateId)
-  if (!/^[a-zA-Z0-9_-]+$/.test(safeTemplateId)) {
+  const generalTemplatesDir = path.resolve(
+    __dirname,
+    '/../../../templates/general_templates'
+  )
+  const templateDir = path.resolve(generalTemplatesDir, templateId)
+
+  if (!templateDir.startsWith(generalTemplatesDir + path.sep)) {
     throw new Error('Invalid template id')
   }
-
-  const templateDir = path.join(
-    __dirname,
-    `/../../../templates/general_templates/${safeTemplateId}`
-  )
 
   if (!fs.existsSync(templateDir)) {
     return createExampleProject(ownerId, projectName)
