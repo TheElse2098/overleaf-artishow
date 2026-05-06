@@ -110,6 +110,67 @@ const LOCAL_TEMPLATE_TEXT_EXTENSIONS = new Set([
   '.tex', '.bib', '.sty', '.cls', '.txt', '.md', '.yaml', '.yml',
 ])
 
+async function _addLocalTemplateFilesRecursive(
+  projectId,
+  overleafFolderId,
+  dirPath,
+  ownerId,
+  templateData
+) {
+  const entries = fs.readdirSync(dirPath, { withFileTypes: true })
+  let rootDocId = null
+
+  for (const entry of entries) {
+    if (entry.name === 'info.json') continue
+    const entryPath = path.join(dirPath, entry.name)
+
+    if (entry.isDirectory()) {
+      const { folder } = await ProjectEntityUpdateHandler.promises.addFolder(
+        projectId,
+        overleafFolderId,
+        entry.name,
+        ownerId
+      )
+      await _addLocalTemplateFilesRecursive(
+        projectId,
+        folder._id,
+        entryPath,
+        ownerId,
+        templateData
+      )
+    } else {
+      const ext = path.extname(entry.name).toLowerCase()
+      if (LOCAL_TEMPLATE_TEXT_EXTENSIONS.has(ext)) {
+        const content = fs.readFileSync(entryPath).toString()
+        const lines = _.template(content)(templateData).split('\n')
+        const { doc } = await ProjectEntityUpdateHandler.promises.addDoc(
+          projectId,
+          overleafFolderId,
+          entry.name,
+          lines,
+          ownerId,
+          null
+        )
+        if (entry.name === 'main.tex' || rootDocId == null) {
+          rootDocId = doc._id
+        }
+      } else {
+        await ProjectEntityUpdateHandler.promises.addFile(
+          projectId,
+          overleafFolderId,
+          entry.name,
+          entryPath,
+          null,
+          ownerId,
+          null
+        )
+      }
+    }
+  }
+
+  return rootDocId
+}
+
 async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
   const safeTemplateId = path.basename(templateId)
   if (!/^[a-zA-Z0-9_-]+$/.test(safeTemplateId)) {
@@ -135,39 +196,13 @@ async function createProjectFromLocalTemplate(ownerId, projectName, templateId) 
     month: MONTH_NAMES[new Date().getUTCMonth()],
   }
 
-  const files = fs.readdirSync(templateDir).filter(f => f !== 'info.json')
-  let rootDocId = null
-
-  for (const filename of files) {
-    const ext = path.extname(filename).toLowerCase()
-    const filePath = path.join(templateDir, filename)
-
-    if (LOCAL_TEMPLATE_TEXT_EXTENSIONS.has(ext)) {
-      const content = fs.readFileSync(filePath).toString()
-      const lines = _.template(content)(templateData).split('\n')
-      const { doc } = await ProjectEntityUpdateHandler.promises.addDoc(
-        project._id,
-        project.rootFolder[0]._id,
-        filename,
-        lines,
-        ownerId,
-        null
-      )
-      if (filename === 'main.tex' || rootDocId == null) {
-        rootDocId = doc._id
-      }
-    } else {
-      await ProjectEntityUpdateHandler.promises.addFile(
-        project._id,
-        project.rootFolder[0]._id,
-        filename,
-        filePath,
-        null,
-        ownerId,
-        null
-      )
-    }
-  }
+  const rootDocId = await _addLocalTemplateFilesRecursive(
+    project._id,
+    project.rootFolder[0]._id,
+    templateDir,
+    ownerId,
+    templateData
+  )
 
   if (rootDocId) {
     await ProjectEntityUpdateHandler.promises.setRootDoc(project._id, rootDocId)
