@@ -141,8 +141,14 @@ async function _addLocalTemplateFilesRecursive(
     } else {
       const ext = path.extname(entry.name).toLowerCase()
       if (LOCAL_TEMPLATE_TEXT_EXTENSIONS.has(ext)) {
-        const content = fs.readFileSync(entryPath).toString()
-        const lines = _.template(content)(templateData).split('\n')
+        const raw = fs.readFileSync(entryPath).toString()
+        let rendered
+        try {
+          rendered = _.template(raw)(templateData)
+        } catch (_err) {
+          rendered = raw
+        }
+        const lines = rendered.split('\n')
         const { doc } = await ProjectEntityUpdateHandler.promises.addDoc(
           projectId,
           overleafFolderId,
