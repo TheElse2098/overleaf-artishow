@@ -180,7 +180,7 @@ async function _addLocalTemplateFilesRecursive(
 async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
   const generalTemplatesDir = path.resolve(
     __dirname,
-    '/../../../templates/general_templates'
+    '../../../templates/general_templates'
   )
   const templateDir = path.resolve(generalTemplatesDir, templateId)
 
