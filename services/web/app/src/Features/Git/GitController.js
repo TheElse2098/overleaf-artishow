@@ -4,6 +4,7 @@ const fs = require('fs-extra')
 const dataPath = "/var/lib/overleaf/data/git/"
 const outputPath = "/var/lib/overleaf/data/compiles/"
 const uploadsPath = "/var/lib/overleaf/tmp/uploads/"
+const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController')
 const HistoryManager = require('../History/HistoryManager')
@@ -521,6 +522,21 @@ async function gitClone(projectId, ownerId, link, branch = null){
     throw checkoutErr
   }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
+
+  try {
+    await fs.remove(outputPath + projectId + "-" + ownerId)
+    console.log('Répertoire de compilation CLSI supprimé')
+  } catch (e) {
+    console.log('Impossible de supprimer le répertoire de compilation CLSI:', e.message)
+  }
+  try {
+    await fs.chmod(clsiCachePath, 0o777)
+    await fs.remove(clsiCachePath + projectId)
+    console.log('Cache CLSI du projet supprimé')
+  } catch (e) {
+    console.log('Impossible de corriger le cache CLSI:', e.message)
+  }
+
   resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 }
 
@@ -892,6 +908,26 @@ GitController = {
       }
 
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
+
+      // Le service CLSI (www-data) ne peut pas écrire dans son cache si le dossier du projet
+      // a été créé par root. On supprime le cache et le dossier de compilation du projet
+      // (en tant que root on peut tout supprimer) et on s'assure que le dossier parent du
+      // cache est accessible en écriture, afin que CLSI les recrée lui-même avec les bonnes
+      // permissions lors du prochain compile.
+      try {
+        await fs.remove(outputPath + projectId + "-" + userId)
+        console.log('Répertoire de compilation CLSI supprimé')
+      } catch (e) {
+        console.log('Impossible de supprimer le répertoire de compilation CLSI:', e.message)
+      }
+      try {
+        await fs.chmod(clsiCachePath, 0o777)
+        await fs.remove(clsiCachePath + projectId)
+        console.log('Cache CLSI du projet supprimé')
+      } catch (e) {
+        console.log('Impossible de corriger le cache CLSI:', e.message)
+      }
+
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 
       if (stashConflict) {
