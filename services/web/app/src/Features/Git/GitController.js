@@ -770,17 +770,6 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
       } catch (err) {
         console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
       }
-    } else if (trackedFiles.includes(file)) {
-      // File is tracked by git but no longer in compiles → deleted from Overleaf.
-      // Remove from the git working tree so that git.add() can stage the deletion.
-      try {
-        if (await fs.pathExists(destFile)) {
-          await fs.remove(destFile)
-          console.log(`Removed deleted file from git dir: ${file}`)
-        }
-      } catch (err) {
-        console.error(`Could not remove deleted file ${file} from git dir:`, err.message)
-      }
     } else {
       console.log(`File not found in compiles, skipping: ${file}`)
     }
@@ -967,20 +956,36 @@ GitController = {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const filePath = req.body.filePath
-    try {
-      await compileProject(projectId, userId)
-      console.log("Compilation réussie avant le add")
-    } catch (compileError) {
-      console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
-    }
-    console.log("Adding " + filePath)
+    const deleted = req.body.deleted === true
+    console.log("Adding " + filePath + (deleted ? " (deletion)" : ""))
     move(projectId, userId)
-    try {
-      // Synchroniser le fichier depuis compiles/ vers git/ sans passer par une compilation
-      await gitUpdate(projectId, userId, [filePath])
-    } catch(error) {
-      console.log("error when syncing in git add", error)
+
+    if (deleted) {
+      // File was deleted from Overleaf: remove it from the git working tree
+      // (if still present from a previous state) then let git.add stage the deletion.
+      const gitFilePath = path.join(dataPath + projectId + "-" + userId, filePath)
+      try {
+        if (await fs.pathExists(gitFilePath)) {
+          await fs.remove(gitFilePath)
+          console.log(`Removed deleted file from git working tree: ${filePath}`)
+        }
+      } catch (err) {
+        console.log(`Could not remove ${filePath} from git working tree:`, err.message)
+      }
+    } else {
+      try {
+        await compileProject(projectId, userId)
+        console.log("Compilation réussie avant le add")
+      } catch (compileError) {
+        console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
+      }
+      try {
+        await gitUpdate(projectId, userId, [filePath])
+      } catch(error) {
+        console.log("error when syncing in git add", error)
+      }
     }
+
     git.add(filePath, (error) => {
         if (error) {
           console.error("Could not add the file", error)

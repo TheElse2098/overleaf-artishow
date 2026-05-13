@@ -313,7 +313,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
             // Auto-stage deletion in git (fire-and-forget, errors are silenced)
             if (filePath) {
               postJSON('/git-add', {
-                body: { projectId, userId, filePath },
+                body: { projectId, userId, filePath, deleted: true },
               }).catch(() => {})
             }
           })
