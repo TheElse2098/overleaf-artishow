@@ -178,16 +178,32 @@ async function _addLocalTemplateFilesRecursive(
 }
 
 async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
-  const generalTemplatesDir = path.resolve(
+  const metaDir = path.resolve(
     __dirname,
     '../../../templates/general_templates'
   )
-  const templateDir = path.resolve(generalTemplatesDir, templateId)
+  const metaPath = path.resolve(metaDir, `${templateId}.json`)
 
-  if (!templateDir.startsWith(generalTemplatesDir + path.sep)) {
+  if (!metaPath.startsWith(metaDir + path.sep)) {
     throw new Error('Invalid template id')
   }
+  if (!fs.existsSync(metaPath)) {
+    return createExampleProject(ownerId, projectName)
+  }
 
+  let meta
+  try {
+    meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
+  } catch (err) {
+    throw new Error(`Failed to read template metadata: ${err.message}`)
+  }
+
+  const templateListPath = Settings.templateListPath
+  const templateDir = path.resolve(templateListPath, meta.folder)
+
+  if (!templateDir.startsWith(path.resolve(templateListPath) + path.sep)) {
+    throw new Error('Invalid template folder')
+  }
   if (!fs.existsSync(templateDir)) {
     return createExampleProject(ownerId, projectName)
   }

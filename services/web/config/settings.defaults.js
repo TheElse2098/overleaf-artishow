@@ -735,6 +735,9 @@ module.exports = {
     uploadFolder: Path.resolve(__dirname, '../data/uploads'),
   },
 
+  templateListPath:
+    process.env.TEMPLATE_LIST_PATH || '/var/lib/overleaf/data/template_list',
+
   // Automatic Snapshots
   // -------------------
   automaticSnapshots: {

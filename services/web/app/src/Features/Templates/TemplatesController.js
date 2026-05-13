@@ -36,26 +36,23 @@ const TemplatesController = {
   },
 
   async getLocalTemplates(req, res) {
-    const templateDir = path.resolve(
+    const metaDir = path.resolve(
       __dirname,
       '../../../templates/general_templates'
     )
     const templates = []
-    if (fs.existsSync(templateDir)) {
-      const entries = fs.readdirSync(templateDir, { withFileTypes: true })
+    if (fs.existsSync(metaDir)) {
+      const entries = fs.readdirSync(metaDir, { withFileTypes: true })
       for (const entry of entries) {
-        if (!entry.isDirectory()) continue
-        const infoPath = path.join(templateDir, entry.name, 'info.json')
-        if (!fs.existsSync(infoPath)) continue
+        if (!entry.isFile() || !entry.name.endsWith('.json')) continue
+        const id = entry.name.slice(0, -5)
         try {
-          const info = JSON.parse(fs.readFileSync(infoPath, 'utf8'))
-          templates.push({
-            id: entry.name,
-            name: info.name,
-            description: info.description,
-          })
+          const meta = JSON.parse(
+            fs.readFileSync(path.join(metaDir, entry.name), 'utf8')
+          )
+          templates.push({ id, name: meta.name, description: meta.description })
         } catch (err) {
-          logger.warn({ err, templateId: entry.name }, 'failed to parse template info.json')
+          logger.warn({ err, templateId: id }, 'failed to parse template metadata')
         }
       }
     }
