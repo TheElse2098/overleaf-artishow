@@ -736,7 +736,7 @@ module.exports = {
   },
 
   templateListPath:
-    process.env.TEMPLATE_LIST_PATH || '/var/lib/overleaf/data/template_list',
+    process.env.TEMPLATE_LIST_PATH || '/var/lib/overleaf/data/template_files',
 
   // Automatic Snapshots
   // -------------------
