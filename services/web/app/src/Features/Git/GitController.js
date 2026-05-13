@@ -276,11 +276,14 @@ function formatConflictMessage(conflictedFiles) {
   return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
 }
 
-async function saveGitLink(projectId, remoteUrl, branch) {
-  await Project.updateOne(
-    { _id: projectId },
-    { $set: { git: { remoteUrl: remoteUrl || null, branch: branch || 'main', linkedAt: new Date() } } }
-  ).exec()
+async function saveGitLink(projectId, remoteUrl, branch, token = null) {
+  const fields = {
+    'git.remoteUrl': remoteUrl || null,
+    'git.branch': branch || 'main',
+    'git.linkedAt': new Date(),
+  }
+  if (token) fields['git.token'] = token
+  await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
 }
 
@@ -492,7 +495,7 @@ async function disableBinaryConversion(repoPath) {
   }
 }
 
-async function gitClone(projectId, ownerId, link, branch = null){
+async function gitClone(projectId, ownerId, link, branch = null, token = null){
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
@@ -531,7 +534,7 @@ async function gitClone(projectId, ownerId, link, branch = null){
     throw checkoutErr
   }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
-  await saveGitLink(projectId, link, branch)
+  await saveGitLink(projectId, link, branch, token)
 
   try {
     await fs.remove(outputPath + projectId + "-" + ownerId)
@@ -567,7 +570,7 @@ async function getGitInfo(projectId) {
 // Initialise un repo git local pour le projet, puis y attache un remote et pousse la branche initiale.
 // Si le dossier n'existe pas encore, il est créé.
 // remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
-async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main') {
+async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null) {
   const repoPath = dataPath + projectId + "-" + ownerId
  
   await fs.ensureDir(repoPath)
@@ -619,7 +622,7 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
     }
   }
  
-  await saveGitLink(projectId, remoteUrl, defaultBranch)
+  await saveGitLink(projectId, remoteUrl, defaultBranch, token)
   return { created: true, remoteLinked }
 }
 
@@ -817,7 +820,7 @@ GitController = {
     // Initialise un repo git local pour le projet et, si remoteUrl est fourni, le lie au remote.
   // Body attendu : { projectId, userId, remoteUrl? (optionnel), branch? (défaut: "main") }
   async init(req, res) {
-    const { projectId, userId, remoteUrl = null, branch = 'main' } = req.body
+    const { projectId, userId, remoteUrl = null, branch = 'main', token = null } = req.body
  
     if (!projectId || !userId) {
       return res.status(400).json({ error: 'projectId et userId sont requis.' })
@@ -830,7 +833,7 @@ GitController = {
         return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
       }
  
-      const result = await gitInit(projectId, userId, remoteUrl, branch)
+      const result = await gitInit(projectId, userId, remoteUrl, branch, token)
       console.log(`gitInit terminé pour ${projectId}:`, result)
  
       return res.status(200).json({

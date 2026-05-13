@@ -107,6 +107,13 @@ const ProjectSchema = new Schema(
       remoteUrl: { type: String },
       branch: { type: String },
       linkedAt: { type: Date },
+      token: {
+        type: String,
+        index: {
+          unique: true,
+          sparse: true,
+        },
+      },
     },
   },
   { minimize: false }

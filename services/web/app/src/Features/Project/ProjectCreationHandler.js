@@ -106,7 +106,7 @@ async function createExampleProject(ownerId, projectName) {
   return project
 }
 
-async function createGitProject(ownerId, projectLink, branch = null) {
+async function createGitProject(ownerId, projectLink, branch = null, token = null) {
   console.log("Importing git project")
   const regex = /^git@[^:]+:([^/]+)\/([^.]+)\.git$/
   const match = projectLink.match(regex);
@@ -119,7 +119,7 @@ async function createGitProject(ownerId, projectLink, branch = null) {
     AnalyticsManager.recordEventForUser(ownerId, 'project-created', {
       projectId: project._id,
     })
-    await gitClone(project._id, ownerId, projectLink, branch)
+    await gitClone(project._id, ownerId, projectLink, branch, token)
 
     return project
   } else {

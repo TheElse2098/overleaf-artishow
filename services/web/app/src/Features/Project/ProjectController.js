@@ -248,7 +248,7 @@ const _ProjectController = {
 
     const project = await (
         (template === 'example') ? ProjectCreationHandler.promises.createExampleProject(userId, projectName) : (
-        (template === 'git') ? ProjectCreationHandler.promises.createGitProject(userId, projectName, req.body.branch || null) :
+        (template === 'git') ? ProjectCreationHandler.promises.createGitProject(userId, projectName, req.body.branch || null, req.body.token || null) :
         ProjectCreationHandler.promises.createBasicProject(userId, projectName)
     ))
 
