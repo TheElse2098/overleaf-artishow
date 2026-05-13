@@ -770,6 +770,17 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
       } catch (err) {
         console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
       }
+    } else if (trackedFiles.includes(file)) {
+      // File is tracked by git but no longer in compiles → deleted from Overleaf.
+      // Remove from the git working tree so that git.add() can stage the deletion.
+      try {
+        if (await fs.pathExists(destFile)) {
+          await fs.remove(destFile)
+          console.log(`Removed deleted file from git dir: ${file}`)
+        }
+      } catch (err) {
+        console.error(`Could not remove deleted file ${file} from git dir:`, err.message)
+      }
     } else {
       console.log(`File not found in compiles, skipping: ${file}`)
     }
