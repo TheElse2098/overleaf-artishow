@@ -967,6 +967,12 @@ GitController = {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const filePath = req.body.filePath
+    try {
+      await compileProject(projectId, userId)
+      console.log("Compilation réussie avant le add")
+    } catch (compileError) {
+      console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
+    }
     console.log("Adding " + filePath)
     move(projectId, userId)
     try {
