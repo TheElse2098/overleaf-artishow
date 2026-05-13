@@ -114,6 +114,7 @@ const ProjectSchema = new Schema(
           sparse: true,
         },
       },
+      tokenType: { type: String },
     },
   },
   { minimize: false }

@@ -276,13 +276,14 @@ function formatConflictMessage(conflictedFiles) {
   return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
 }
 
-async function saveGitLink(projectId, remoteUrl, branch, token = null) {
+async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType = null) {
   const fields = {
     'git.remoteUrl': remoteUrl || null,
     'git.branch': branch || 'main',
     'git.linkedAt': new Date(),
   }
   if (token) fields['git.token'] = token
+  if (tokenType) fields['git.tokenType'] = tokenType
   await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
 }
@@ -365,35 +366,65 @@ async function withSshKey(userId, fn) {
   }
 }
 
+// Construit une URL HTTPS authentifiée par token
+// tokenType 'github' → x-access-token, 'gitlab' → oauth2
+function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
+  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
+  const sshPattern = /^git@([^:]+):(.+\.git)$/
+  const match = remoteUrl.match(sshPattern)
+  if (match) {
+    return `https://${username}:${token}@${match[1]}/${match[2]}`
+  }
+  try {
+    const url = new URL(remoteUrl)
+    url.username = username
+    url.password = token
+    return url.toString()
+  } catch {
+    return remoteUrl
+  }
+}
+
+// Exécute fn(remote, info) avec l'authentification :
+// - token disponible → URL HTTPS authentifiée (jamais loggée)
+// - pas de token     → clé SSH, remote = 'origin'
+async function withRemoteAuth(projectId, userId, fn) {
+  const info = await getGitInfo(projectId)
+  if (info?.token && info?.remoteUrl) {
+    const authUrl = buildAuthenticatedUrl(info.remoteUrl, info.token, info.tokenType)
+    return fn(authUrl, info)
+  }
+  return withSshKey(userId, () => fn('origin', info))
+}
+
 async function getBranches(projectId, userId) {
-    try {
-      move(projectId, userId);
-      return await withSshKey(userId, async () => {
-        await git.fetch('origin');
-        console.log("fetched");
-        const branches = await git.branch(['-r']);
-        console.log('Remote branches:', branches.all);
-        return branches.all;
-      })
-    } catch (err) {
-      console.error("Error fetching branches:", err);
-      return []
-    }
+  try {
+    move(projectId, userId)
+    return await withRemoteAuth(projectId, userId, async (remote) => {
+      await git.fetch(remote)
+      console.log("fetched")
+      const branches = await git.branch(['-r'])
+      console.log('Remote branches:', branches.all)
+      return branches.all
+    })
+  } catch (err) {
+    console.error("Error fetching branches:", err)
+    return []
+  }
 }
 
 async function getCurrentBranch(projectId, userId) {
   try {
-    move(projectId, userId);
-    return await withSshKey(userId, async () => {
-      const br = await git.branch(["-r"]);
-      const stat = await git.status();
-      console.log("Current Branch: ", br.current);
-      console.log("Current Branch (status): ", stat.current);
-      return `origin/${stat.current}`;
+    move(projectId, userId)
+    return await withRemoteAuth(projectId, userId, async (remote) => {
+      await git.fetch(remote)
+      const stat = await git.status()
+      console.log("Current Branch (status):", stat.current)
+      return `origin/${stat.current}`
     })
   } catch (err) {
-    console.error("Error fetching current branches:", err);
-    return "";
+    console.error("Error fetching current branches:", err)
+    return ""
   }
 }
 
@@ -495,32 +526,40 @@ async function disableBinaryConversion(repoPath) {
   }
 }
 
-async function gitClone(projectId, ownerId, link, branch = null, token = null){
+async function gitClone(projectId, ownerId, link, branch = null, token = null, tokenType = null){
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
     fs.mkdirSync(repoPath)
   }
 
-  const key = await getKey(ownerId, 'private')
-  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
+  // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
+  const cloneOptions = ['--no-checkout']
+  if (branch) cloneOptions.push('--branch', branch)
 
-  // process.env contourne la validation de simple-git sur GIT_SSH_COMMAND
-  // nécessaire pour le clone car le dépôt n'existe pas encore
-  const prevSSH = process.env.GIT_SSH_COMMAND
-  process.env.GIT_SSH_COMMAND = sshCommand
-  try {
-    // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
-    const cloneOptions = ['--no-checkout']
-    if (branch) cloneOptions.push('--branch', branch)
-    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
-    console.log("Repository: " + link + " cloned (no checkout) successfully!")
-  } catch (error) {
-    console.error('Error when cloning:', error)
-    throw error
-  } finally {
-    if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
-    else delete process.env.GIT_SSH_COMMAND
+  if (token) {
+    const authUrl = buildAuthenticatedUrl(link, token, tokenType)
+    try {
+      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(authUrl, repoPath, cloneOptions)
+      console.log("Repository cloned via HTTPS token (no checkout) successfully!")
+    } catch (error) {
+      console.error('Error when cloning (token):', error)
+      throw error
+    }
+  } else {
+    const key = await getKey(ownerId, 'private')
+    const prevSSH = process.env.GIT_SSH_COMMAND
+    process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
+    try {
+      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
+      console.log("Repository cloned via SSH (no checkout) successfully!")
+    } catch (error) {
+      console.error('Error when cloning (SSH):', error)
+      throw error
+    } finally {
+      if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
+      else delete process.env.GIT_SSH_COMMAND
+    }
   }
 
   // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
@@ -534,7 +573,7 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null){
     throw checkoutErr
   }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
-  await saveGitLink(projectId, link, branch, token)
+  await saveGitLink(projectId, link, branch, token, tokenType)
 
   try {
     await fs.remove(outputPath + projectId + "-" + ownerId)
@@ -570,7 +609,7 @@ async function getGitInfo(projectId) {
 // Initialise un repo git local pour le projet, puis y attache un remote et pousse la branche initiale.
 // Si le dossier n'existe pas encore, il est créé.
 // remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
-async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null) {
+async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
   const repoPath = dataPath + projectId + "-" + ownerId
  
   await fs.ensureDir(repoPath)
@@ -611,9 +650,14 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
     await localGit.addRemote('origin', remoteUrl)
     console.log(`Remote "origin" configuré sur ${remoteUrl}`)
     try {
-      await withSshKey(ownerId, () =>
-        localGit.push(['-u', 'origin', defaultBranch])
-      )
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, () =>
+          localGit.push(['-u', 'origin', defaultBranch])
+        )
+      }
       console.log(`Branche "${defaultBranch}" poussée sur origin`)
       remoteLinked = true
     } catch (pushErr) {
@@ -621,8 +665,8 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
       // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
     }
   }
- 
-  await saveGitLink(projectId, remoteUrl, defaultBranch, token)
+
+  await saveGitLink(projectId, remoteUrl, defaultBranch, token, tokenType)
   return { created: true, remoteLinked }
 }
 
@@ -820,7 +864,7 @@ GitController = {
     // Initialise un repo git local pour le projet et, si remoteUrl est fourni, le lie au remote.
   // Body attendu : { projectId, userId, remoteUrl? (optionnel), branch? (défaut: "main") }
   async init(req, res) {
-    const { projectId, userId, remoteUrl = null, branch = 'main', token = null } = req.body
+    const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
  
     if (!projectId || !userId) {
       return res.status(400).json({ error: 'projectId et userId sont requis.' })
@@ -833,7 +877,7 @@ GitController = {
         return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
       }
  
-      const result = await gitInit(projectId, userId, remoteUrl, branch, token)
+      const result = await gitInit(projectId, userId, remoteUrl, branch, token, tokenType)
       console.log(`gitInit terminé pour ${projectId}:`, result)
  
       return res.status(200).json({
@@ -892,7 +936,9 @@ GitController = {
 
     try {
       await disableBinaryConversion(projectPath)
-      const update = await withSshKey(userId, () => git.pull({'--no-rebase': null}))
+      const update = await withRemoteAuth(projectId, userId, (remote, info) =>
+        localGit.pull(remote, info?.branch || null, {'--no-rebase': null})
+      )
 
       if (update.conflicts && update.conflicts.length > 0) {
         // Conflit de merge : restaurer le stash avant d'abandonner le merge
@@ -1058,14 +1104,16 @@ GitController = {
     const userId = req.body.userId
     console.log("Pushing")
     move(projectId, userId)
-    withSshKey(userId, () => git.push())
+    withRemoteAuth(projectId, userId, (remote, info) =>
+      git.push(remote, info?.branch || null)
+    )
       .then(() => {
         console.log('Push successful')
-        res.sendStatus(200);
+        res.sendStatus(200)
       })
       .catch(error => {
         console.error("Error:", error)
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
+        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
       })
   },
 
@@ -1189,7 +1237,7 @@ GitController = {
 
     try {
       move(projectId, userId)
-      await withSshKey(userId, () => git.fetch('origin'))
+      await withRemoteAuth(projectId, userId, (remote) => git.fetch(remote))
 
       // branchName est au format "origin/ma-branche", on extrait la partie locale
       const [, localBranch] = branchName.split('/')
@@ -1225,7 +1273,9 @@ GitController = {
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
       console.log("created new branch: ", newBranchName)
 
-      await withSshKey(userId, () => git.push(['-u', 'origin', newBranchName]))
+      await withRemoteAuth(projectId, userId, (remote) =>
+        git.push(remote, newBranchName, ['--set-upstream'])
+      )
       console.log(`Branch '${newBranchName}' pushed to origin`)
 
       res.sendStatus(200);
