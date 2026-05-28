@@ -27,10 +27,18 @@ type Props = {
   template?: string
 }
 
+const TOKEN_TYPES = [
+  { value: 'github', label: 'GitHub (Personal Access Token)' },
+  { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+]
+
 function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props) {
   const { t } = useTranslation()
   const { autoFocusedRef } = useRefWithAutoFocus<HTMLInputElement>()
   const [projectName, setProjectName] = useState('')
+  const [token, setToken] = useState('')
+  const [tokenType, setTokenType] = useState('github')
+  const [showToken, setShowToken] = useState(false)
   const { isLoading, isError, error, runAsync } = useAsync<NewProjectData>()
   const location = useLocation()
   const newNotificationStyle = getMeta(
@@ -45,6 +53,7 @@ function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props
           _csrf: window.csrfToken,
           projectName,
           template,
+          ...(token.trim() ? { token: token.trim(), tokenType } : {}),
         },
       })
     )
@@ -116,6 +125,52 @@ function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props
             onChange={handleChangeName}
             value={projectName}
           />
+
+          {/* Champs token optionnels */}
+          <hr style={{ margin: '18px 0 14px' }} />
+          <p style={{ fontWeight: 500, marginBottom: '10px' }}>
+            Authentification par token <span style={{ fontWeight: 400, color: 'gray', fontSize: '13px' }}>(optionnel — laissez vide pour utiliser SSH)</span>
+          </p>
+
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}>
+              Type de token
+            </label>
+            <select
+              className="form-control"
+              value={tokenType}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTokenType(e.target.value)}
+            >
+              {TOKEN_TYPES.map(t => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '4px' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px' }}>
+              Token d'accès personnel
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type={showToken ? 'text' : 'password'}
+                className="form-control"
+                placeholder={'ghp_xxxxxxxxxxxxxxxxxxxx'}
+                value={token}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setToken(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowToken(v => !v)}
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {showToken ? 'Masquer' : 'Voir'}
+              </button>
+            </div>
+          </div>
         </Form>
       </Modal.Body>
 

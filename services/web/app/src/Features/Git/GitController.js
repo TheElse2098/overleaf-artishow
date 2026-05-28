@@ -1303,7 +1303,21 @@ GitController = {
     privateKey.then((privateKeyValue) => {
       res.send(privateKeyValue)
     });
-  }
+  },
+
+  async saveToken(req, res) {
+    const { projectId, token, tokenType } = req.body
+    if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
+    try {
+      const fields = {}
+      if (token !== undefined) fields['git.token'] = token || null
+      if (tokenType !== undefined) fields['git.tokenType'] = tokenType || null
+      await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+      res.json({ success: true })
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
 }
 
 module.exports = {GitController, gitClone, gitUpdate, gitInit}

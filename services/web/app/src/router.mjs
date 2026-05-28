@@ -384,6 +384,12 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
 
   webRouter.post(
+    '/git-save-token',
+    AuthenticationController.requireLogin(),
+    GitController.saveToken
+  )
+
+  webRouter.post(
     '/project/import',
     AuthenticationController.requireLogin(),
     RateLimiterMiddleware.rateLimit(rateLimiters.createProject),
