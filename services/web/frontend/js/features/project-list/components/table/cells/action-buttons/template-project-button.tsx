@@ -11,6 +11,9 @@ import OLModal, {
 } from '@/features/ui/components/ol/ol-modal'
 import OLButton from '@/features/ui/components/ol/ol-button'
 import OLFormControl from '@/features/ui/components/ol/ol-form-control'
+import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLIconButton from '@/features/ui/components/ol/ol-icon-button'
+import getMeta from '../../../../../../utils/meta'
 
 type TemplateProjectButtonProps = {
   project: Project
@@ -110,3 +113,37 @@ function TemplateProjectButton({
 }
 
 export default memo(TemplateProjectButton)
+
+const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip({
+  project,
+}: { project: Project }) {
+  const isAdmin = getMeta('ol-user')?.isAdmin
+  if (!isAdmin) return null
+
+  const text = project.isTemplate ? 'Modifier le template' : 'Marquer comme template'
+
+  return (
+    <TemplateProjectButton project={project}>
+      {(_, handleOpenModal) => (
+        <OLTooltip
+          key={`tooltip-template-project-${project.id}`}
+          id={`template-project-${project.id}`}
+          description={text}
+          overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
+        >
+          <span>
+            <OLIconButton
+              onClick={handleOpenModal}
+              variant="link"
+              accessibilityLabel={text}
+              className="action-btn"
+              icon={project.isTemplate ? 'bookmark' : 'bookmark_border'}
+            />
+          </span>
+        </OLTooltip>
+      )}
+    </TemplateProjectButton>
+  )
+})
+
+export { TemplateProjectButtonTooltip }
