@@ -17,6 +17,7 @@ const _ = require('lodash')
 const AnalyticsManager = require('../Analytics/AnalyticsManager')
 const TpdsUpdateSender = require('../ThirdPartyDataStore/TpdsUpdateSender')
 const SplitTestHandler = require('../SplitTests/SplitTestHandler')
+const ProjectDuplicator = require('./ProjectDuplicator')
 
 const MONTH_NAMES = [
   'January',
@@ -106,134 +107,14 @@ async function createExampleProject(ownerId, projectName) {
   return project
 }
 
-const LOCAL_TEMPLATE_TEXT_EXTENSIONS = new Set([
-  '.tex', '.bib', '.sty', '.cls', '.txt', '.md', '.yaml', '.yml',
-])
-
-async function _addLocalTemplateFilesRecursive(
-  projectId,
-  overleafFolderId,
-  dirPath,
-  ownerId,
-  templateData
-) {
-  const entries = fs.readdirSync(dirPath, { withFileTypes: true })
-  let rootDocId = null
-
-  for (const entry of entries) {
-    if (entry.name === 'info.json') continue
-    const entryPath = path.join(dirPath, entry.name)
-
-    if (entry.isDirectory()) {
-      const { folder } = await ProjectEntityUpdateHandler.promises.addFolder(
-        projectId,
-        overleafFolderId,
-        entry.name,
-        ownerId
-      )
-      await _addLocalTemplateFilesRecursive(
-        projectId,
-        folder._id,
-        entryPath,
-        ownerId,
-        templateData
-      )
-    } else {
-      const ext = path.extname(entry.name).toLowerCase()
-      if (LOCAL_TEMPLATE_TEXT_EXTENSIONS.has(ext)) {
-        const raw = fs.readFileSync(entryPath).toString()
-        let rendered
-        try {
-          rendered = _.template(raw)(templateData)
-        } catch (_err) {
-          rendered = raw
-        }
-        const lines = rendered.split('\n')
-        const { doc } = await ProjectEntityUpdateHandler.promises.addDoc(
-          projectId,
-          overleafFolderId,
-          entry.name,
-          lines,
-          ownerId,
-          null
-        )
-        if (entry.name === 'main.tex' || rootDocId == null) {
-          rootDocId = doc._id
-        }
-      } else {
-        await ProjectEntityUpdateHandler.promises.addFile(
-          projectId,
-          overleafFolderId,
-          entry.name,
-          entryPath,
-          null,
-          ownerId,
-          null
-        )
-      }
-    }
-  }
-
-  return rootDocId
-}
-
-async function createProjectFromLocalTemplate(ownerId, projectName, templateId) {
-  const metaDir = path.resolve(
-    __dirname,
-    '../../../templates/general_templates'
+async function createProjectFromTemplate(ownerId, projectName, templateProjectId) {
+  const owner = await User.findById(ownerId, '_id first_name last_name email')
+  if (!owner) throw new Error('User not found')
+  const project = await ProjectDuplicator.promises.duplicate(
+    owner,
+    templateProjectId,
+    projectName
   )
-  const metaPath = path.resolve(metaDir, `${templateId}.json`)
-
-  if (!metaPath.startsWith(metaDir + path.sep)) {
-    throw new Error('Invalid template id')
-  }
-  if (!fs.existsSync(metaPath)) {
-    return createExampleProject(ownerId, projectName)
-  }
-
-  let meta
-  try {
-    meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'))
-  } catch (err) {
-    throw new Error(`Failed to read template metadata: ${err.message}`)
-  }
-
-  const templateListPath = Settings.templateListPath
-  const templateDir = path.resolve(templateListPath, meta.folder)
-
-  if (!templateDir.startsWith(path.resolve(templateListPath) + path.sep)) {
-    throw new Error('Invalid template folder')
-  }
-  if (!fs.existsSync(templateDir)) {
-    return createExampleProject(ownerId, projectName)
-  }
-
-  const project = await _createBlankProject(ownerId, projectName)
-
-  const user = await User.findById(ownerId, 'first_name last_name')
-  const templateData = {
-    project_name: projectName,
-    user,
-    year: new Date().getUTCFullYear(),
-    month: MONTH_NAMES[new Date().getUTCMonth()],
-  }
-
-  const rootDocId = await _addLocalTemplateFilesRecursive(
-    project._id,
-    project.rootFolder[0]._id,
-    templateDir,
-    ownerId,
-    templateData
-  )
-
-  if (rootDocId) {
-    await ProjectEntityUpdateHandler.promises.setRootDoc(project._id, rootDocId)
-  }
-
-  AnalyticsManager.recordEventForUserInBackground(ownerId, 'project-created', {
-    projectId: project._id,
-  })
-
   return project
 }
 
@@ -404,13 +285,13 @@ module.exports = {
   createBasicProject: callbackify(createBasicProject),
   createExampleProject: callbackify(createExampleProject),
   createGitProject: callbackify(createGitProject),
-  createProjectFromLocalTemplate: callbackify(createProjectFromLocalTemplate),
+  createProjectFromTemplate: callbackify(createProjectFromTemplate),
   promises: {
     createBlankProject,
     createProjectFromSnippet,
     createBasicProject,
     createExampleProject,
     createGitProject,
-    createProjectFromLocalTemplate,
+    createProjectFromTemplate,
   },
 }

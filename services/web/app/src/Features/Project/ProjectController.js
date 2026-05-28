@@ -248,7 +248,7 @@ const _ProjectController = {
 
     const project = await (
         (template === 'example' && templateId)
-          ? ProjectCreationHandler.promises.createProjectFromLocalTemplate(userId, projectName, templateId)
+          ? ProjectCreationHandler.promises.createProjectFromTemplate(userId, projectName, templateId)
           : (template === 'example')
             ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
             : (template === 'git')

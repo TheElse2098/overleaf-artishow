@@ -44,6 +44,8 @@ const ProjectSchema = new Schema(
     deletedDocs: [DeletedDocSchema],
     imageName: { type: String },
     brandVariationId: { type: String },
+    isTemplate: { type: Boolean, default: false },
+    templateDescription: { type: String, default: '' },
     track_changes: { type: Object },
     tokens: {
       readOnly: {

@@ -19,6 +19,12 @@ module.exports = {
       TemplatesController.getLocalTemplates
     )
 
+    app.post(
+      '/project/:projectId/template',
+      AuthenticationController.requireLogin(),
+      TemplatesController.setTemplateStatus
+    )
+
     app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>

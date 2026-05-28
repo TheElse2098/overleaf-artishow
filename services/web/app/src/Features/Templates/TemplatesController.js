@@ -1,10 +1,11 @@
 const path = require('path')
-const fs = require('fs')
 const SessionManager = require('../Authentication/SessionManager')
 const TemplatesManager = require('./TemplatesManager')
 const ProjectHelper = require('../Project/ProjectHelper')
 const logger = require('@overleaf/logger')
 const { expressify } = require('@overleaf/promise-utils')
+const { Project } = require('../../models/Project')
+const AuthorizationManager = require('../Authorization/AuthorizationManager')
 
 const TemplatesController = {
   async getV1Template(req, res) {
@@ -36,27 +37,34 @@ const TemplatesController = {
   },
 
   async getLocalTemplates(req, res) {
-    const metaDir = path.resolve(
-      __dirname,
-      '../../../templates/general_templates'
-    )
-    const templates = []
-    if (fs.existsSync(metaDir)) {
-      const entries = fs.readdirSync(metaDir, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-        const id = entry.name.slice(0, -5)
-        try {
-          const meta = JSON.parse(
-            fs.readFileSync(path.join(metaDir, entry.name), 'utf8')
-          )
-          templates.push({ id, name: meta.name, description: meta.description })
-        } catch (err) {
-          logger.warn({ err, templateId: id }, 'failed to parse template metadata')
-        }
-      }
-    }
+    const projects = await Project.find(
+      { isTemplate: true },
+      { name: 1, templateDescription: 1 }
+    ).lean()
+    const templates = projects.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      description: p.templateDescription || '',
+    }))
     res.json({ templates })
+  },
+
+  async setTemplateStatus(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const isAdmin = await AuthorizationManager.promises.isUserSiteAdmin(userId)
+    if (!isAdmin) {
+      return res.sendStatus(403)
+    }
+    const { projectId } = req.params
+    const { isTemplate, templateDescription } = req.body
+    await Project.updateOne(
+      { _id: projectId },
+      {
+        isTemplate: Boolean(isTemplate),
+        templateDescription: templateDescription || '',
+      }
+    )
+    res.json({ ok: true })
   },
 
   async createProjectFromV1Template(req, res) {
@@ -85,4 +93,5 @@ module.exports = {
     TemplatesController.createProjectFromV1Template
   ),
   getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
+  setTemplateStatus: expressify(TemplatesController.setTemplateStatus),
 }

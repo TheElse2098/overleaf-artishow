@@ -17,7 +17,9 @@ import DeleteProjectButton from '../table/cells/action-buttons/delete-project-bu
 import { Project } from '../../../../../../types/project/dashboard/api'
 import CompileAndDownloadProjectPDFButton from '../table/cells/action-buttons/compile-and-download-project-pdf-button'
 import RenameProjectButton from '../table/cells/action-buttons/rename-project-button'
+import TemplateProjectButton from '../table/cells/action-buttons/template-project-button'
 import MaterialIcon from '@/shared/components/material-icon'
+import getMeta from '../../../../utils/meta'
 
 type ActionDropdownProps = {
   project: Project
@@ -25,6 +27,7 @@ type ActionDropdownProps = {
 
 function ActionsDropdown({ project }: ActionDropdownProps) {
   const { t } = useTranslation()
+  const isAdmin = getMeta('ol-user')?.isAdmin
 
   return (
     <Dropdown align="end">
@@ -181,6 +184,22 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
             </li>
           )}
         </DeleteProjectButton>
+        {isAdmin && (
+          <TemplateProjectButton project={project}>
+            {(text, handleOpenModal) => (
+              <li role="none">
+                <DropdownItem
+                  as="button"
+                  tabIndex={-1}
+                  onClick={handleOpenModal}
+                  leadingIcon="bookmark"
+                >
+                  {text}
+                </DropdownItem>
+              </li>
+            )}
+          </TemplateProjectButton>
+        )}
       </DropdownMenu>
     </Dropdown>
   )

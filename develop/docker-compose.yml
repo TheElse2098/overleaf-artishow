@@ -155,7 +155,6 @@ services:
     volumes:
       - sharelatex-data:/var/lib/overleaf
       - web-data:/overleaf/services/web/data
-      - ./template_files:/var/lib/overleaf/data/template_files
     depends_on:
       - mongo
       - redis
