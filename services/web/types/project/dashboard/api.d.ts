@@ -43,6 +43,8 @@ export type ProjectApi = {
   trashed: boolean
   accessLevel: 'owner' | 'readWrite' | 'readOnly' | 'readAndWrite'
   source: 'owner' | 'invite' | 'token'
+  isTemplate: boolean
+  templateDescription: string
 }
 
 export type Project = MergeAndOverride<
