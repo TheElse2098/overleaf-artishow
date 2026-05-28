@@ -119,7 +119,7 @@ async function projectListPage(req, res, next) {
   })
   const user = await User.findById(
     userId,
-    `email emails features alphaProgram betaProgram lastPrimaryEmailCheck signUpDate refProviders${
+    `email emails features alphaProgram betaProgram lastPrimaryEmailCheck signUpDate refProviders isAdmin${
       isSaas ? ' enrollment writefull completedTutorials aiErrorAssistant' : ''
     }`
   )

@@ -5,7 +5,7 @@ const ProjectHelper = require('../Project/ProjectHelper')
 const logger = require('@overleaf/logger')
 const { expressify } = require('@overleaf/promise-utils')
 const { Project } = require('../../models/Project')
-const AuthorizationManager = require('../Authorization/AuthorizationManager')
+const { User } = require('../../models/User')
 
 const TemplatesController = {
   async getV1Template(req, res) {
@@ -51,8 +51,8 @@ const TemplatesController = {
 
   async setTemplateStatus(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const isAdmin = await AuthorizationManager.promises.isUserSiteAdmin(userId)
-    if (!isAdmin) {
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
+    if (!user?.isAdmin) {
       return res.sendStatus(403)
     }
     const { projectId } = req.params
