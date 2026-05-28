@@ -6,13 +6,13 @@ const TOKEN_TYPES = [
   { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
 ]
 
-function GitTokenTab({ projectId, userId }) {
+function GitTokenTab({ projectId }) {
   const [token, setToken] = useState('')
   const [tokenType, setTokenType] = useState('github')
   const [hasExistingToken, setHasExistingToken] = useState(false)
   const [existingTokenType, setExistingTokenType] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [status, setStatus] = useState(null) // { type: 'success'|'error', message: string }
+  const [status, setStatus] = useState(null)
   const [showToken, setShowToken] = useState(false)
 
   useEffect(() => {
@@ -21,8 +21,8 @@ function GitTokenTab({ projectId, userId }) {
 
   const loadGitInfo = async () => {
     try {
-      const info = await getJSON(`/git-info?projectId=${projectId}`)
-      if (info?.token) {
+      const info = await getJSON('/git-info?projectId=' + projectId)
+      if (info && info.token) {
         setHasExistingToken(true)
         setExistingTokenType(info.tokenType || 'github')
         setTokenType(info.tokenType || 'github')
@@ -51,14 +51,17 @@ function GitTokenTab({ projectId, userId }) {
           tokenType,
         },
       })
-      setStatus({ type: 'success', message: 'Token sauvegardé avec succès.' })
+      setStatus({ type: 'success', message: 'Token sauvegarde avec succes.' })
       setHasExistingToken(true)
       setExistingTokenType(tokenType)
       setToken('')
     } catch (err) {
       setStatus({
         type: 'error',
-        message: err?.data?.errorReason || err?.message || 'Erreur lors de la sauvegarde.',
+        message:
+          (err && err.data && err.data.errorReason) ||
+          (err && err.message) ||
+          'Erreur lors de la sauvegarde.',
       })
     } finally {
       setIsLoading(false)
@@ -66,7 +69,7 @@ function GitTokenTab({ projectId, userId }) {
   }
 
   const handleRemove = async () => {
-    if (!window.confirm('Supprimer le token ? Le projet utilisera la clé SSH.')) return
+    if (!window.confirm('Supprimer le token ? Le projet utilisera la cle SSH.')) return
 
     setIsLoading(true)
     setStatus(null)
@@ -75,65 +78,70 @@ function GitTokenTab({ projectId, userId }) {
       await postJSON('/git-save-token', {
         body: { projectId, token: null, tokenType: null },
       })
-      setStatus({ type: 'success', message: 'Token supprimé. Authentification SSH active.' })
+      setStatus({ type: 'success', message: 'Token supprime. Authentification SSH active.' })
       setHasExistingToken(false)
       setExistingTokenType(null)
       setToken('')
     } catch (err) {
       setStatus({
         type: 'error',
-        message: err?.data?.errorReason || err?.message || 'Erreur lors de la suppression.',
+        message:
+          (err && err.data && err.data.errorReason) ||
+          (err && err.message) ||
+          'Erreur lors de la suppression.',
       })
     } finally {
       setIsLoading(false)
     }
   }
 
+  const tokenTypeLabel = TOKEN_TYPES.find(function(t) { return t.value === existingTokenType })
+  const githubInfo = 'GitHub : Settings > Developer settings > Personal access tokens. Permission requise : repo.'
+  const gitlabInfo = 'GitLab : User Settings > Access Tokens. Permissions : read_repository, write_repository.'
+
   return (
     <div style={{ color: 'black', fontFamily: 'sans-serif' }}>
       <h3 style={{ marginBottom: '15px' }}>Authentification par Token</h3>
 
-      {/* Statut actuel */}
       <div
         style={{
           padding: '10px 14px',
           marginBottom: '20px',
           borderRadius: '5px',
           backgroundColor: hasExistingToken ? '#d4edda' : '#fff3cd',
-          border: `1px solid ${hasExistingToken ? '#c3e6cb' : '#ffeeba'}`,
+          border: '1px solid ' + (hasExistingToken ? '#c3e6cb' : '#ffeeba'),
           color: hasExistingToken ? '#155724' : '#856404',
         }}
       >
         {hasExistingToken ? (
-          <>
-            <strong>Token configuré</strong>
-            {existingTokenType && (
+          <div>
+            <strong>Token configure</strong>
+            {tokenTypeLabel && (
               <span style={{ marginLeft: '8px', fontSize: '13px' }}>
-                ({TOKEN_TYPES.find(t => t.value === existingTokenType)?.label || existingTokenType})
+                ({tokenTypeLabel.label})
               </span>
             )}
             <div style={{ fontSize: '12px', marginTop: '4px' }}>
-              Le push/pull utilise l'authentification HTTPS par token.
+              Push/pull utilise HTTPS avec token.
             </div>
-          </>
+          </div>
         ) : (
-          <>
-            <strong>Aucun token configuré</strong>
+          <div>
+            <strong>Aucun token configure</strong>
             <div style={{ fontSize: '12px', marginTop: '4px' }}>
-              Le push/pull utilise la clé SSH.
+              Push/pull utilise la cle SSH.
             </div>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Formulaire */}
       <div style={{ marginBottom: '15px' }}>
         <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>
           Type de token
         </label>
         <select
           value={tokenType}
-          onChange={e => setTokenType(e.target.value)}
+          onChange={function(e) { setTokenType(e.target.value) }}
           style={{
             width: '100%',
             padding: '7px',
@@ -142,24 +150,26 @@ function GitTokenTab({ projectId, userId }) {
             borderRadius: '4px',
           }}
         >
-          {TOKEN_TYPES.map(t => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
+          {TOKEN_TYPES.map(function(t) {
+            return (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            )
+          })}
         </select>
       </div>
 
       <div style={{ marginBottom: '15px' }}>
         <label style={{ display: 'block', marginBottom: '5px', fontWeight: '500' }}>
-          {hasExistingToken ? 'Nouveau token (laisser vide pour conserver l'actuel)' : 'Token'}
+          {hasExistingToken ? 'Nouveau token (vide = conserver actuel)' : 'Token'}
         </label>
         <div style={{ display: 'flex', gap: '6px' }}>
           <input
             type={showToken ? 'text' : 'password'}
             value={token}
-            onChange={e => setToken(e.target.value)}
-            placeholder={hasExistingToken ? '••••••••••••••••' : 'ghp_xxxxxxxxxxxxxxxxxxxx'}
+            onChange={function(e) { setToken(e.target.value) }}
+            placeholder={hasExistingToken ? '(inchange)' : 'ghp_xxxxxxxxxxxxxxxxxxxx'}
             style={{
               flex: 1,
               padding: '7px',
@@ -169,7 +179,7 @@ function GitTokenTab({ projectId, userId }) {
             }}
           />
           <button
-            onClick={() => setShowToken(v => !v)}
+            onClick={function() { setShowToken(function(v) { return !v }) }}
             style={{
               padding: '7px 10px',
               border: '1px solid #ccc',
@@ -183,12 +193,8 @@ function GitTokenTab({ projectId, userId }) {
             {showToken ? 'Masquer' : 'Voir'}
           </button>
         </div>
-        <div style={{ fontSize: '11px', color: 'gray', marginTop: '4px' }}>
-          Le token est chiffré et jamais affiché après sauvegarde.
-        </div>
       </div>
 
-      {/* Info token GitHub / GitLab */}
       <div
         style={{
           padding: '10px',
@@ -200,22 +206,9 @@ function GitTokenTab({ projectId, userId }) {
           color: '#2c5282',
         }}
       >
-        {tokenType === 'github' ? (
-          <>
-            <strong>GitHub :</strong> Créez un token sur{' '}
-            <em>Settings → Developer settings → Personal access tokens</em>.
-            Cochez les permissions <code>repo</code>.
-          </>
-        ) : (
-          <>
-            <strong>GitLab :</strong> Créez un token sur{' '}
-            <em>User Settings → Access Tokens</em>.
-            Cochez les permissions <code>read_repository</code> et <code>write_repository</code>.
-          </>
-        )}
+        {tokenType === 'github' ? githubInfo : gitlabInfo}
       </div>
 
-      {/* Feedback */}
       {status && (
         <div
           style={{
@@ -223,7 +216,7 @@ function GitTokenTab({ projectId, userId }) {
             marginBottom: '15px',
             borderRadius: '4px',
             backgroundColor: status.type === 'success' ? '#d4edda' : '#f8d7da',
-            border: `1px solid ${status.type === 'success' ? '#c3e6cb' : '#f5c6cb'}`,
+            border: '1px solid ' + (status.type === 'success' ? '#c3e6cb' : '#f5c6cb'),
             color: status.type === 'success' ? '#155724' : '#721c24',
           }}
         >
@@ -231,7 +224,6 @@ function GitTokenTab({ projectId, userId }) {
         </div>
       )}
 
-      {/* Actions */}
       <div style={{ display: 'flex', gap: '10px' }}>
         <button
           onClick={handleSave}
@@ -247,7 +239,7 @@ function GitTokenTab({ projectId, userId }) {
             fontWeight: '500',
           }}
         >
-          {isLoading ? 'Sauvegarde...' : hasExistingToken ? 'Mettre à jour le token' : 'Sauvegarder le token'}
+          {isLoading ? 'Sauvegarde...' : hasExistingToken ? 'Mettre a jour le token' : 'Sauvegarder le token'}
         </button>
 
         {hasExistingToken && (
