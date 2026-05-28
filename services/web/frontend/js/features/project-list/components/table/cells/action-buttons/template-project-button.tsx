@@ -137,7 +137,7 @@ const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip(
               variant="link"
               accessibilityLabel={text}
               className="action-btn"
-              icon={project.isTemplate ? 'bookmark' : 'bookmark_border'}
+              icon="bookmark"
             />
           </span>
         </OLTooltip>
