@@ -235,6 +235,7 @@ const _ProjectController = {
   },
 
   async newProject(req, res) {
+    res.setTimeout(5 * 60 * 1000)
     const currentUser = SessionManager.getSessionUser(req.session)
     const {
       first_name: firstName,
@@ -247,13 +248,13 @@ const _ProjectController = {
     const { template, templateId } = req.body
 
     const project = await (
-        (template === 'example' && templateId)
-          ? ProjectCreationHandler.promises.createProjectFromTemplate(userId, projectName, templateId)
-          : (template === 'example')
-            ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
-            : (template === 'git')
-              ? ProjectCreationHandler.promises.createGitProject(userId, projectName)
-              : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
+      (template === 'example' && templateId)
+        ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
+        : (template === 'example')
+          ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
+          : (template === 'git')
+            ? ProjectCreationHandler.promises.createGitProject(userId, projectName)
+            : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
     )
 
     res.json({

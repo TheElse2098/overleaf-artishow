@@ -17,7 +17,6 @@ const _ = require('lodash')
 const AnalyticsManager = require('../Analytics/AnalyticsManager')
 const TpdsUpdateSender = require('../ThirdPartyDataStore/TpdsUpdateSender')
 const SplitTestHandler = require('../SplitTests/SplitTestHandler')
-const ProjectDuplicator = require('./ProjectDuplicator')
 
 const MONTH_NAMES = [
   'January',
@@ -104,17 +103,6 @@ async function createExampleProject(ownerId, projectName) {
     projectId: project._id,
   })
 
-  return project
-}
-
-async function createProjectFromTemplate(ownerId, projectName, templateProjectId) {
-  const owner = await User.findById(ownerId, '_id first_name last_name email')
-  if (!owner) throw new Error('User not found')
-  const project = await ProjectDuplicator.promises.duplicate(
-    owner,
-    templateProjectId,
-    projectName
-  )
   return project
 }
 
@@ -285,13 +273,11 @@ module.exports = {
   createBasicProject: callbackify(createBasicProject),
   createExampleProject: callbackify(createExampleProject),
   createGitProject: callbackify(createGitProject),
-  createProjectFromTemplate: callbackify(createProjectFromTemplate),
   promises: {
     createBlankProject,
     createProjectFromSnippet,
     createBasicProject,
     createExampleProject,
     createGitProject,
-    createProjectFromTemplate,
   },
 }
