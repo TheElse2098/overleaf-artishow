@@ -384,6 +384,12 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
 
   webRouter.post(
+    '/git-add-all',
+    AuthenticationController.requireLogin(),
+    GitController.addAll
+  )
+
+  webRouter.post(
     '/git-save-token',
     AuthenticationController.requireLogin(),
     GitController.saveToken

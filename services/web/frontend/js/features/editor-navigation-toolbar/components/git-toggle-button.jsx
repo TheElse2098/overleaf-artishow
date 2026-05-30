@@ -13,6 +13,7 @@ import {
   postJSON,
 } from '../../../infrastructure/fetch-json'
 import GitTokenTab from './GitTokenTab'
+import GitCommitTab from './GitCommitTab'
 
 function Modal({
   isOpen,
@@ -30,6 +31,7 @@ function Modal({
   onCreateBranch,
   projectId,
   userId,
+  onRefresh,
 }) {
   const [activeTab, setActiveTab] = useState('commit')
   const [selectedCommit, setSelectedCommit] = useState('')
@@ -123,32 +125,15 @@ function Modal({
 
           {/* Commit & Push Tab */}
           {activeTab === 'commit' && (
-            <>
-              <div>
-                <label htmlFor="commit-message" style={{ color: 'black' }}>Commit message</label>
-                <textarea id="commit-message" rows="4" style={{ color: 'dimgray', width: '100%' }}></textarea>
-              </div>
-              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <button onClick={onCommit} style={{ color: 'black', width: '100%', marginBottom: '10px' }}>Commit</button>
-                <button onClick={onPush} style={{ color: 'black', width: '100%' }}>Push</button>
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                <h3>Modified files (not staged)</h3>
-                <ul>
-                  {notStagedFiles.map((file, index) => (
-                    <li key={index} style={{ color: 'black' }}>{file}</li>
-                  ))}
-                </ul>
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                <h3>Staged files</h3>
-                <ul>
-                  {stagedFiles.map((file, index) => (
-                    <li key={index} style={{ color: 'black' }}>{file}</li>
-                  ))}
-                </ul>
-              </div>
-            </>
+            <GitCommitTab
+              projectId={projectId}
+              userId={userId}
+              notStagedFiles={notStagedFiles}
+              stagedFiles={stagedFiles}
+              onCommit={onCommit}
+              onPush={onPush}
+              onRefresh={onRefresh}
+            />
           )}
 
           {/* Rollback Tab */}
@@ -586,6 +571,7 @@ function GitToggleButton() {
         onCreateBranch={handleCreateBranch}
         projectId={projectId}
         userId={userId}
+        onRefresh={loadGitData}
       />
     </div>
   )
