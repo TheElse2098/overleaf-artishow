@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { getJSON, postJSON } from '../../../infrastructure/fetch-json'
+import { GitNotif, GitConfirm } from './GitFeedback'
 
 const TOKEN_TYPES = [
   { value: 'github', label: 'GitHub (Personal Access Token)' },
@@ -14,6 +15,7 @@ function GitTokenTab({ projectId }) {
   const [isLoading, setIsLoading] = useState(false)
   const [status, setStatus] = useState(null)
   const [showToken, setShowToken] = useState(false)
+  const [awaitingRemoveConfirm, setAwaitingRemoveConfirm] = useState(false)
 
   useEffect(() => {
     loadGitInfo()
@@ -68,9 +70,13 @@ function GitTokenTab({ projectId }) {
     }
   }
 
-  const handleRemove = async () => {
-    if (!window.confirm('Supprimer le token ? Le projet utilisera la cle SSH.')) return
+  const handleRemoveRequest = () => {
+    setAwaitingRemoveConfirm(true)
+    setStatus(null)
+  }
 
+  const handleRemoveConfirm = async () => {
+    setAwaitingRemoveConfirm(false)
     setIsLoading(true)
     setStatus(null)
 
@@ -210,41 +216,34 @@ function GitTokenTab({ projectId }) {
       </div>
 
       {status && (
-        <div
-          style={{
-            padding: '10px',
-            marginBottom: '15px',
-            borderRadius: '4px',
-            backgroundColor: status.type === 'success' ? '#d4edda' : '#f8d7da',
-            border: '1px solid ' + (status.type === 'success' ? '#c3e6cb' : '#f5c6cb'),
-            color: status.type === 'success' ? '#155724' : '#721c24',
-          }}
-        >
-          {status.message}
-        </div>
+        <GitNotif
+          type={status.type}
+          message={status.message}
+          onDismiss={function() { setStatus(null) }}
+        />
       )}
 
       <div style={{ display: 'flex', gap: '10px' }}>
         <button
           onClick={handleSave}
-          disabled={isLoading}
+          disabled={isLoading || awaitingRemoveConfirm}
           style={{
             flex: 1,
             padding: '9px',
-            backgroundColor: isLoading ? '#6c757d' : '#45a444',
+            backgroundColor: (isLoading || awaitingRemoveConfirm) ? '#6c757d' : '#45a444',
             color: 'white',
             border: 'none',
             borderRadius: '5px',
-            cursor: isLoading ? 'not-allowed' : 'pointer',
+            cursor: (isLoading || awaitingRemoveConfirm) ? 'not-allowed' : 'pointer',
             fontWeight: '500',
           }}
         >
           {isLoading ? 'Sauvegarde...' : hasExistingToken ? 'Mettre a jour le token' : 'Sauvegarder le token'}
         </button>
 
-        {hasExistingToken && (
+        {hasExistingToken && !awaitingRemoveConfirm && (
           <button
-            onClick={handleRemove}
+            onClick={handleRemoveRequest}
             disabled={isLoading}
             style={{
               padding: '9px 16px',
@@ -259,6 +258,17 @@ function GitTokenTab({ projectId }) {
           </button>
         )}
       </div>
+
+      {awaitingRemoveConfirm && (
+        <GitConfirm
+          message="Supprimer le token ?"
+          detail="Le projet utilisera la cle SSH pour les operations Git."
+          confirmLabel="Supprimer"
+          isDanger={true}
+          onConfirm={handleRemoveConfirm}
+          onCancel={function() { setAwaitingRemoveConfirm(false) }}
+        />
+      )}
     </div>
   )
 }

@@ -1305,6 +1305,21 @@ GitController = {
     });
   },
 
+  async addAll(req, res) {
+    const { projectId, userId } = req.body
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    move(projectId, userId)
+    try {
+      const status = await git.status()
+      const newFiles = status.not_added
+      await gitUpdate(projectId, userId, newFiles)
+      await git.add('.')
+      res.sendStatus(200)
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.git?.message || err?.message || String(err))
+    }
+  },
+
   async saveToken(req, res) {
     const { projectId, token, tokenType } = req.body
     if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
