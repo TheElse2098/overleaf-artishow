@@ -19,7 +19,7 @@ services:
             ####  Server Pro: Uncomment the following line to mount the docker  ####
             ####             socket, required for Sibling Containers to work    ####
             ########################################################################
-            # - /var/run/docker.sock:/var/run/docker.sock
+            - /var/run/docker.sock:/var/run/docker.sock
         environment:
 
             OVERLEAF_APP_NAME: Overleaf Community Edition
