@@ -1,7 +1,7 @@
 // template-card.tsx
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 import { postJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
 

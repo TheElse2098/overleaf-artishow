@@ -6,8 +6,8 @@ import OLModal, {
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 import { getJSON } from '../../../../infrastructure/fetch-json'
 import { FullSizeLoadingSpinner } from '@/shared/components/loading-spinner'
 import Notification from '@/shared/components/notification'
