@@ -1,6 +1,9 @@
 import logger from '@overleaf/logger'
 import http from 'node:http'
 import https from 'node:https'
+import fs from 'node:fs'
+import path from 'node:path'
+import { promisify } from 'node:util'
 import Settings from '@overleaf/settings'
 import TpdsUpdateSender from '../ThirdPartyDataStore/TpdsUpdateSender.mjs'
 import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.mjs'
@@ -10,14 +13,11 @@ import ProjectGetter from '../Project/ProjectGetter.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import Features from '../../infrastructure/Features.mjs'
 import { expressify } from '@overleaf/promise-utils'
+import mongodb from '../../infrastructure/mongodb.mjs'
 
-// for admin view
-const fs = require('fs')
-const path = require('path')
-const util = require('util')
-const readdir = util.promisify(fs.readdir)
-const stat = util.promisify(fs.stat)
-const { db, ObjectId } = require('../../infrastructure/mongodb')
+const { db, ObjectId } = mongodb
+const readdir = promisify(fs.readdir)
+const stat = promisify(fs.stat)
 
 async function dirSize(directoryPath) {
   let totalSize = 0;
