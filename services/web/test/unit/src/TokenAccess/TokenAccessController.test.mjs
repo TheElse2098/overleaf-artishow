@@ -1,11 +1,12 @@
 import { expect, vi } from 'vitest'
 import sinon from 'sinon'
 import mongodb from 'mongodb-legacy'
-import MockRequest from '../helpers/MockRequest.js'
-import MockResponse from '../helpers/MockResponse.js'
-import PrivilegeLevels from '../../../../app/src/Features/Authorization/PrivilegeLevels.js'
-import { getSafeRedirectPath } from '../../../../app/src/Features/Helpers/UrlHelper.js'
+import MockRequest from '../helpers/MockRequest.mjs'
+import MockResponse from '../helpers/MockResponse.mjs'
+import PrivilegeLevels from '../../../../app/src/Features/Authorization/PrivilegeLevels.mjs'
+import UrlHelper from '../../../../app/src/Features/Helpers/UrlHelper.mjs'
 
+const { getSafeRedirectPath } = UrlHelper
 const ObjectId = mongodb.ObjectId
 
 const MODULE_PATH =
@@ -22,8 +23,8 @@ describe('TokenAccessController', function () {
       tokenAccessReadAndWrite_refs: [],
       tokenAccessReadOnly_refs: [],
     }
-    ctx.req = new MockRequest()
-    ctx.res = new MockResponse()
+    ctx.req = new MockRequest(vi)
+    ctx.res = new MockResponse(vi)
     ctx.next = sinon.stub().returns()
 
     ctx.Settings = {
@@ -236,25 +237,24 @@ describe('TokenAccessController', function () {
       }),
     }))
 
-    vi.doMock(
-      '../../../../app/src/Features/Helpers/AdminAuthorizationHelper',
-      () =>
-        (ctx.AdminAuthorizationHelper = {
-          canRedirectToAdminDomain: sinon.stub(),
-        })
-    )
+    ctx.AdminAuthorizationHelper = {
+      canRedirectToAdminDomain: sinon.stub(),
+    }
 
     vi.doMock(
-      '../../../../app/src/Features/Helpers/UrlHelper',
-      () =>
-        (ctx.UrlHelper = {
-          getSafeAdminDomainRedirect: sinon
-            .stub()
-            .callsFake(
-              path => `${ctx.Settings.adminUrl}${getSafeRedirectPath(path)}`
-            ),
-        })
+      '../../../../app/src/Features/Helpers/AdminAuthorizationHelper',
+      () => ({ default: ctx.AdminAuthorizationHelper })
     )
+
+    vi.doMock('../../../../app/src/Features/Helpers/UrlHelper', () => ({
+      default: (ctx.UrlHelper = {
+        getSafeAdminDomainRedirect: sinon
+          .stub()
+          .callsFake(
+            path => `${ctx.Settings.adminUrl}${getSafeRedirectPath(path)}`
+          ),
+      }),
+    }))
 
     vi.doMock(
       '../../../../app/src/Features/Analytics/AnalyticsManager',
@@ -567,7 +567,7 @@ describe('TokenAccessController', function () {
         })
 
         it('redirects to restricted', function (ctx) {
-          expect(ctx.res.json).to.have.been.calledWith({
+          expect(ctx.res.json).toHaveBeenCalledWith({
             redirect: '/restricted',
             anonWriteAccessDenied: true,
           })
@@ -609,7 +609,7 @@ describe('TokenAccessController', function () {
         })
 
         it('redirects to project', function (ctx) {
-          expect(ctx.res.json).to.have.been.calledWith({
+          expect(ctx.res.json).toHaveBeenCalledWith({
             redirect: `/project/${ctx.project._id}`,
             grantAnonymousAccess: 'readAndWrite',
           })
@@ -655,7 +655,7 @@ describe('TokenAccessController', function () {
           })
         })
         it('returns v1 import data', function (ctx) {
-          expect(ctx.res.json).to.have.been.calledWith({
+          expect(ctx.res.json).toHaveBeenCalledWith({
             v1Import: {
               status: 'canDownloadZip',
               projectId: ctx.token,
@@ -698,7 +698,7 @@ describe('TokenAccessController', function () {
           })
         })
         it('returns 404', function (ctx) {
-          expect(ctx.res.sendStatus).to.have.been.calledWith(404)
+          expect(ctx.res.sendStatus).toHaveBeenCalledWith(404)
         })
         it('checks the hash prefix and includes log data', function (ctx) {
           expect(
@@ -764,17 +764,12 @@ describe('TokenAccessController', function () {
           .stub()
           .resolves([{ email: 'test@not-overleaf.com' }])
 
-        await new Promise(resolve => {
-          ctx.res.callback = () => {
-            expect(ctx.res.json).to.have.been.calledWith({
-              redirect: `${ctx.Settings.adminUrl}/#prefix`,
-            })
-            resolve()
-          }
-          ctx.TokenAccessController.grantTokenAccessReadAndWrite(
-            ctx.req,
-            ctx.res
-          )
+        await ctx.TokenAccessController.grantTokenAccessReadAndWrite(
+          ctx.req,
+          ctx.res
+        )
+        expect(ctx.res.json).toHaveBeenCalledWith({
+          redirect: `${ctx.Settings.adminUrl}/#prefix`,
         })
       })
 
@@ -843,7 +838,7 @@ describe('TokenAccessController', function () {
       ctx.req.params = { token: ctx.token }
       ctx.req.body = { tokenHashPrefix: '#prefix' }
       ctx.TokenAccessController.grantTokenAccessReadAndWrite(ctx.req, ctx.res)
-      expect(ctx.res.sendStatus).to.have.been.calledWith(400)
+      expect(ctx.res.sendStatus).toHaveBeenCalledWith(400)
     })
   })
 
@@ -935,7 +930,7 @@ describe('TokenAccessController', function () {
       ctx.req.params = { token: ctx.token }
       ctx.req.body = { tokenHashPrefix: '#prefix' }
       ctx.TokenAccessController.grantTokenAccessReadOnly(ctx.req, ctx.res)
-      expect(ctx.res.sendStatus).to.have.been.calledWith(400)
+      expect(ctx.res.sendStatus).toHaveBeenCalledWith(400)
     })
 
     describe('anonymous users', function () {
@@ -954,7 +949,7 @@ describe('TokenAccessController', function () {
       })
 
       it('allows anonymous users and checks the token hash', function (ctx) {
-        expect(ctx.res.json).to.have.been.calledWith({
+        expect(ctx.res.json).toHaveBeenCalledWith({
           redirect: `/project/${ctx.project._id}`,
           grantAnonymousAccess: 'readOnly',
         })
@@ -1188,7 +1183,7 @@ describe('TokenAccessController', function () {
             ctx.user._id,
             PrivilegeLevels.READ_AND_WRITE
           )
-          expect(ctx.res.sendStatus).to.have.been.calledWith(204)
+          expect(ctx.res.sendStatus).toHaveBeenCalledWith(204)
         })
       })
     })
@@ -1228,7 +1223,7 @@ describe('TokenAccessController', function () {
             PrivilegeLevels.READ_ONLY,
             { pendingEditor: true }
           )
-          expect(ctx.res.sendStatus).to.have.been.calledWith(204)
+          expect(ctx.res.sendStatus).toHaveBeenCalledWith(204)
         })
       })
     })
@@ -1255,7 +1250,7 @@ describe('TokenAccessController', function () {
         expect(
           ctx.TokenAccessHandler.promises.moveReadAndWriteUserToReadOnly
         ).to.have.been.calledWith(ctx.user._id, ctx.project._id)
-        expect(ctx.res.sendStatus).to.have.been.calledWith(204)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(204)
       })
 
       it('writes a project audit log', function (ctx) {

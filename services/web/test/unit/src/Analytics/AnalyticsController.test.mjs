@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import sinon from 'sinon'
-import MockResponse from '../helpers/MockResponse.js'
+import MockResponse from '../helpers/MockResponse.mjs'
 const modulePath = new URL(
   '../../../../app/src/Features/Analytics/AnalyticsController.mjs',
   import.meta.url
@@ -20,24 +20,24 @@ describe('AnalyticsController', function () {
     }
 
     vi.doMock(
-      '../../../../app/src/Features/Analytics/AnalyticsManager.js',
+      '../../../../app/src/Features/Analytics/AnalyticsManager.mjs',
       () => ({
         default: ctx.AnalyticsManager,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Authentication/SessionManager.js',
+      '../../../../app/src/Features/Authentication/SessionManager.mjs',
       () => ({
         default: ctx.SessionManager,
       })
     )
 
-    vi.doMock('../../../../app/src/infrastructure/Features.js', () => ({
+    vi.doMock('../../../../app/src/infrastructure/Features.mjs', () => ({
       default: ctx.Features,
     }))
 
-    vi.doMock('../../../../app/src/infrastructure/GeoIpLookup.js', () => ({
+    vi.doMock('../../../../app/src/infrastructure/GeoIpLookup.mjs', () => ({
       default: (ctx.GeoIpLookup = {
         promises: {
           getDetails: sinon.stub().resolves(),
@@ -47,7 +47,7 @@ describe('AnalyticsController', function () {
 
     ctx.controller = (await import(modulePath)).default
 
-    ctx.res = new MockResponse()
+    ctx.res = new MockResponse(vi)
   })
 
   describe('updateEditingSession', function () {

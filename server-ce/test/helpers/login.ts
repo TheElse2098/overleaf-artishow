@@ -1,6 +1,6 @@
 import { runScript } from './hostAdminClient'
 
-const DEFAULT_PASSWORD = 'Passw0rd!'
+export const DEFAULT_PASSWORD = 'Passw0rd!'
 
 const createdUsers = new Set<string>()
 
@@ -57,7 +57,7 @@ export function ensureUserExists({
 
 export function login(username: string, password = DEFAULT_PASSWORD) {
   cy.session(
-    [username, password],
+    ['via-login', username, password],
     () => {
       cy.visit('/login')
       cy.get('input[name="email"]').type(username)

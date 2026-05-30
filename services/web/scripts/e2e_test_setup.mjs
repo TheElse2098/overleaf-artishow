@@ -3,13 +3,14 @@ import Path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { promiseMapWithLimit } from '@overleaf/promise-utils'
 import Settings from '@overleaf/settings'
-import { db } from '../app/src/infrastructure/mongodb.js'
-import GracefulShutdown from '../app/src/infrastructure/GracefulShutdown.js'
-import ProjectDeleter from '../app/src/Features/Project/ProjectDeleter.js'
-import SplitTestManager from '../app/src/Features/SplitTests/SplitTestManager.js'
-import UserDeleter from '../app/src/Features/User/UserDeleter.js'
-import UserRegistrationHandler from '../app/src/Features/User/UserRegistrationHandler.js'
-import { scriptRunner } from './lib/ScriptRunner.mjs'
+import { connectionPromise, db } from '../app/src/infrastructure/mongodb.mjs'
+import GracefulShutdown from '../app/src/infrastructure/GracefulShutdown.mjs'
+import ProjectDeleter from '../app/src/Features/Project/ProjectDeleter.mjs'
+import SplitTestManager from '../app/src/Features/SplitTests/SplitTestManager.mjs'
+import UserDeleter from '../app/src/Features/User/UserDeleter.mjs'
+import UserRegistrationHandler from '../app/src/Features/User/UserRegistrationHandler.mjs'
+import HistoryManager from '../app/src/Features/History/HistoryManager.mjs'
+import ProjectCreationHandler from '../app/src/Features/Project/ProjectCreationHandler.mjs'
 
 const MONOREPO = Path.dirname(
   Path.dirname(Path.dirname(Path.dirname(fileURLToPath(import.meta.url))))
@@ -17,30 +18,41 @@ const MONOREPO = Path.dirname(
 
 /**
  * @param {string} email
- * @return {Promise<void>}
+ * @return {Promise<string>}
  */
 async function createUser(email) {
   const user = await UserRegistrationHandler.promises.registerNewUser({
     email,
     password: process.env.CYPRESS_DEFAULT_PASSWORD,
   })
-  const features = email.startsWith('free@')
+  const features = email.startsWith('free+')
     ? Settings.defaultFeatures
     : Settings.features.professional
+  const isAdmin = email.startsWith('admin+')
+  let adminRoles = []
+  if (email.startsWith('admin+finance')) {
+    adminRoles = ['finance']
+  } else if (isAdmin) {
+    adminRoles = ['engineering']
+  }
   await db.users.updateOne(
     { _id: user._id },
     {
       $set: {
         // Set admin flag.
-        isAdmin: email.startsWith('admin@'),
+        isAdmin,
+        adminRoles,
         // Disable spell-checking for performance and flakiness reasons.
         'ace.spellCheckLanguage': '',
         // Override features.
         features,
         featuresOverrides: [{ features }],
+        // disable AI features
+        'aiFeatures.enabled': false,
       },
     }
   )
+  return user._id.toString()
 }
 
 /**
@@ -50,6 +62,8 @@ async function createUser(email) {
 async function deleteUser(email) {
   const user = await db.users.findOne({ email })
   if (!user) return
+  // Delete the subscriptions of the user
+  await db.subscriptions.deleteMany({ admin_id: user._id })
   // Soft delete the user.
   await UserDeleter.promises.deleteUser(user._id, {
     force: true,
@@ -58,17 +72,32 @@ async function deleteUser(email) {
   // Hard-delete the users projects.
   const projects = await db.deletedProjects
     .find(
-      { deletedProjectOwnerId: user._id },
-      { projection: { deletedProjectId: 1 } }
+      { 'deleterData.deletedProjectOwnerId': user._id },
+      { projection: { 'deleterData.deletedProjectId': 1 } }
     )
     .toArray()
   await promiseMapWithLimit(
     10,
-    projects.map(p => p.deletedProjectId),
+    projects.map(p => p.deleterData.deletedProjectId),
     ProjectDeleter.promises.expireDeletedProject
   )
   // Hard-delete the user.
   await UserDeleter.promises.expireDeletedUser(user._id)
+}
+
+export async function createProjectWithOldHistoryId(
+  userId,
+  projectName = 'old history id'
+) {
+  const historyId = parseInt(
+    await HistoryManager.promises.initializeProject(),
+    10
+  )
+  await ProjectCreationHandler.promises.createExampleProject(
+    userId,
+    projectName,
+    { overleaf: { history: { id: historyId } } }
+  )
 }
 
 /**
@@ -76,14 +105,23 @@ async function deleteUser(email) {
  * @return {Promise<void>}
  */
 async function provisionUser(email) {
+  if (!email.includes('+')) {
+    throw new Error(
+      `email=${email} should include the test suite name, e.g. user+project-sharing@example.com`
+    )
+  }
   await deleteUser(email)
-  await createUser(email)
+  const userId = await createUser(email)
+
+  if (email === 'user+old-history-id@example.com') {
+    await createProjectWithOldHistoryId(userId)
+  }
 }
 
 async function provisionUsers() {
   const emails = Settings.recaptcha.trustedUsers
   console.log(`> Provisioning ${emails.length} E2E users.`)
-  await promiseMapWithLimit(3, emails, provisionUser)
+  await promiseMapWithLimit(5, emails, provisionUser)
 }
 
 async function purgeNewUsers() {
@@ -95,30 +133,13 @@ async function purgeNewUsers() {
     .toArray()
   console.log(`> Deleting ${users.length} newly created E2E users.`)
   await promiseMapWithLimit(
-    3,
+    5,
     users.map(user => user.email),
     deleteUser
   )
 }
 
-const SPLIT_TEST_OVERRIDES = [
-  // disable writefull, oauth registration does not work in dev-env and their banners hide our buttons.
-  {
-    name: 'writefull-auto-account-creation',
-    versions: [
-      {
-        versionNumber: 1,
-        phase: 'release',
-        active: true,
-        analyticsEnabled: false,
-        variants: [{ name: 'enabled', rolloutPercent: 0, rolloutStripes: [] }],
-        createdAt: new Date(),
-      },
-    ],
-  },
-]
-
-async function provisionSplitTests() {
+export async function provisionSplitTests(merge = false, extraSplitTests = []) {
   const backup = Path.join(
     MONOREPO,
     'backup',
@@ -138,33 +159,71 @@ async function provisionSplitTests() {
   // Imported from production via https://www.overleaf.com/admin/split-test -> "Copy all split tests" -> "Copy for E2E test setup"
   const SPLIT_TESTS = JSON.parse(
     await fs.promises.readFile(
-      Path.join(MONOREPO, 'tools/saas-e2e/split-tests.json')
+      Path.join(MONOREPO, 'tools/saas-e2e/split-tests.json'),
+      'utf-8'
     )
   )
+  // Add WIP split test, we can update the JSON blob once this is in production
+  SPLIT_TESTS.push({
+    name: 'zip-from-history',
+    versions: [
+      {
+        versionNumber: 1,
+        createdAt: '2026-02-25T14:55:31.260Z',
+        active: true,
+        analyticsEnabled: false,
+        phase: 'release',
+        variants: [
+          {
+            name: 'enabled',
+            rolloutPercent: 0,
+            rolloutStripes: [],
+          },
+        ],
+      },
+    ],
+  })
   console.log(`> Importing ${SPLIT_TESTS.length} split-tests from production.`)
-  await SplitTestManager.replaceSplitTests(SPLIT_TESTS)
-  console.log(
-    `> Importing ${SPLIT_TEST_OVERRIDES.length} split-tests for test compatibility.`
-  )
-  await SplitTestManager.mergeSplitTests(SPLIT_TEST_OVERRIDES, true)
+  if (merge) {
+    await SplitTestManager.mergeSplitTests(SPLIT_TESTS, false)
+  } else {
+    await SplitTestManager.replaceSplitTests(SPLIT_TESTS)
+  }
+  if (extraSplitTests.length > 0) {
+    await SplitTestManager.mergeSplitTests(extraSplitTests, false)
+  }
+}
+
+async function checkNoTableScan() {
+  const client = await connectionPromise
+  const { notablescan } = await client
+    .db()
+    .admin()
+    .command({ getParameter: 1, notablescan: 1 })
+  if (!notablescan) {
+    console.error()
+    console.error('!!!  mongo is running without --notablescan')
+    console.error()
+    console.error('To fix this, either')
+    console.error('- run "internal$ bin/e2e_test_setup"')
+    console.error(
+      '- or add MONGO_EXTRA_ARGS=--notablescan in config/local.env and apply with "internal$ bin/up mongo"'
+    )
+    console.error()
+    throw new Error('mongo is running without --notablescan')
+  }
 }
 
 async function main() {
   if (process.env.NODE_ENV !== 'development') {
     throw new Error('only available in dev-env')
   }
+  await checkNoTableScan()
 
-  await purgeNewUsers()
-  await provisionUsers()
-  await provisionSplitTests()
+  await Promise.all([purgeNewUsers(), provisionUsers(), provisionSplitTests()])
 }
 
-await scriptRunner(main)
-await GracefulShutdown.gracefulShutdown(
-  {
-    close(cb) {
-      cb()
-    },
-  },
-  'SIGTERM'
-)
+if (import.meta.main) {
+  await main()
+  await GracefulShutdown.gracefulShutdown()
+}

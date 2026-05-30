@@ -1,10 +1,10 @@
 // @ts-check
-import { callbackify } from 'util'
+import { callbackify } from 'node:util'
 import { ObjectId } from 'mongodb'
 import config from 'config'
 import OError from '@overleaf/o-error'
 import { db } from './mongodb.js'
-import projectKey from './project_key.js'
+import projectKey from '@overleaf/object-persistor/src/ProjectKey.js'
 import chunkStore from '../lib/chunk_store/index.js'
 import {
   backupPersistor,
@@ -84,7 +84,7 @@ export async function healthCheck() {
 
   for (const historyId of HEALTH_CHECK_PROJECTS) {
     if (!(await projectHasLatestChunk(historyId))) {
-      throw new Error(`project has no history: ${historyId}`)
+      throw new OError('project has no history', { historyId })
     }
   }
 }

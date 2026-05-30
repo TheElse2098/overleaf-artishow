@@ -2,10 +2,10 @@ import { exec } from 'node:child_process'
 import { promisify } from 'node:util'
 import { expect } from 'chai'
 import logger from '@overleaf/logger'
-import { ObjectId, db } from '../../../app/src/infrastructure/mongodb.js'
+import { ObjectId, db } from '../../../app/src/infrastructure/mongodb.mjs'
 import fs from 'node:fs/promises'
 import UserHelper from './helpers/User.mjs'
-import UserGetter from '../../../app/src/Features/User/UserGetter.js'
+import UserGetter from '../../../app/src/Features/User/UserGetter.mjs'
 
 const User = UserHelper.promises
 const TEST_FILE_PATH = '/tmp/test-users.txt'

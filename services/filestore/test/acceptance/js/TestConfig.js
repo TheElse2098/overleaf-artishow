@@ -1,9 +1,7 @@
-const fs = require('node:fs')
-const Path = require('node:path')
-const crypto = require('node:crypto')
-const {
-  RootKeyEncryptionKey,
-} = require('@overleaf/object-persistor/src/PerProjectEncryptedS3Persistor')
+import fs from 'node:fs'
+import Path from 'node:path'
+import crypto from 'node:crypto'
+import { RootKeyEncryptionKey } from '@overleaf/object-persistor/src/PerProjectEncryptedS3Persistor.js'
 
 const AWS_S3_USER_FILES_STORAGE_CLASS =
   process.env.AWS_S3_USER_FILES_STORAGE_CLASS
@@ -49,7 +47,7 @@ function s3SSECConfig() {
       return S3SSECKeys
     },
     storageClass: {
-      [process.env.AWS_S3_USER_FILES_BUCKET_NAME]:
+      [process.env.AWS_S3_TEMPLATE_FILES_BUCKET_NAME]:
         AWS_S3_USER_FILES_STORAGE_CLASS,
     },
   }
@@ -63,7 +61,6 @@ function s3ConfigDefaultProviderCredentials() {
 
 function s3Stores() {
   return {
-    user_files: process.env.AWS_S3_USER_FILES_BUCKET_NAME,
     template_files: process.env.AWS_S3_TEMPLATE_FILES_BUCKET_NAME,
   }
 }
@@ -82,21 +79,21 @@ function gcsConfig() {
 
 function gcsStores() {
   return {
-    user_files: process.env.GCS_USER_FILES_BUCKET_NAME,
     template_files: process.env.GCS_TEMPLATE_FILES_BUCKET_NAME,
   }
 }
 
 function fsStores() {
   return {
-    user_files: Path.resolve(__dirname, '../../../user_files'),
-    template_files: Path.resolve(__dirname, '../../../template_files'),
+    template_files: Path.resolve(
+      import.meta.dirname,
+      '../../../template_files'
+    ),
   }
 }
 
 function fallbackStores(primaryConfig, fallbackConfig) {
   return {
-    [primaryConfig.user_files]: fallbackConfig.user_files,
     [primaryConfig.template_files]: fallbackConfig.template_files,
   }
 }
@@ -174,7 +171,7 @@ function checkForUnexpectedTestFile() {
     'TestConfig.js',
     'TestHelper.js',
   ]
-  for (const file of fs.readdirSync(__dirname).sort()) {
+  for (const file of fs.readdirSync(import.meta.dirname).sort()) {
     if (!awareOfSharding.includes(file)) {
       throw new Error(
         `Found new test file ${file}: All tests must be aware of the SHARD_ prefix.`
@@ -184,7 +181,7 @@ function checkForUnexpectedTestFile() {
 }
 checkForUnexpectedTestFile()
 
-module.exports = {
+export default {
   AWS_S3_USER_FILES_STORAGE_CLASS,
   BackendSettings,
   s3Config,

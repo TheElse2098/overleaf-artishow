@@ -16,9 +16,10 @@ block content
 										+bookmarkable-tabset-header('system-messages', 'System Messages', true)
 										+bookmarkable-tabset-header('open-sockets', 'Open Sockets')
 										+bookmarkable-tabset-header('open-close-editor', 'Open/Close Editor')
-										+bookmarkable-tabset-header('vm-use', 'Vm use')
+										+bookmarkable-tabset-header('privileges-matrix', 'Privileges Matrix')
 										if hasFeature('saas')
 											+bookmarkable-tabset-header('tpds', 'TPDS/Dropbox Management')
+											+bookmarkable-tabset-header('debug-projects', 'Debug Projects')
 
 								.tab-content
 									.tab-pane.active(role='tabpanel' id='system-messages')
@@ -29,11 +30,10 @@ block content
 										form(method='post' action='/admin/messages')
 											input(name='_csrf' type='hidden' value=csrfToken)
 											.form-group
-												label.form-label(for='content')
-												input.form-control(
+												label.form-label(for='system-message') Message
+												input#system-message.form-control(
 													name='content'
 													type='text'
-													placeholder='Message…'
 													required
 												)
 											button.btn.btn-primary(type='submit') Post Message
@@ -73,6 +73,41 @@ block content
 													button.btn.btn-danger(type='submit') Reopen Editor
 												p.small Will reopen the editor after closing.
 
+									.tab-pane(role='tabpanel' id='privileges-matrix')
+										p This matrix shows the access levels for different admin roles across various user management privileges. The matrix is automatically generated from the code-defined roles and capabilities.
+										if hasFeature('saas') && privilegesMatrix
+											.privileges-matrix-container
+												table.table.table-bordered.table-striped.privileges-matrix-table
+													thead
+														tr
+															th Webpage and privilege
+															th(colspan=privilegesMatrix.roles.length) Access Level Needed For Team
+														tr
+															th
+															each role in privilegesMatrix.roles
+																th= role.displayName
+													tbody
+														- let currentSection = null
+														each row in privilegesMatrix.privileges
+															- const privilege = row.privilege
+															if currentSection !== privilege.section
+																- currentSection = privilege.section
+																tr.section-header
+																	td(colspan=privilegesMatrix.roles.length + 1)
+																		strong= privilege.section
+															tr
+																td.privilege-label= privilege.label
+																each role in privilegesMatrix.roles
+																	- const accessLevel = row.access[role.id]
+																	td.access-cell(class=`access-${accessLevel}`)
+																		span.access-badge(class=`badge-${accessLevel}`)
+																			if accessLevel === 'yes'
+																				| Yes
+																			else
+																				| No
+										else
+											p The privileges matrix is not available in this environment.
+
 									if hasFeature('saas')
 										.tab-pane(role='tabpanel' id='tpds')
 											h3 Flush project to TPDS
@@ -80,11 +115,11 @@ block content
 												form.col-xs-6(method='post' action='/admin/flushProjectToTpds')
 													input(name='_csrf' type='hidden' value=csrfToken)
 													.form-group
-														label.form-label(for='project_id') project_id
+														label.form-label(for='project-id') project_id
 														input.form-control(
 															name='project_id'
+															id='project-id'
 															type='text'
-															placeholder='project_id'
 															required
 														)
 													.form-group
@@ -95,38 +130,24 @@ block content
 												form.col-xs-6(method='post' action='/admin/pollDropboxForUser')
 													input(name='_csrf' type='hidden' value=csrfToken)
 													.form-group
-														label.form-label(for='user_id') user_id
-														input.form-control(
-															name='user_id'
-															type='text'
-															placeholder='user_id'
-															required
-														)
+														label.form-label(for='user-id') user_id
+														input.form-control(name='user_id' id='user-id' type='text' required)
 													.form-group
 														button.btn-primary.btn(type='submit') Poll
-											.tab-pane(
-												role="tabpanel"
-												id='vm-use'
-										)
-												h2 Data usage of server
-												if typeof directorySizeBytes !== 'undefined' && directorySizeBytes !== null
-													p Directory size: #{directorySizeBytes} bytes.
-												else
-													p Directory size could not be determined.
-												if typeof historySizeBytes !== 'undefined' && historySizeBytes !== null
-													p History folder size: #{historySizeBytes} bytes.
-												else
-													p History size could not be determined.
-												if userFilesUsage
-													h2 User Files Disk Usage
-													table.table
-														thead
-																tr
-																	th User ID
-																	th Disk Usage (bytes)
-														tbody
-																each usage, userId in userFilesUsage
-																	tr
-																		td #{userId}
-																		td #{usage}
 
+										.tab-pane(role='tabpanel' id='debug-projects')
+											if debugProjects.length
+												table.table.table-striped
+													thead
+														tr
+															th Owner
+															th Project Name
+															th Last updated
+													tbody
+														each project in debugProjects
+															tr
+																td= project.owner_ref.email
+																td= project.name
+																td= moment(project.lastUpdated.toUTCString()).format('Do MMM YYYY, h:mm a') + ' UTC'
+											else
+												p.text-muted No debug projects found

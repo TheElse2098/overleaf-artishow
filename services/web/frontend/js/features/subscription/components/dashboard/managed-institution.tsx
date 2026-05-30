@@ -6,7 +6,7 @@ import { ManagedInstitution as Institution } from '../../../../../../types/subsc
 import { RowLink } from './row-link'
 import { debugConsole } from '@/utils/debugging'
 import getMeta from '@/utils/meta'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 
 type ManagedInstitutionProps = {
   institution: Institution
@@ -80,23 +80,21 @@ export default function ManagedInstitution({
       <div>
         <p>
           <span>Monthly metrics emails: </span>
-          {subscriptionChanging ? (
-            <i className="fa fa-spin fa-refresh" />
-          ) : (
-            <OLButton
-              variant="link"
-              className="btn-inline-link"
-              onClick={e =>
-                changeInstitutionalEmailSubscription(e, institution.v1Id)
-              }
-            >
-              {institution.metricsEmail.optedOutUserIds.includes(
-                getMeta('ol-user_id')!
-              )
-                ? t('subscribe')
-                : t('unsubscribe')}
-            </OLButton>
-          )}
+          <OLButton
+            variant="link"
+            className="btn-inline-link"
+            isLoading={subscriptionChanging}
+            loadingLabel={t('loading')}
+            onClick={e =>
+              changeInstitutionalEmailSubscription(e, institution.v1Id)
+            }
+          >
+            {institution.metricsEmail.optedOutUserIds.includes(
+              getMeta('ol-user_id')!
+            )
+              ? t('subscribe')
+              : t('unsubscribe')}
+          </OLButton>
         </p>
       </div>
       <hr />

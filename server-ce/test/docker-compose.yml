@@ -1,4 +1,3 @@
-version: '2.2'
 services:
   sharelatex:
     image: ${IMAGE_TAG_CE:-sharelatex/sharelatex:latest}
@@ -11,18 +10,18 @@ services:
       mailtrap:
         condition: service_started
     environment:
-      OVERLEAF_SITE_URL: 'http://sharelatex'
-      OVERLEAF_APP_NAME: Overleaf Community Edition
+      OVERLEAF_SITE_URL: "http://sharelatex"
+      OVERLEAF_APP_NAME: E2E test
       OVERLEAF_MONGO_URL: mongodb://mongo/sharelatex?directConnection=true
       OVERLEAF_REDIS_HOST: redis
       REDIS_HOST: redis
-      OVERLEAF_EMAIL_FROM_ADDRESS: 'welcome@example.com'
-      OVERLEAF_EMAIL_SMTP_HOST: 'mailtrap'
-      OVERLEAF_EMAIL_SMTP_PORT: '25'
-      OVERLEAF_EMAIL_SMTP_IGNORE_TLS: 'true'
-      ENABLED_LINKED_FILE_TYPES: 'project_file,project_output_file'
-      ENABLE_CONVERSIONS: 'true'
-      EMAIL_CONFIRMATION_DISABLED: 'true'
+      OVERLEAF_EMAIL_FROM_ADDRESS: "welcome@example.com"
+      OVERLEAF_EMAIL_SMTP_HOST: "mailtrap"
+      OVERLEAF_EMAIL_SMTP_PORT: "25"
+      OVERLEAF_EMAIL_SMTP_IGNORE_TLS: "true"
+      ENABLED_LINKED_FILE_TYPES: "project_file,project_output_file"
+      ENABLE_CONVERSIONS: "true"
+      EMAIL_CONFIRMATION_DISABLED: "true"
     healthcheck:
       test: curl --fail http://localhost:3000/status
       interval: 3s
@@ -32,13 +31,15 @@ services:
   mailtrap:
     image: mailtrap
     environment:
-      MAILTRAP_PASSWORD: 'password-for-mailtrap'
+      MAILTRAP_PASSWORD: "password-for-mailtrap"
 
   mongo:
     image: mongo:8.0.11
-    command: '--replSet overleaf'
+    command: "--replSet overleaf"
     volumes:
       - ../bin/shared/mongodb-init-replica-set.js:/docker-entrypoint-initdb.d/mongodb-init-replica-set.js
+      - ../bin/shared/mongodb-docker-entrypoint-wait.sh:/mongodb-docker-entrypoint-wait.sh
+    entrypoint: /mongodb-docker-entrypoint-wait.sh
     environment:
       MONGO_INITDB_DATABASE: sharelatex
     extra_hosts:
@@ -65,17 +66,29 @@ services:
     command: ["/server-pro-start.sh"]
 
   e2e:
-    image: cypress/included:13.13.2
+    build:
+      context: ../../dockerfiles/cypress
+      args:
+        - USER_UID
+        - USER_GID
     stop_grace_period: 0s
-    entrypoint: npm
+    entrypoint: yarn
     command: run cypress:run
-    working_dir: /e2e
+    # See comment in Makefile regarding matching file paths
+    working_dir: $PWD
     volumes:
-      - ./:/e2e
+      - $PWD:$PWD
+      - $MONOREPO/libraries:$MONOREPO/libraries:ro
+      - $MONOREPO/node_modules:$MONOREPO/node_modules:ro
+      - $MONOREPO/.yarn:$MONOREPO/.yarn:ro
+      - $MONOREPO/.yarnrc.yml:$MONOREPO/.yarnrc.yml:ro
+      - $MONOREPO/package.json:$MONOREPO/package.json:ro
+      - $MONOREPO/yarn.lock:$MONOREPO/yarn.lock:ro
     environment:
+      MONOREPO:
       CYPRESS_SHARD:
       CYPRESS_BASE_URL: http://sharelatex
-      SPEC_PATTERN: '**/*.spec.{js,jsx,ts,tsx}'
+      CYPRESS_FULL_FILESTORE_MIGRATION:
     depends_on:
       sharelatex:
         condition: service_healthy
@@ -83,26 +96,14 @@ services:
         condition: service_healthy
 
   e2e-open:
-    image: cypress/included:13.13.2
-    stop_grace_period: 0s
-    entrypoint: npm
+    extends:
+      service: e2e
     command: run cypress:open
-    working_dir: /e2e
     volumes:
-      - ./:/e2e
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ${XAUTHORITY:-/dev/null}:/home/node/.Xauthority
-    user: "${DOCKER_USER:-1000:1000}"
     environment:
-      CYPRESS_SHARD:
-      CYPRESS_BASE_URL: http://sharelatex
-      SPEC_PATTERN: '**/*.spec.{js,jsx,ts,tsx}'
       DISPLAY: ${DISPLAY:-:0}
-    depends_on:
-      sharelatex:
-        condition: service_healthy
-      host-admin:
-        condition: service_healthy
 
   host-admin:
     build: .
@@ -111,19 +112,24 @@ services:
     working_dir: $PWD
     volumes:
       - $PWD:$PWD
+      - $MONOREPO/libraries:$MONOREPO/libraries:ro
+      - $MONOREPO/node_modules:$MONOREPO/node_modules:ro
+      - $MONOREPO/.yarn:$MONOREPO/.yarn:ro
+      - $MONOREPO/.yarnrc.yml:$MONOREPO/.yarnrc.yml:ro
+      - $MONOREPO/package.json:$MONOREPO/package.json:ro
+      - $MONOREPO/yarn.lock:$MONOREPO/yarn.lock:ro
       - /var/run/docker.sock:/var/run/docker.sock
     stop_grace_period: 0s
     environment:
+      CI:
       PWD:
+      MONOREPO:
       CYPRESS_SHARD:
       COMPOSE_PROJECT_NAME:
       TEX_LIVE_DOCKER_IMAGE:
       ALL_TEX_LIVE_DOCKER_IMAGES:
-      IMAGE_TAG_CE: ${IMAGE_TAG_CE:-sharelatex/sharelatex:latest}
-      IMAGE_TAG_PRO: ${IMAGE_TAG_PRO:-quay.io/sharelatex/sharelatex-pro:latest}
-    depends_on:
-      mongo:
-        condition: service_healthy
+      IMAGE_TAG_CE:
+      IMAGE_TAG_PRO:
     healthcheck:
       test: curl --fail http://localhost/status
       interval: 3s
@@ -134,9 +140,9 @@ services:
     restart: always
     image: us-east1-docker.pkg.dev/overleaf-ops/ol-docker/saml-test
     environment:
-      SAML_TEST_SP_ENTITY_ID: 'sharelatex-test-saml'
-      SAML_BASE_URL_PATH: 'http://saml/simplesaml/'
-      SAML_TEST_SP_LOCATION: 'http://sharelatex/saml/callback'
+      SAML_TEST_SP_ENTITY_ID: "sharelatex-test-saml"
+      SAML_BASE_URL_PATH: "http://saml/simplesaml/"
+      SAML_TEST_SP_LOCATION: "http://sharelatex/saml/callback"
 
   ldap:
     restart: always
@@ -145,6 +151,6 @@ services:
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63877553
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63871343
     command:
-      - 'bash'
-      - '-c'
-      - 'ulimit -n 1024 && exec bash /run.sh'
+      - "bash"
+      - "-c"
+      - "ulimit -n 1024 && exec bash /run.sh"

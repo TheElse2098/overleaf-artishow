@@ -2,16 +2,17 @@ import { useState } from 'react'
 import { SubscriptionDashModalIds } from '../../../../../../../../types/subscription/dashboard/modal-ids'
 import { Trans, useTranslation } from 'react-i18next'
 import { useSubscriptionDashboardContext } from '@/features/subscription/context/subscription-dashboard-context'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 import { postJSON } from '@/infrastructure/fetch-json'
 import { useLocation } from '@/shared/hooks/use-location'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLNotification from '@/shared/components/ol/ol-notification'
 import { PaidSubscription } from '../../../../../../../../types/subscription/dashboard/subscription'
 
 export function ConfirmUnpauseSubscriptionModal() {
@@ -93,6 +94,7 @@ export function ConfirmUnpauseSubscriptionModal() {
           variant="primary"
           disabled={inflight}
           isLoading={inflight}
+          loadingLabel={t('unpausing')}
           onClick={handleConfirmUnpause}
         >
           {t('unpause_subscription')}

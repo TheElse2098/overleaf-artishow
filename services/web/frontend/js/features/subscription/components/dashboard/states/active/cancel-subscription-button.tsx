@@ -1,20 +1,21 @@
 import { useTranslation } from 'react-i18next'
 import * as eventTracking from '../../../../../../infrastructure/event-tracking'
 import { useSubscriptionDashboardContext } from '../../../../context/subscription-dashboard-context'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 import { PaidSubscription } from '../../../../../../../../types/subscription/dashboard/subscription'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useLocation } from '@/shared/hooks/use-location'
+import { stripHasSubscription } from '../../../../data/subscription-url'
 
 export function CancelSubscriptionButton() {
   const { t } = useTranslation()
+  const location = useLocation()
   const {
     recurlyLoadError,
     personalSubscription,
     setModalIdShown,
     setShowCancellation,
   } = useSubscriptionDashboardContext()
-  const location = useLocation()
 
   const subscription = personalSubscription as PaidSubscription
   const isInTrial =
@@ -31,18 +32,17 @@ export function CancelSubscriptionButton() {
     useFeatureFlag('pause-subscription') &&
     !hasPendingOrActivePause &&
     planIsEligibleForPause
-  const shouldContactSupport =
-    subscription.payment.state === 'paused' &&
-    subscription.payment.remainingPauseCycles === 0
 
   function handleCancelSubscriptionClick() {
     eventTracking.sendMB('subscription-page-cancel-button-click', {
       plan_code: subscription?.planCode,
       is_trial: isInTrial,
     })
-    if (shouldContactSupport) {
-      location.assign('/contact')
-    } else if (enablePause) {
+    const url = location.toString()
+    if (url) {
+      window.history.replaceState(null, '', stripHasSubscription(url))
+    }
+    if (enablePause) {
       setModalIdShown('pause-subscription')
     } else {
       setShowCancellation(true)

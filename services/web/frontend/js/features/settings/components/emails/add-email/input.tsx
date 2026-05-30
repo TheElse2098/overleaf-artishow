@@ -11,7 +11,7 @@ import { getJSON } from '../../../../../infrastructure/fetch-json'
 import useAbortController from '../../../../../shared/hooks/use-abort-controller'
 import domainBlocklist from '../../../domain-blocklist'
 import { debugConsole } from '@/utils/debugging'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
 
 const LOCAL_AND_DOMAIN_REGEX = /([^@]+)@(.+)/
 
@@ -27,12 +27,22 @@ function matchLocalAndDomain(emailHint: string) {
 export type DomainInfo = {
   hostname: string
   confirmed?: boolean
+  capturedByGroup?: boolean
   university: {
     id: number
     name: string
     ssoEnabled?: boolean
     ssoBeta?: boolean
     departments?: string[]
+  }
+  group: {
+    teamName?: string
+    managedUsersEnabled?: boolean
+    domainCaptureEnabled?: boolean
+    ssoConfig?: {
+      useUkamfSettings?: boolean
+      enabled: boolean
+    }
   }
 }
 
@@ -177,7 +187,6 @@ function Input({ onChange, handleAddNewEmail }: InputProps) {
         onChange={handleEmailChange}
         onKeyDown={handleKeyDownEvent}
         value={inputValue || ''}
-        placeholder="e.g. johndoe@mit.edu"
         ref={inputRef}
       />
     </div>

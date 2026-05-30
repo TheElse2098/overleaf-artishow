@@ -5,7 +5,7 @@ import { useSSOContext, SSOSubscription } from '../context/sso-context'
 import { SSOLinkingWidget } from './linking/sso-widget'
 import getMeta from '../../../utils/meta'
 import { useBroadcastUser } from '@/shared/hooks/user-channel/use-broadcast-user'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLNotification from '@/shared/components/ol/ol-notification'
 
 const availableIntegrationLinkingWidgets = importOverleafModules(
   'integrationLinkingWidgets'
@@ -86,22 +86,18 @@ function LinkingSection() {
 
   return (
     <>
-      <h3 id="integrations">{t('integrations')}</h3>
-      <p className="small">{t('linked_accounts_explained')}</p>
       {haslangFeedbackLinkingWidgets ? (
         <>
           <h3 id="language-feedback">{t('ai_features')}</h3>
-          <div className="settings-widgets-container">
-            {langFeedbackLinkingWidgets.map(
-              ({ import: { default: widget }, path }, widgetIndex) => (
-                <ModuleLinkingWidget
-                  key={path}
-                  ModuleComponent={widget}
-                  isLast={widgetIndex === langFeedbackLinkingWidgets.length - 1}
-                />
-              )
-            )}
-          </div>
+          {langFeedbackLinkingWidgets.map(
+            ({ import: { default: widget }, path }, widgetIndex) => (
+              <ModuleLinkingWidget
+                key={path}
+                ModuleComponent={widget}
+                isLast={widgetIndex === langFeedbackLinkingWidgets.length - 1}
+              />
+            )
+          )}
         </>
       ) : null}
       {hasIntegrationLinkingSection ? (

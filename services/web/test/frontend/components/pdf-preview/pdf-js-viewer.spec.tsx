@@ -1,7 +1,7 @@
 import { EditorProviders } from '../../helpers/editor-providers'
 import PdfJsViewer from '../../../../frontend/js/features/pdf-preview/components/pdf-js-viewer'
 import { mockScope } from './scope'
-import { getContainerEl } from 'cypress/react18'
+import { getContainerEl } from 'cypress/react'
 import { unmountComponentAtNode } from 'react-dom'
 import { PdfPreviewProvider } from '../../../../frontend/js/features/pdf-preview/components/pdf-preview-provider'
 
@@ -31,10 +31,12 @@ describe('<PdfJSViewer/>', function () {
 
     cy.waitForCompile({ pdf: true })
 
-    cy.findByRole('region', { name: `Page ${FSI}1${PDI}` })
-    cy.findByRole('region', { name: `Page ${FSI}2${PDI}` })
-    cy.findByRole('region', { name: `Page ${FSI}3${PDI}` })
-    cy.findByRole('region', { name: `Page ${FSI}4${PDI}` }).should('not.exist')
+    cy.findByTestId('pdfjs-viewer-inner').within(() => {
+      cy.findByLabelText(`Page ${FSI}1${PDI}`)
+      cy.findByLabelText(`Page ${FSI}2${PDI}`)
+      cy.findByLabelText(`Page ${FSI}3${PDI}`)
+      cy.findByLabelText(`Page ${FSI}4${PDI}`).should('not.exist')
+    })
 
     cy.contains('Your Paper')
   })
@@ -96,7 +98,9 @@ describe('<PdfJSViewer/>', function () {
 
     cy.waitForCompile({ pdf: true })
 
-    cy.findByRole('region', { name: `Page ${FSI}1${PDI}` })
+    cy.findByTestId('pdfjs-viewer-inner').within(() => {
+      cy.findByLabelText(`Page ${FSI}1${PDI}`)
+    })
 
     cy.then(() => unmountComponentAtNode(getContainerEl()))
   })

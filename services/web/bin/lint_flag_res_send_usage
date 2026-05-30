@@ -14,13 +14,14 @@ POTENTIAL_SEND_USAGE=$(\
     --regex "\.send\b" \
     --regex "\bsend(" \
 )
-HELPER_MODULE="app/src/infrastructure/Response.js"
-if [[ "$POTENTIAL_SEND_USAGE" == "$HELPER_MODULE" ]]; then
+HELPER_MODULE="app/src/infrastructure/Response.mjs"
+MOCK_MODULE="test/acceptance/src/mocks/MockResponse.mjs"
+if [[ "$POTENTIAL_SEND_USAGE" == "$HELPER_MODULE" ]] || [[ "$file" == "$MOCK_MODULE" ]]; then
   exit 0
 fi
 
 for file in ${POTENTIAL_SEND_USAGE}; do
-  if [[ "$file" == "$HELPER_MODULE" ]]; then
+  if [[ "$file" == "$HELPER_MODULE" ]] || [[ "$file" == "$MOCK_MODULE" ]]; then
     continue
   fi
 

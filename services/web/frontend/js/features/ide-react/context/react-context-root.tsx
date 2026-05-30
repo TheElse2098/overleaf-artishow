@@ -1,4 +1,4 @@
-import React, { FC, PropsWithChildren } from 'react'
+import React, { ElementType, FC, PropsWithChildren } from 'react'
 import { ChatProvider } from '@/features/chat/context/chat-context'
 import { ConnectionProvider } from './connection-context'
 import { DetachCompileProvider } from '@/shared/context/detach-compile-context'
@@ -20,7 +20,7 @@ import { OnlineUsersProvider } from '@/features/ide-react/context/online-users-c
 import { OutlineProvider } from '@/features/ide-react/context/outline-context'
 import { PermissionsProvider } from '@/features/ide-react/context/permissions-context'
 import { ProjectProvider } from '@/shared/context/project-context'
-import { RailProvider } from '@/features/ide-redesign/contexts/rail-context'
+import { RailProvider } from '@/features/ide-react/context/rail-context'
 import { ProjectSettingsProvider } from '@/features/editor-left-menu/context/project-settings-context'
 import { ReferencesProvider } from '@/features/ide-react/context/references-context'
 import { SnapshotProvider } from '@/features/ide-react/context/snapshot-context'
@@ -28,8 +28,16 @@ import { SplitTestProvider } from '@/shared/context/split-test-context'
 import { UserProvider } from '@/shared/context/user-context'
 import { UserFeaturesProvider } from '@/shared/context/user-features-context'
 import { UserSettingsProvider } from '@/shared/context/user-settings-context'
-import { IdeRedesignSwitcherProvider } from './ide-redesign-switcher-context'
 import { CommandRegistryProvider } from './command-registry-context'
+import { EditorSelectionProvider } from '@/shared/context/editor-selection-context'
+import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
+import { TutorialProvider } from '@/shared/context/tutorial-context'
+import { TabsProvider } from './tabs-context'
+
+const rootContextProviders = importOverleafModules('rootContextProviders') as {
+  import: { default: ElementType }
+  path: string
+}[]
 
 export const ReactContextRoot: FC<
   React.PropsWithChildren<{
@@ -65,72 +73,92 @@ export const ReactContextRoot: FC<
     SplitTestProvider,
     UserProvider,
     UserSettingsProvider,
-    IdeRedesignSwitcherProvider,
     CommandRegistryProvider,
     UserFeaturesProvider,
+    EditorSelectionProvider,
+    TutorialProvider,
+    TabsProvider,
     ...providers,
   }
+
+  // Extract dynamic providers from modules
+  const dynamicProviders = rootContextProviders.map(
+    module => module.import.default
+  )
+
+  // Wrap children with all dynamic providers from outside to inside
+  const childrenWrappedWithDynamicProviders =
+    dynamicProviders.reduceRight<React.ReactElement>(
+      (acc, Provider) => <Provider>{acc}</Provider>,
+      <>{children}</>
+    )
 
   return (
     <Providers.SplitTestProvider>
       <Providers.ModalsContextProvider>
         <Providers.ConnectionProvider>
           <Providers.ProjectProvider>
-            <Providers.IdeReactProvider>
-              <Providers.UserProvider>
-                <Providers.UserSettingsProvider>
+            <Providers.UserSettingsProvider>
+              <Providers.IdeReactProvider>
+                <Providers.UserProvider>
                   <Providers.SnapshotProvider>
                     <Providers.DetachProvider>
-                      <Providers.EditorPropertiesProvider>
+                      <Providers.EditorOpenDocProvider>
                         <Providers.EditorViewProvider>
-                          <Providers.EditorOpenDocProvider>
+                          <Providers.EditorPropertiesProvider>
                             <Providers.EditorProvider>
-                              <Providers.FileTreeDataProvider>
-                                <Providers.FileTreePathProvider>
-                                  <Providers.ReferencesProvider>
+                              <Providers.TutorialProvider>
+                                <Providers.FileTreeDataProvider>
+                                  <Providers.FileTreePathProvider>
                                     <Providers.UserFeaturesProvider>
                                       <Providers.PermissionsProvider>
                                         <Providers.RailProvider>
                                           <Providers.LayoutProvider>
                                             <Providers.ProjectSettingsProvider>
                                               <Providers.EditorManagerProvider>
-                                                <Providers.LocalCompileProvider>
-                                                  <Providers.DetachCompileProvider>
-                                                    <Providers.ChatProvider>
-                                                      <Providers.FileTreeOpenProvider>
-                                                        <Providers.OnlineUsersProvider>
-                                                          <Providers.MetadataProvider>
-                                                            <Providers.OutlineProvider>
-                                                              <Providers.IdeRedesignSwitcherProvider>
-                                                                <Providers.CommandRegistryProvider>
-                                                                  {children}
-                                                                </Providers.CommandRegistryProvider>
-                                                              </Providers.IdeRedesignSwitcherProvider>
-                                                            </Providers.OutlineProvider>
-                                                          </Providers.MetadataProvider>
-                                                        </Providers.OnlineUsersProvider>
-                                                      </Providers.FileTreeOpenProvider>
-                                                    </Providers.ChatProvider>
-                                                  </Providers.DetachCompileProvider>
-                                                </Providers.LocalCompileProvider>
+                                                <Providers.ReferencesProvider>
+                                                  <Providers.LocalCompileProvider>
+                                                    <Providers.DetachCompileProvider>
+                                                      <Providers.ChatProvider>
+                                                        <Providers.FileTreeOpenProvider>
+                                                          <Providers.TabsProvider>
+                                                            <Providers.OnlineUsersProvider>
+                                                              <Providers.MetadataProvider>
+                                                                <Providers.OutlineProvider>
+                                                                  <Providers.CommandRegistryProvider>
+                                                                    <Providers.EditorSelectionProvider>
+                                                                      {
+                                                                        childrenWrappedWithDynamicProviders
+                                                                      }
+                                                                    </Providers.EditorSelectionProvider>
+                                                                  </Providers.CommandRegistryProvider>
+                                                                </Providers.OutlineProvider>
+                                                              </Providers.MetadataProvider>
+                                                            </Providers.OnlineUsersProvider>
+                                                          </Providers.TabsProvider>
+                                                        </Providers.FileTreeOpenProvider>
+                                                      </Providers.ChatProvider>
+                                                    </Providers.DetachCompileProvider>
+                                                  </Providers.LocalCompileProvider>
+                                                </Providers.ReferencesProvider>
                                               </Providers.EditorManagerProvider>
                                             </Providers.ProjectSettingsProvider>
                                           </Providers.LayoutProvider>
                                         </Providers.RailProvider>
                                       </Providers.PermissionsProvider>
                                     </Providers.UserFeaturesProvider>
-                                  </Providers.ReferencesProvider>
-                                </Providers.FileTreePathProvider>
-                              </Providers.FileTreeDataProvider>
+                                  </Providers.FileTreePathProvider>
+                                </Providers.FileTreeDataProvider>
+                              </Providers.TutorialProvider>
                             </Providers.EditorProvider>
-                          </Providers.EditorOpenDocProvider>
+                          </Providers.EditorPropertiesProvider>
                         </Providers.EditorViewProvider>
-                      </Providers.EditorPropertiesProvider>
+                      </Providers.EditorOpenDocProvider>
                     </Providers.DetachProvider>
                   </Providers.SnapshotProvider>
-                </Providers.UserSettingsProvider>
-              </Providers.UserProvider>
-            </Providers.IdeReactProvider>
+                </Providers.UserProvider>
+              </Providers.IdeReactProvider>
+            </Providers.UserSettingsProvider>
           </Providers.ProjectProvider>
         </Providers.ConnectionProvider>
       </Providers.ModalsContextProvider>

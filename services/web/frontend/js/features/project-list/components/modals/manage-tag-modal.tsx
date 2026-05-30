@@ -8,17 +8,19 @@ import { Tag } from '../../../../../../app/src/Features/Tags/types'
 import { getTagColor } from '../../util/tag'
 import { ColorPicker } from '../color-picker/color-picker'
 import { debugConsole } from '@/utils/debugging'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLForm from '@/features/ui/components/ol/ol-form'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLForm from '@/shared/components/ol/ol-form'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLButton from '@/shared/components/ol/ol-button'
 import Notification from '@/shared/components/notification'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
 
 type ManageTagModalProps = {
   id: string
@@ -88,18 +90,18 @@ export function ManageTagModal({
 
   return (
     <OLModal show animation onHide={onClose} id={id} backdrop="static">
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{t('edit_tag')}</OLModalTitle>
       </OLModalHeader>
 
       <OLModalBody>
         <OLForm onSubmit={handleSubmit}>
-          <OLFormGroup>
-            <input
+          <OLFormGroup controlId="manage-tag-modal">
+            <OLFormLabel>{t('manage_tag')}</OLFormLabel>
+            <OLFormControl
               ref={autoFocusedRef}
               className="form-control"
               type="text"
-              placeholder="Tag Name"
               name="new-tag-name"
               value={newTagName === undefined ? (tag.name ?? '') : newTagName}
               required
@@ -126,6 +128,7 @@ export function ManageTagModal({
           className="me-auto"
           disabled={isDeleteLoading || isUpdateLoading}
           isLoading={isDeleteLoading}
+          loadingLabel={t('deleting')}
         >
           {t('delete_tag')}
         </OLButton>
@@ -141,11 +144,12 @@ export function ManageTagModal({
           onClick={() => runUpdateTag(tag._id)}
           disabled={Boolean(
             isUpdateLoading ||
-              isDeleteLoading ||
-              !newTagName?.length ||
-              (newTagName === tag?.name && selectedColor === getTagColor(tag))
+            isDeleteLoading ||
+            !newTagName?.length ||
+            (newTagName === tag?.name && selectedColor === getTagColor(tag))
           )}
           isLoading={isUpdateLoading}
+          loadingLabel={t('saving')}
         >
           {t('save_or_cancel-save')}
         </OLButton>

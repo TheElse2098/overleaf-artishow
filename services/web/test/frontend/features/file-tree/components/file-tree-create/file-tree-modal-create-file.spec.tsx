@@ -230,11 +230,11 @@ describe('<FileTreeModalCreateFile/>', function () {
         status: 'success',
         outputFiles: [
           {
-            build: 'test',
+            build: '1234-5678',
             path: 'baz.jpg',
           },
           {
-            build: 'test',
+            build: '1234-5678',
             path: 'ball.jpg',
           },
         ],
@@ -299,7 +299,7 @@ describe('<FileTreeModalCreateFile/>', function () {
         data: {
           source_project_id: 'project-2',
           source_output_file_path: 'ball.jpg',
-          build_id: 'test',
+          build_id: '1234-5678',
         },
       })
   })
@@ -387,6 +387,100 @@ describe('<FileTreeModalCreateFile/>', function () {
       })
   })
 
+  it('imports from a pasted URL and removes a trailing dot', function () {
+    cy.intercept('/project/*/linked_file', {
+      statusCode: 204,
+    }).as('createLinkedFile')
+
+    cy.mount(
+      <EditorProviders>
+        <FileTreeProvider>
+          <OpenWithMode mode="url" />
+        </FileTreeProvider>
+      </EditorProviders>
+    )
+
+    cy.wrap(null).then(() => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData('text/plain', 'https://example.com/example.tex.')
+
+      cy.findByLabelText('URL to fetch the file from').trigger('paste', {
+        clipboardData,
+      })
+    })
+
+    cy.findByLabelText('URL to fetch the file from').should(
+      'have.value',
+      'https://example.com/example.tex'
+    )
+
+    cy.findByLabelText('File Name In This Project').should(
+      'have.value',
+      'example.tex'
+    )
+
+    cy.findByLabelText('File Name In This Project').clear()
+    cy.findByLabelText('File Name In This Project').type('test.tex')
+
+    cy.findByRole('button', { name: 'Create' }).click()
+
+    cy.get('@createLinkedFile')
+      .its('request.body')
+      .should('deep.equal', {
+        name: 'test.tex',
+        provider: 'url',
+        parent_folder_id: 'root-folder-id',
+        data: { url: 'https://example.com/example.tex' },
+      })
+  })
+
+  it('imports from a pasted URL without a trailing dot and keeps it unchanged', function () {
+    cy.intercept('/project/*/linked_file', {
+      statusCode: 204,
+    }).as('createLinkedFile')
+
+    cy.mount(
+      <EditorProviders>
+        <FileTreeProvider>
+          <OpenWithMode mode="url" />
+        </FileTreeProvider>
+      </EditorProviders>
+    )
+
+    cy.wrap(null).then(() => {
+      const clipboardData = new DataTransfer()
+      clipboardData.setData('text/plain', 'https://example.com/example.tex')
+
+      cy.findByLabelText('URL to fetch the file from').trigger('paste', {
+        clipboardData,
+      })
+    })
+
+    cy.findByLabelText('URL to fetch the file from').should(
+      'have.value',
+      'https://example.com/example.tex'
+    )
+
+    cy.findByLabelText('File Name In This Project').should(
+      'have.value',
+      'example.tex'
+    )
+
+    cy.findByLabelText('File Name In This Project').clear()
+    cy.findByLabelText('File Name In This Project').type('test.tex')
+
+    cy.findByRole('button', { name: 'Create' }).click()
+
+    cy.get('@createLinkedFile')
+      .its('request.body')
+      .should('deep.equal', {
+        name: 'test.tex',
+        provider: 'url',
+        parent_folder_id: 'root-folder-id',
+        data: { url: 'https://example.com/example.tex' },
+      })
+  })
+
   it('uploads a dropped file', function () {
     cy.intercept('post', '/project/*/upload?folder_id=root-folder-id', {
       statusCode: 204,
@@ -436,13 +530,14 @@ describe('<FileTreeModalCreateFile/>', function () {
 
     // the submit button should not be present
     cy.findByRole('button', { name: 'Create' }).should('not.exist')
+    cy.findByRole('button', { name: 'Select files' }).should('be.focused')
 
     cy.wrap(null).then(() => {
       const clipboardData = new DataTransfer()
       clipboardData.items.add(
         new File(['test'], 'test.tex', { type: 'text/plain' })
       )
-      cy.findByLabelText('Uppy Dashboard').trigger('paste', { clipboardData })
+      cy.focused().trigger('paste', { clipboardData })
     })
 
     cy.wait('@uploadFile')

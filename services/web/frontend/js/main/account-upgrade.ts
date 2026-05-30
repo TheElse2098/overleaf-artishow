@@ -3,7 +3,9 @@ import * as eventTracking from '../infrastructure/event-tracking'
 export function startFreeTrial(
   source: string,
   variant?: string,
-  segmentation?: eventTracking.Segmentation
+  segmentation?: eventTracking.Segmentation,
+  extraSearchParams?: Record<string, string>,
+  shouldNavigate: boolean = true
 ) {
   const eventSegmentation: Record<string, string> = {
     'paywall-type': source,
@@ -16,11 +18,16 @@ export function startFreeTrial(
   eventTracking.send('subscription-funnel', 'upgraded-free-trial', source)
   eventTracking.sendMB('paywall-click', eventSegmentation)
 
-  const searchParams = new URLSearchParams({
-    itm_campaign: source,
-  })
+  if (shouldNavigate) {
+    const searchParams = new URLSearchParams({
+      itm_campaign: source,
+      ...extraSearchParams,
+    })
 
-  window.open(`/user/subscription/choose-your-plan?${searchParams.toString()}`)
+    window.open(
+      `/user/subscription/choose-your-plan?${searchParams.toString()}`
+    )
+  }
 }
 
 export function upgradePlan(source: string) {

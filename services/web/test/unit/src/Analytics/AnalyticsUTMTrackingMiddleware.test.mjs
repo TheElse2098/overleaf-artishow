@@ -1,7 +1,7 @@
 import { assert, vi } from 'vitest'
 import sinon from 'sinon'
-import MockRequest from '../helpers/MockRequest.js'
-import MockResponse from '../helpers/MockResponse.js'
+import MockRequest from '../helpers/MockRequest.mjs'
+import MockResponse from '../helpers/MockResponse.mjs'
 
 const MODULE_PATH = new URL(
   '../../../../app/src/Features/Analytics/AnalyticsUTMTrackingMiddleware',
@@ -13,8 +13,8 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
     ctx.analyticsId = 'ecdb935a-52f3-4f91-aebc-7a70d2ffbb55'
     ctx.userId = '61795fcb013504bb7b663092'
 
-    ctx.req = new MockRequest()
-    ctx.res = new MockResponse()
+    ctx.req = new MockRequest(vi)
+    ctx.res = new MockResponse(vi)
     ctx.next = sinon.stub().returns()
     ctx.req.session = {
       user: {
@@ -24,7 +24,7 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
     }
 
     vi.doMock(
-      '../../../../app/src/Features/Analytics/AnalyticsManager.js',
+      '../../../../app/src/Features/Analytics/AnalyticsManager.mjs',
       () => ({
         default: (ctx.AnalyticsManager = {
           recordEventForSession: sinon.stub().resolves(),
@@ -77,6 +77,10 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
         utm_content: 'foo-bar',
         utm_term: 'overridden',
       }
+
+      ctx.req.headers = {
+        host: 'test-domain.overleaf.com',
+      }
       ctx.middleware(ctx.req, ctx.res, ctx.next)
     })
 
@@ -101,6 +105,7 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
           utm_campaign: 'Some Campaign',
           utm_content: 'foo-bar',
           utm_term: 'overridden',
+          domain: 'test-domain',
         }
       )
     })
@@ -124,6 +129,9 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
         utm_campaign: 'Some Campaign',
         utm_term: 'foo',
       }
+      ctx.req.headers = {
+        host: 'test-domain.overleaf.com',
+      }
       ctx.middleware(ctx.req, ctx.res, ctx.next)
     })
 
@@ -146,6 +154,7 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
           utm_medium: 'Facebook',
           utm_campaign: 'Some Campaign',
           utm_term: 'foo',
+          domain: 'test-domain',
         }
       )
     })
@@ -169,6 +178,9 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
         utm_campaign: 'Some Campaign',
         other_param: 'some-value',
       }
+      ctx.req.headers = {
+        host: 'test-domain.overleaf.com',
+      }
       ctx.middleware(ctx.req, ctx.res, ctx.next)
     })
 
@@ -190,6 +202,7 @@ describe('AnalyticsUTMTrackingMiddleware', function () {
           path: '/project',
           utm_medium: 'Facebook',
           utm_campaign: 'Some Campaign',
+          domain: 'test-domain',
         }
       )
     })

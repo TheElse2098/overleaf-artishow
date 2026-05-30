@@ -38,7 +38,7 @@ const mountWithEditorProviders = (
   cy.mount(<TestContainer component={component} props={props} />)
 }
 
-describe('change list (Bootstrap 5)', function () {
+describe('change list', function () {
   const waitForData = () => {
     cy.wait('@updates')
     cy.wait('@labels')
@@ -55,9 +55,6 @@ describe('change list (Bootstrap 5)', function () {
     cy.intercept('GET', '/project/*/filetree/diff*', {
       body: { diff: [{ pathname: 'main.tex' }, { pathname: 'name.tex' }] },
     }).as('diff')
-    window.metaAttributesCache.set('ol-inactiveTutorials', [
-      'react-history-buttons-tutorial',
-    ])
   })
 
   describe('toggle switch', function () {
@@ -144,7 +141,19 @@ describe('change list (Bootstrap 5)', function () {
           cy.findByRole('button', { name: /delete/i }).should('not.exist')
         })
       )
-      cy.findByLabelText(/labels/i).click({ force: true })
+      cy.findByRole('complementary', {
+        name: /Project history and labels/i,
+      }).within(() => {
+        cy.findByRole('group', {
+          name: 'Show all of the project history or only labelled versions.',
+        }).within(() => {
+          cy.findByText(/Labels/i).click()
+        })
+        cy.findByRole('radio', { name: /Labels/i }).should('be.checked')
+        cy.findByRole('radio', { name: /All history/i }).should(
+          'not.be.checked'
+        )
+      })
       cy.findAllByTestId('history-version-details').as('details')
       // first details on labels is always "current version", start testing on second
       cy.get('@details').should('have.length', 3)
@@ -337,7 +346,19 @@ describe('change list (Bootstrap 5)', function () {
         }
       )
       waitForData()
-      cy.findByLabelText(/labels/i).click({ force: true })
+      cy.findByRole('complementary', {
+        name: /Project history and labels/i,
+      }).within(() => {
+        cy.findByRole('group', {
+          name: 'Show all of the project history or only labelled versions.',
+        }).within(() => {
+          cy.findByText(/Labels/i).click()
+        })
+        cy.findByRole('radio', { name: /Labels/i }).should('be.checked')
+        cy.findByRole('radio', { name: /All history/i }).should(
+          'not.be.checked'
+        )
+      })
     })
 
     it('shows the dropdown menu item for adding new labels', function () {
@@ -491,7 +512,7 @@ describe('change list (Bootstrap 5)', function () {
         cy.findByRole('heading', { name: /add label/i })
         cy.findByRole('button', { name: /cancel/i })
         cy.findByRole('button', { name: /add label/i }).should('be.disabled')
-        cy.findByPlaceholderText(/new label name/i).as('input')
+        cy.findByLabelText(/New label name/i).as('input')
         cy.get('@input').type(newLabel)
         cy.findByRole('button', { name: /add label/i }).should('be.enabled')
         cy.get('@input').type('{enter}')
@@ -688,7 +709,19 @@ describe('change list (Bootstrap 5)', function () {
 
       waitForData()
 
-      cy.findByLabelText(/labels/i).click({ force: true })
+      cy.findByRole('complementary', {
+        name: /Project history and labels/i,
+      }).within(() => {
+        cy.findByRole('group', {
+          name: 'Show all of the project history or only labelled versions.',
+        }).within(() => {
+          cy.findByText(/Labels/i).click()
+        })
+        cy.findByRole('radio', { name: /Labels/i }).should('be.checked')
+        cy.findByRole('radio', { name: /All history/i }).should(
+          'not.be.checked'
+        )
+      })
 
       // One pseudo-label for the current state, one for our label
       cy.get('.history-version-label').should('have.length', 2)

@@ -3,7 +3,8 @@ import { DomainInfo } from '../components/emails/add-email/input'
 import { Institution } from '../../../../../types/institution'
 
 export const ssoAvailableForDomain = (
-  domain: DomainInfo | null
+  domain: DomainInfo | null,
+  isDomainCapturedByGroup: boolean
 ): domain is DomainInfo => {
   const { hasSamlBeta, hasSamlFeature } = getMeta('ol-ExposedSettings')
   if (!hasSamlFeature || !domain || !domain.confirmed || !domain.university) {
@@ -12,6 +13,11 @@ export const ssoAvailableForDomain = (
   if (domain.university.ssoEnabled) {
     return true
   }
+
+  if (isDomainCapturedByGroup && domain.group?.ssoConfig?.enabled) {
+    return true
+  }
+
   return Boolean(hasSamlBeta && domain.university.ssoBeta)
 }
 

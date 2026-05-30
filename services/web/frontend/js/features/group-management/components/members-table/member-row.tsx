@@ -8,8 +8,8 @@ import SSOStatus from './sso-status'
 import DropdownButton from './dropdown-button'
 import SelectUserCheckbox from './select-user-checkbox'
 import getMeta from '@/utils/meta'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLTag from '@/features/ui/components/ol/ol-tag'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLTag from '@/shared/components/ol/ol-tag'
 import MaterialIcon from '@/shared/components/material-icon'
 import classnames from 'classnames'
 
@@ -20,6 +20,7 @@ type ManagedUserRowProps = {
   openUnlinkUserModal: (user: User) => void
   groupId: string
   setGroupUserAlert: Dispatch<SetStateAction<GroupUserAlert>>
+  hasWriteAccess: boolean
 }
 
 export default function MemberRow({
@@ -29,6 +30,7 @@ export default function MemberRow({
   openUnlinkUserModal,
   setGroupUserAlert,
   groupId,
+  hasWriteAccess,
 }: ManagedUserRowProps) {
   const { t } = useTranslation()
   const managedUsersActive = getMeta('ol-managedUsersActive')
@@ -36,7 +38,7 @@ export default function MemberRow({
 
   return (
     <tr className="managed-entity-row">
-      <SelectUserCheckbox user={user} />
+      {hasWriteAccess && <SelectUserCheckbox user={user} />}
       <td
         className={classnames('cell-email', {
           'text-muted': user.invite,
@@ -110,16 +112,18 @@ export default function MemberRow({
           </div>
         </td>
       )}
-      <td className="cell-dropdown">
-        <DropdownButton
-          user={user}
-          openOffboardingModalForUser={openOffboardingModalForUser}
-          openRemoveModalForUser={openRemoveModalForUser}
-          openUnlinkUserModal={openUnlinkUserModal}
-          setGroupUserAlert={setGroupUserAlert}
-          groupId={groupId}
-        />
-      </td>
+      {hasWriteAccess && (
+        <td className="cell-dropdown">
+          <DropdownButton
+            user={user}
+            openOffboardingModalForUser={openOffboardingModalForUser}
+            openRemoveModalForUser={openRemoveModalForUser}
+            openUnlinkUserModal={openUnlinkUserModal}
+            setGroupUserAlert={setGroupUserAlert}
+            groupId={groupId}
+          />
+        </td>
+      )}
     </tr>
   )
 }

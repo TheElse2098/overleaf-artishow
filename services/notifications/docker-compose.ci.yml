@@ -2,37 +2,46 @@
 # Instead run bin/update_build_scripts from
 # https://github.com/overleaf/internal/
 
-version: "2.3"
-
 services:
   test_unit:
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     user: node
-    command: npm run test:unit:_run
+    volumes:
+      - ./reports:/overleaf/services/notifications/reports
+      - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ../../tsconfig.backend.json:/overleaf/tsconfig.backend.json
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run test:unit:_run
     environment:
+      CI:
+      MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
-
+      VITEST_NO_CACHE: true
+    depends_on:
+      mongo:
+        condition: service_started
 
   test_acceptance:
-    build: .
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
     environment:
-      ELASTIC_SEARCH_DSN: es:9200
+      CI:
+      RETRIES:
       MONGO_HOST: mongo
       POSTGRES_HOST: postgres
       MOCHA_GREP: ${MOCHA_GREP}
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
     volumes:
+      - ./reports:/overleaf/services/notifications/reports
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ../../tsconfig.backend.json:/overleaf/tsconfig.backend.json
     depends_on:
       mongo:
         condition: service_started
     user: node
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=0 --
-    command: npm run test:acceptance
-
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run test:acceptance
 
   tar:
     build: .
@@ -41,11 +50,14 @@ services:
       - ./:/tmp/build/
     command: tar -czf /tmp/build/build.tar.gz --exclude=build.tar.gz --exclude-vcs .
     user: root
+
   mongo:
     image: mongo:8.0.11
-    command: --replSet overleaf
+    command: --replSet overleaf --notablescan
     volumes:
       - ../../bin/shared/mongodb-init-replica-set.js:/docker-entrypoint-initdb.d/mongodb-init-replica-set.js
+      - ../../bin/shared/mongodb-docker-entrypoint-wait.sh:/mongodb-docker-entrypoint-wait.sh
+    entrypoint: /mongodb-docker-entrypoint-wait.sh
     environment:
       MONGO_INITDB_DATABASE: sharelatex
     extra_hosts:

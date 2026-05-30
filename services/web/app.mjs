@@ -1,24 +1,23 @@
 // Metrics must be initialized before importing anything else
 import { metricsModuleImportStartTime } from '@overleaf/metrics/initialize.js'
 
-import Modules from './app/src/infrastructure/Modules.js'
+import Modules from './app/src/infrastructure/Modules.mjs'
 import metrics from '@overleaf/metrics'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
-import PlansLocator from './app/src/Features/Subscription/PlansLocator.js'
-import HistoryManager from './app/src/Features/History/HistoryManager.js'
-import SiteAdminHandler from './app/src/infrastructure/SiteAdminHandler.js'
+import PlansLocator from './app/src/Features/Subscription/PlansLocator.mjs'
+import HistoryManager from './app/src/Features/History/HistoryManager.mjs'
+import SiteAdminHandler from './app/src/infrastructure/SiteAdminHandler.mjs'
 import http from 'node:http'
 import https from 'node:https'
-import * as Serializers from './app/src/infrastructure/LoggerSerializers.js'
+import Serializers from './app/src/infrastructure/LoggerSerializers.mjs'
 import Server from './app/src/infrastructure/Server.mjs'
-import QueueWorkers from './app/src/infrastructure/QueueWorkers.js'
-import mongodb from './app/src/infrastructure/mongodb.js'
-import mongoose from './app/src/infrastructure/Mongoose.js'
-import { triggerGracefulShutdown } from './app/src/infrastructure/GracefulShutdown.js'
-import FileWriter from './app/src/infrastructure/FileWriter.js'
+import QueueWorkers from './app/src/infrastructure/QueueWorkers.mjs'
+import mongodb from './app/src/infrastructure/mongodb.mjs'
+import mongoose from './app/src/infrastructure/Mongoose.mjs'
+import { triggerGracefulShutdown } from './app/src/infrastructure/GracefulShutdown.mjs'
+import FileWriter from './app/src/infrastructure/FileWriter.mjs'
 import { fileURLToPath } from 'node:url'
-import Features from './app/src/infrastructure/Features.js'
 
 metrics.gauge(
   'web_startup',
@@ -45,9 +44,16 @@ if (Settings.catchErrors) {
   process.removeAllListeners('uncaughtException')
   process.removeAllListeners('unhandledRejection')
   process
-    .on('uncaughtException', error =>
+    .on('uncaughtException', error => {
+      if (error.code === 'ERR_STREAM_UNABLE_TO_PIPE') {
+        metrics.inc('disconnected_write', 1, { status: error.code })
+        return logger.warn(
+          { err: error },
+          'attempted to write to disconnected client'
+        )
+      }
       logger.error({ err: error }, 'uncaughtException')
-    )
+    })
     .on('unhandledRejection', (reason, p) => {
       logger.error({ err: reason }, 'unhandledRejection at Promise', p)
     })
@@ -56,11 +62,15 @@ if (Settings.catchErrors) {
 // Create ./data/dumpFolder if needed
 FileWriter.ensureDumpFolderExists()
 
-// Validate combination of feature flags.
-Features.validateSettings()
-
-// handle SIGTERM for graceful shutdown in kubernetes
+// Handle SIGTERM with graceful shutdown by default, or a fast exit in development
 process.on('SIGTERM', function (signal) {
+  if (process.env.NODE_ENV === 'development') {
+    logger.warn({ signal }, 'triggering fast shutdown in dev environment')
+    setTimeout(() => {
+      process.exit(0)
+    }, 100)
+    return
+  }
   triggerGracefulShutdown(Server.server, signal)
 })
 

@@ -1,4 +1,4 @@
-import { ElementType, memo, useRef, useState } from 'react'
+import { ElementType, Suspense, memo, useRef, useState } from 'react'
 import useIsMounted from '../../../shared/hooks/use-is-mounted'
 import { EditorView } from '@codemirror/view'
 import { EditorState } from '@codemirror/state'
@@ -9,26 +9,28 @@ import { CodemirrorOutline } from './codemirror-outline'
 import { CodeMirrorCommandTooltip } from './codemirror-command-tooltip'
 import importOverleafModules from '../../../../macros/import-overleaf-module.macro'
 import { FigureModal } from './figure-modal/figure-modal'
-import { ReviewPanelProviders } from '@/features/review-panel-new/context/review-panel-providers'
-import { ReviewPanelNew } from '@/features/review-panel-new/components/review-panel-new'
-import ReviewTooltipMenu from '@/features/review-panel-new/components/review-tooltip-menu'
+import { ReviewPanelProviders } from '@/features/review-panel/context/review-panel-providers'
+import { ReviewPanelRoot } from '@/features/review-panel/components/review-panel-root'
+import ReviewTooltipMenu from '@/features/review-panel/components/review-tooltip-menu'
 import {
   CodeMirrorStateContext,
   CodeMirrorViewContext,
 } from './codemirror-context'
 import MathPreviewTooltip from './math-preview-tooltip'
-import { useToolbarMenuBarEditorCommands } from '@/features/ide-redesign/hooks/use-toolbar-menu-editor-commands'
+import { getVisualEditorComponent } from '../utils/visual-editor'
+import EditorContextMenu from './editor-context-menu'
+import { useToolbarMenuBarEditorCommands } from '@/features/source-editor/hooks/use-toolbar-menu-editor-commands'
 import { useProjectContext } from '@/shared/context/project-context'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
+import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
+import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
+import UpgradeTrackChangesModal from '@/features/review-panel/components/upgrade-track-changes-modal'
 
 // TODO: remove this when definitely no longer used
 export * from './codemirror-context'
 
 const sourceEditorComponents = importOverleafModules(
   'sourceEditorComponents'
-) as { import: { default: ElementType }; path: string }[]
-
-const sourceEditorToolbarComponents = importOverleafModules(
-  'sourceEditorToolbarComponents'
 ) as { import: { default: ElementType }; path: string }[]
 
 function CodeMirrorEditor() {
@@ -38,12 +40,22 @@ function CodeMirrorEditor() {
   })
 
   const isMounted = useIsMounted()
+  const editContextEnabled = useFeatureFlag('edit-context')
+  const { openDocName } = useEditorOpenDocContext()
+  const { showVisual } = useEditorPropertiesContext()
+
+  const VisualEditor =
+    showVisual && openDocName != null
+      ? getVisualEditorComponent(openDocName)
+      : null
 
   // create the view using the initial state and intercept transactions
   const viewRef = useRef<EditorView | null>(null)
   if (viewRef.current === null) {
-    // @ts-ignore (disable EditContext-based editing until stable)
-    EditorView.EDIT_CONTEXT = false
+    if (!editContextEnabled) {
+      // @ts-expect-error (disable EditContext-based editing until stable)
+      EditorView.EDIT_CONTEXT = false
+    }
 
     const view = new EditorView({
       state,
@@ -60,33 +72,40 @@ function CodeMirrorEditor() {
   return (
     <CodeMirrorStateContext.Provider value={state}>
       <CodeMirrorViewContext.Provider value={viewRef.current}>
-        <CodeMirrorEditorComponents />
+        <CodeMirrorEditorComponents hidden={VisualEditor != null} />
+        {VisualEditor && (
+          <Suspense fallback={null}>
+            <VisualEditor />
+          </Suspense>
+        )}
       </CodeMirrorViewContext.Provider>
     </CodeMirrorStateContext.Provider>
   )
 }
 
-function CodeMirrorEditorComponents() {
+type CodeMirrorEditorComponentsProps = {
+  hidden: boolean
+}
+
+function CodeMirrorEditorComponents({
+  hidden = false,
+}: CodeMirrorEditorComponentsProps) {
   useToolbarMenuBarEditorCommands()
   const { features } = useProjectContext()
-
   return (
     <ReviewPanelProviders>
       <CodemirrorOutline />
-      <CodeMirrorView />
+      <CodeMirrorView hidden={hidden} />
       <FigureModal />
       <CodeMirrorSearch />
       <CodeMirrorToolbar />
-      {sourceEditorToolbarComponents.map(
-        ({ import: { default: Component }, path }) => (
-          <Component key={path} />
-        )
-      )}
       <CodeMirrorCommandTooltip />
 
       <MathPreviewTooltip />
+      <EditorContextMenu />
       {features.trackChangesVisible && <ReviewTooltipMenu />}
-      {features.trackChangesVisible && <ReviewPanelNew />}
+      {features.trackChangesVisible && <ReviewPanelRoot />}
+      {features.trackChangesVisible && <UpgradeTrackChangesModal />}
 
       {sourceEditorComponents.map(
         ({ import: { default: Component }, path }) => (

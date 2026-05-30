@@ -9,6 +9,7 @@ export type Affiliation = {
   cachedPastReconfirmDate: boolean
   cachedReconfirmedAt: Nullable<string>
   department: Nullable<string>
+  domainCapturedByGroup?: boolean
   inReconfirmNotificationPeriod: boolean
   inferred: boolean
   institution: Institution
@@ -16,4 +17,9 @@ export type Affiliation = {
   pastReconfirmDate: boolean
   portal: Portal
   role: Nullable<string>
+  group?: {
+    domainCaptureEnabled: boolean
+    managedUsersEnabled: boolean
+    _id: string
+  }
 }

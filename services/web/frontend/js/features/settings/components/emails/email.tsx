@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { UserEmailData } from '../../../../../../types/user-email'
 import { ssoAvailableForInstitution } from '../../utils/sso'
-import OLBadge from '@/features/ui/components/ol/ol-badge'
+import OLBadge from '@/shared/components/ol/ol-badge'
 import ResendConfirmationCodeModal from '@/features/settings/components/emails/resend-confirmation-code-modal'
 import { useUserEmailsContext } from '@/features/settings/context/user-email-context'
 
@@ -21,11 +21,11 @@ function Email({ userEmailData }: EmailProps) {
   )
 
   const isPrimary = userEmailData.default
-  const isProfessional =
+  const hasInstitutionalSubscription =
     userEmailData.confirmedAt &&
     userEmailData.affiliation?.institution.confirmed &&
     userEmailData.affiliation.licence !== 'free'
-  const hasBadges = isPrimary || isProfessional
+  const hasBadges = isPrimary || hasInstitutionalSubscription
 
   return (
     <>
@@ -52,8 +52,8 @@ function Email({ userEmailData }: EmailProps) {
               <OLBadge bg="info">Primary</OLBadge>{' '}
             </>
           )}
-          {isProfessional && (
-            <OLBadge bg="primary">{t('professional')}</OLBadge>
+          {hasInstitutionalSubscription && (
+            <OLBadge bg="primary">{t('commons')}</OLBadge>
           )}
         </div>
       )}

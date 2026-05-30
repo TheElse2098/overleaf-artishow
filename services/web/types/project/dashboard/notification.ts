@@ -46,8 +46,7 @@ export interface NotificationTPDSFileLimit extends NotificationBase {
   }
 }
 
-export interface NotificationDropboxDuplicateProjectNames
-  extends NotificationBase {
+export interface NotificationDropboxDuplicateProjectNames extends NotificationBase {
   templateKey: Extract<
     TemplateKey,
     'notification_dropbox_duplicate_project_names'
@@ -57,8 +56,7 @@ export interface NotificationDropboxDuplicateProjectNames
   }
 }
 
-interface NotificationDropboxUnlinkedDueToLapsedReconfirmation
-  extends NotificationBase {
+interface NotificationDropboxUnlinkedDueToLapsedReconfirmation extends NotificationBase {
   templateKey: Extract<
     TemplateKey,
     'notification_dropbox_unlinked_due_to_lapsed_reconfirmation'
@@ -95,6 +93,7 @@ export type Institution = {
     translatedMessage?: string
     message?: string
     tryAgain?: boolean
+    name?: string
   }
 }
 

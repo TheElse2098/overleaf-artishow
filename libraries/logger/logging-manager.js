@@ -6,12 +6,13 @@ const {
   FileLogLevelChecker,
   GCEMetadataLogLevelChecker,
 } = require('./log-level-checker')
+const { setLogger } = require('@overleaf/fetch-utils')
 
 const LoggingManager = {
   /**
    * @param {string} name - The name of the logger
    */
-  initialize(name) {
+  initialize(name, options = {}) {
     this.isProduction =
       (process.env.NODE_ENV || '').toLowerCase() === 'production'
     const isTest = (process.env.NODE_ENV || '').toLowerCase() === 'test'
@@ -27,10 +28,11 @@ const LoggingManager = {
         req: Serializers.req,
         res: Serializers.res,
       },
-      streams: [this._getOutputStreamConfig()],
+      streams: options.streams ?? [this._getOutputStreamConfig()],
     })
     this._setupRingBuffer()
     this._setupLogLevelChecker()
+    setLogger(this)
     return this
   },
 

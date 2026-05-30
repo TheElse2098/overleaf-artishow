@@ -140,6 +140,8 @@ app.get(
   HttpController.getComment
 )
 app.get('/project/:project_id/doc/:doc_id/peek', HttpController.peekDoc)
+app.get('/project/:project_id/ranges', HttpController.getProjectRanges)
+
 // temporarily keep the GET method for backwards compatibility
 app.get('/project/:project_id/doc', HttpController.getProjectDocsAndFlushIfOld)
 // will migrate to the POST method of get_and_flush_if_old instead
@@ -175,6 +177,10 @@ app.post(
 app.post(
   '/project/:project_id/doc/:doc_id/change/accept',
   HttpController.acceptChanges
+)
+app.post(
+  '/project/:project_id/doc/:doc_id/change/reject',
+  HttpController.rejectChanges
 )
 app.post(
   '/project/:project_id/doc/:doc_id/comment/:comment_id/resolve',
@@ -214,6 +220,8 @@ app.use((error, req, res, next) => {
     return res.sendStatus(413)
   } else if (error.statusCode === 413) {
     return res.status(413).send('request entity too large')
+  } else if (error instanceof Errors.DocumentValidationError) {
+    return res.sendStatus(422)
   } else {
     logger.error({ err: error, req }, 'request errored')
     return res.status(500).send('Oops, something went wrong')
@@ -292,6 +300,11 @@ for (const signal of [
 ]) {
   process.on(signal, shutdownCleanly(signal))
 }
+
+process.on('uncaughtException', function (err) {
+  logger.error({ err }, 'uncaught exception')
+  shutdownCleanly('uncaughtException')()
+})
 
 function longerTimeout(req, res, next) {
   res.setTimeout(6 * 60 * 1000)

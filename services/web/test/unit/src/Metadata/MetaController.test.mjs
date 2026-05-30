@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest'
 import sinon from 'sinon'
-import MockResponse from '../helpers/MockResponse.js'
+import MockResponse from '../helpers/MockResponse.mjs'
 const modulePath = '../../../../app/src/Features/Metadata/MetaController.mjs'
 
 describe('MetaController', function () {
@@ -27,6 +27,22 @@ describe('MetaController', function () {
       default: ctx.MetaHandler,
     }))
 
+    vi.doMock(
+      '../../../../app/src/Features/Analytics/AnalyticsManager',
+      () => ({ default: {} })
+    )
+
+    vi.doMock(
+      '../../../../app/src/Features/SplitTests/SplitTestHandler',
+      () => ({
+        default: {
+          promises: {
+            getAssignment: sinon.stub().resolves({}),
+          },
+        },
+      })
+    )
+
     ctx.MetadataController = (await import(modulePath)).default
   })
 
@@ -45,7 +61,7 @@ describe('MetaController', function () {
         .resolves(projectMeta)
 
       const req = { params: { project_id: 'project-id' } }
-      const res = new MockResponse()
+      const res = new MockResponse(vi)
       const next = sinon.stub()
 
       await ctx.MetadataController.getMetadata(req, res, next)
@@ -53,7 +69,8 @@ describe('MetaController', function () {
       ctx.MetaHandler.promises.getAllMetaForProject.should.have.been.calledWith(
         'project-id'
       )
-      res.json.should.have.been.calledOnceWith({
+      expect(res.json).toHaveBeenCalledTimes(1)
+      expect(res.json).toHaveBeenCalledWith({
         projectId: 'project-id',
         projectMeta,
       })
@@ -66,7 +83,7 @@ describe('MetaController', function () {
         .throws(new Error('woops'))
 
       const req = { params: { project_id: 'project-id' } }
-      const res = new MockResponse()
+      const res = new MockResponse(vi)
       const next = sinon.stub()
 
       await ctx.MetadataController.getMetadata(req, res, next)
@@ -74,7 +91,7 @@ describe('MetaController', function () {
       ctx.MetaHandler.promises.getAllMetaForProject.should.have.been.calledWith(
         'project-id'
       )
-      res.json.should.not.have.been.called
+      expect(res.json).not.toHaveBeenCalled()
       next.should.have.been.calledWithMatch(error => error instanceof Error)
     })
   })
@@ -93,7 +110,7 @@ describe('MetaController', function () {
         params: { project_id: 'project-id', doc_id: 'doc-id' },
         body: { broadcast: true },
       }
-      const res = new MockResponse()
+      const res = new MockResponse(vi)
       const next = sinon.stub()
 
       await ctx.MetadataController.broadcastMetadataForDoc(req, res, next)
@@ -101,8 +118,9 @@ describe('MetaController', function () {
       ctx.MetaHandler.promises.getMetaForDoc.should.have.been.calledWith(
         'project-id'
       )
-      res.json.should.not.have.been.called
-      res.sendStatus.should.have.been.calledOnceWith(200)
+      expect(res.json).not.toHaveBeenCalled()
+      expect(res.sendStatus).toHaveBeenCalledTimes(1)
+      expect(res.sendStatus).toHaveBeenCalledWith(200)
       next.should.not.have.been.called
 
       ctx.EditorRealTimeController.emitToRoom.should.have.been.calledOnce
@@ -127,7 +145,7 @@ describe('MetaController', function () {
         params: { project_id: 'project-id', doc_id: 'doc-id' },
         body: { broadcast: false },
       }
-      const res = new MockResponse()
+      const res = new MockResponse(vi)
       const next = sinon.stub()
 
       await ctx.MetadataController.broadcastMetadataForDoc(req, res, next)
@@ -136,7 +154,8 @@ describe('MetaController', function () {
         'project-id'
       )
       ctx.EditorRealTimeController.emitToRoom.should.not.have.been.called
-      res.json.should.have.been.calledOnceWith({
+      expect(res.json).toHaveBeenCalledTimes(1)
+      expect(res.json).toHaveBeenCalledWith({
         docId: 'doc-id',
         meta: docMeta,
       })
@@ -154,7 +173,7 @@ describe('MetaController', function () {
         params: { project_id: 'project-id', doc_id: 'doc-id' },
         body: { broadcast: true },
       }
-      const res = new MockResponse()
+      const res = new MockResponse(vi)
       const next = sinon.stub()
 
       await ctx.MetadataController.broadcastMetadataForDoc(req, res, next)
@@ -162,7 +181,7 @@ describe('MetaController', function () {
       ctx.MetaHandler.promises.getMetaForDoc.should.have.been.calledWith(
         'project-id'
       )
-      res.json.should.not.have.been.called
+      expect(res.json).not.toHaveBeenCalled()
       next.should.have.been.calledWithMatch(error => error instanceof Error)
     })
   })

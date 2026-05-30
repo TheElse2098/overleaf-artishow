@@ -6,10 +6,14 @@ import { useProjectContext } from '@/shared/context/project-context'
 import {
   DropdownDivider,
   DropdownItem,
+<<<<<<< HEAD
 } from '@/features/ui/components/bootstrap-5/dropdown-menu'
 import { useUserContext } from '../../../../shared/context/user-context'
 import { useFileTreeData } from '../../../../shared/context/file-tree-data-context'
 import { getFullPath } from '../../contexts/get-full-path'
+=======
+} from '@/shared/components/dropdown/dropdown-menu'
+>>>>>>> myobu/main
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import { useFileTreeSelectable } from '../../contexts/file-tree-selectable'
 import { copyDirectory } from '../../../../shared/utils/storage-handler'
@@ -50,7 +54,13 @@ function FileTreeItemMenuItems() {
     startCreatingDocOrFile,
     startUploadingDocOrFile,
     downloadPath,
+<<<<<<< HEAD
     selectedFileName
+=======
+    selectedFileName,
+    canSetRootDocId,
+    setRootDocId,
+>>>>>>> myobu/main
   } = useFileTreeActionable()
 
   const { fileTreeData } = useFileTreeData()
@@ -101,10 +111,23 @@ function FileTreeItemMenuItems() {
           </DropdownItem>
         </li>
       ) : null}
+      {canSetRootDocId ? (
+        <>
+          <DropdownDivider />
+          <li role="none">
+            <DropdownItem onClick={setRootDocId}>
+              {t('set_as_main_document')}
+            </DropdownItem>
+          </li>
+        </>
+      ) : null}
       {canDelete ? (
-        <li role="none">
-          <DropdownItem onClick={startDeleting}>{t('delete')}</DropdownItem>
-        </li>
+        <>
+          <DropdownDivider />
+          <li role="none">
+            <DropdownItem onClick={startDeleting}>{t('delete')}</DropdownItem>
+          </li>
+        </>
       ) : null}
       {canCreate ? (
         <>

@@ -5,7 +5,7 @@ import useAsync from '../../../../shared/hooks/use-async'
 import { useLocation } from '../../../../shared/hooks/use-location'
 import getMeta from '../../../../utils/meta'
 import { debugConsole } from '@/utils/debugging'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 
 function ReactivateSubscription() {
   const { t } = useTranslation()
@@ -20,8 +20,12 @@ function ReactivateSubscription() {
     location.reload()
   }
 
-  // Don't show the button to reactivate the subscription for managed users
-  if (getMeta('ol-cannot-reactivate-subscription')) {
+  // Don't show the button to reactivate the subscription for managed users,
+  // unless they are a managed group admin (who should be able to reactivate their own subscription)
+  if (
+    getMeta('ol-cannot-reactivate-subscription') &&
+    !getMeta('ol-isManagedGroupAdmin')
+  ) {
     return null
   }
 
@@ -31,6 +35,7 @@ function ReactivateSubscription() {
       disabled={isLoading || isSuccess}
       onClick={handleReactivate}
       isLoading={isLoading}
+      loadingLabel={t('reactivating')}
     >
       {t('reactivate_subscription')}
     </OLButton>

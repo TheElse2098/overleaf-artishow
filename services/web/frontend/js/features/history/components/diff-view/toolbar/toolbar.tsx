@@ -7,20 +7,27 @@ import ToolbarRestoreFileButton from './toolbar-restore-file-button'
 import { isFileRemoved } from '../../../utils/file-diff'
 import ToolbarRestoreFileToVersionButton from './toolbar-restore-file-to-version-button'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
-import SplitTestBadge from '@/shared/components/split-test-badge'
 import { usePermissionsContext } from '@/features/ide-react/context/permissions-context'
 
 type ToolbarProps = {
   diff: Nullable<Diff>
   selection: HistoryContextValue['selection']
+  isCurrentVersion: boolean
 }
 
-export default function Toolbar({ diff, selection }: ToolbarProps) {
+export default function Toolbar({
+  diff,
+  selection,
+  isCurrentVersion,
+}: ToolbarProps) {
   const { write } = usePermissionsContext()
   const hasRestoreFileToVersion = useFeatureFlag('revert-file')
 
   const showRestoreFileToVersionButton =
-    hasRestoreFileToVersion && selection.selectedFile && write
+    hasRestoreFileToVersion &&
+    selection.selectedFile &&
+    write &&
+    !isCurrentVersion
 
   const showRestoreFileButton =
     selection.selectedFile &&
@@ -38,13 +45,7 @@ export default function Toolbar({ diff, selection }: ToolbarProps) {
         <ToolbarRestoreFileButton selection={selection} />
       ) : null}
       {showRestoreFileToVersionButton ? (
-        <>
-          <ToolbarRestoreFileToVersionButton selection={selection} />
-          <SplitTestBadge
-            splitTestName="revert-file"
-            displayOnVariants={['enabled']}
-          />
-        </>
+        <ToolbarRestoreFileToVersionButton selection={selection} />
       ) : null}
     </div>
   )

@@ -13,7 +13,7 @@ const { getTotalSizeOfLines } = require('./Limits')
 const Settings = require('@overleaf/settings')
 const { StringFileData } = require('overleaf-editor-core')
 
-const MAX_UNFLUSHED_AGE = 300 * 1000 // 5 mins, document should be flushed to mongo this time after a change
+const MAX_UNFLUSHED_AGE = Settings.maxUnflushedAgeMs // document should be flushed to mongo this time after a change
 
 const DocumentManager = {
   /**
@@ -331,6 +331,7 @@ const DocumentManager = {
     if (changeIds == null) {
       changeIds = []
     }
+    let changeContributors = []
 
     const {
       lines,
@@ -374,7 +375,7 @@ const DocumentManager = {
       })
 
       if (historyUpdates.length === 0) {
-        return
+        return changeContributors
       }
 
       await ProjectHistoryRedisManager.promises.queueOps(
@@ -382,6 +383,69 @@ const DocumentManager = {
         ...historyUpdates.map(op => JSON.stringify(op))
       )
     }
+    changeContributors = (ranges.changes || [])
+      .filter(change => changeIds.includes(change.id))
+      .map(change => change?.metadata?.user_id)
+      .filter(userId => userId)
+    return changeContributors
+  },
+
+  async rejectChanges(projectId, docId, changeIds, userId) {
+    const UpdateManager = require('./UpdateManager')
+    const HistoryOTUpdateManager = require('./HistoryOTUpdateManager')
+
+    const { lines, version, ranges } = await DocumentManager.getDoc(
+      projectId,
+      docId
+    )
+    if (lines == null || version == null) {
+      throw new Errors.NotFoundError(`document not found: ${docId}`)
+    }
+
+    const changesToReject = ranges.changes
+      ? ranges.changes.filter(change => changeIds.includes(change.id))
+      : []
+
+    // Apply inverted operations for rejected changes (based on reject-changes.ts logic)
+    // Sort changes in reverse order by position to avoid conflicts
+    changesToReject.sort((a, b) => b.op.p - a.op.p)
+
+    const ops = []
+    for (const change of changesToReject) {
+      if (change.op.i) {
+        const deleteOp = {
+          p: change.op.p,
+          d: change.op.i,
+          u: true,
+        }
+        ops.push(deleteOp)
+      } else if (change.op.d) {
+        const insertOp = {
+          p: change.op.p,
+          i: change.op.d,
+          u: true,
+        }
+        ops.push(insertOp)
+      }
+    }
+
+    const update = {
+      doc: docId,
+      op: ops,
+      v: version,
+      meta: {
+        user_id: userId,
+        ts: new Date().toISOString(),
+      },
+    }
+
+    if (HistoryOTUpdateManager.isHistoryOTEditOperationUpdate(update)) {
+      await HistoryOTUpdateManager.applyUpdate(projectId, docId, update)
+    } else {
+      await UpdateManager.promises.applyUpdate(projectId, docId, update)
+    }
+
+    return { rejectedChangeIds: changesToReject.map(c => c.id) }
   },
 
   async updateCommentState(projectId, docId, commentId, userId, resolved) {
@@ -423,7 +487,7 @@ const DocumentManager = {
       })
     }
 
-    return { comment }
+    return comment
   },
 
   async deleteComment(projectId, docId, commentId, userId) {
@@ -650,11 +714,23 @@ const DocumentManager = {
 
   async acceptChangesWithLock(projectId, docId, changeIds) {
     const UpdateManager = require('./UpdateManager')
-    await UpdateManager.promises.lockUpdatesAndDo(
+    const changeContributors = await UpdateManager.promises.lockUpdatesAndDo(
       DocumentManager.acceptChanges,
       projectId,
       docId,
       changeIds
+    )
+    return changeContributors
+  },
+
+  async rejectChangesWithLock(projectId, docId, changeIds, userId) {
+    const UpdateManager = require('./UpdateManager')
+    return await UpdateManager.promises.lockUpdatesAndDo(
+      DocumentManager.rejectChanges,
+      projectId,
+      docId,
+      changeIds,
+      userId
     )
   },
 
@@ -754,7 +830,6 @@ module.exports = {
         'projectHistoryId',
         'type',
       ],
-      getCommentWithLock: ['comment'],
     },
   }),
   promises: DocumentManager,

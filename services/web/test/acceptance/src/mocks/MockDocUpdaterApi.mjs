@@ -3,6 +3,7 @@ import AbstractMockApi from './AbstractMockApi.mjs'
 class MockDocUpdaterApi extends AbstractMockApi {
   reset() {
     this.updates = {}
+    this.docsByProject = new Map()
   }
 
   getProjectStructureUpdates(projectId) {
@@ -22,6 +23,15 @@ class MockDocUpdaterApi extends AbstractMockApi {
     this.updates[projectId].version = version
   }
 
+  setDoc(projectId, docId, lines, ranges) {
+    let docsById = this.docsByProject.get(projectId)
+    if (docsById == null) {
+      docsById = new Map()
+      this.docsByProject.set(projectId, docsById)
+    }
+    docsById.set(docId, { id: docId, lines, ranges })
+  }
+
   applyRoutes() {
     this.app.post('/project/:projectId/flush', (req, res) => {
       res.sendStatus(204)
@@ -33,6 +43,24 @@ class MockDocUpdaterApi extends AbstractMockApi {
       this.addProjectStructureUpdates(projectId, userId, updates, version)
       res.sendStatus(200)
     })
+
+    this.app.post(
+      '/project/:projectId/doc/:docId/change/accept',
+      (req, res) => {
+        res.status(200).json({
+          // todo: return a list of change contributors based on doc ranges accepted similar to DocumentManager, and require tests to set real changes onto a doc before calling accept
+          changeContributors: [],
+        })
+      }
+    )
+
+    this.app.post(
+      '/project/:projectId/doc/:docId/change/reject',
+      (req, res) => {
+        const { change_ids: changeIds } = req.body
+        res.json({ rejectedChangeIds: changeIds })
+      }
+    )
 
     this.app.post('/project/:projectId/doc/:doc_id', (req, res) => {
       res.sendStatus(204)
@@ -52,6 +80,17 @@ class MockDocUpdaterApi extends AbstractMockApi {
 
     this.app.post('/project/:projectId/history/resync', (req, res) => {
       res.sendStatus(204)
+    })
+
+    this.app.get('/project/:projectId/ranges', (req, res) => {
+      const docsById = this.docsByProject.get(req.params.projectId)
+      const docs = docsById == null ? [] : Array.from(docsById.values())
+      res.json({
+        docs: docs.map(doc => ({
+          id: doc.id,
+          ranges: doc.ranges,
+        })),
+      })
     })
   }
 }

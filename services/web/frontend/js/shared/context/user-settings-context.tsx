@@ -8,19 +8,21 @@ import {
   useState,
   useEffect,
 } from 'react'
-
 import { UserSettings } from '../../../../types/user-settings'
 import getMeta from '@/utils/meta'
-import { userStyles } from '../utils/styles'
-import { canUseNewEditor } from '@/features/ide-redesign/utils/new-editor-utils'
-import { useIdeContext } from '@/shared/context/ide-context'
+import customLocalStorage from '@/infrastructure/local-storage'
+import { getLegacyWriteAndCiteMigration } from '../utils/write-and-cite-settings-migration'
+import { saveUserSettings } from '@/features/editor-left-menu/utils/api'
 
-const defaultSettings: UserSettings = {
+export const defaultSettings: UserSettings = {
   pdfViewer: 'pdfjs',
   autoComplete: true,
   autoPairDelimiters: true,
   syntaxValidation: false,
+  previewTabs: false,
   editorTheme: 'textmate',
+  editorDarkTheme: 'overleaf_dark',
+  editorLightTheme: 'textmate',
   overallTheme: '',
   mode: 'default',
   fontSize: 12,
@@ -28,8 +30,24 @@ const defaultSettings: UserSettings = {
   lineHeight: 'normal',
   mathPreview: true,
   referencesSearchMode: 'advanced',
-  enableNewEditor: true,
   breadcrumbs: true,
+  nonBlinkingCursor: false,
+  darkModePdf: false,
+  zotero: {
+    enabled: true,
+    groups: [],
+    disablePersonalLibrary: false,
+  },
+  mendeley: {
+    enabled: true,
+    groups: [],
+    disablePersonalLibrary: false,
+  },
+  papers: {
+    enabled: true,
+    groups: [],
+    disablePersonalLibrary: false,
+  },
 }
 
 type UserSettingsContextValue = {
@@ -50,19 +68,30 @@ export const UserSettingsProvider: FC<React.PropsWithChildren> = ({
     () => getMeta('ol-userSettings') || defaultSettings
   )
 
-  // update the global scope 'settings' value, for extensions
-  const { unstableStore } = useIdeContext()
   useEffect(() => {
-    const { fontFamily, lineHeight } = userStyles(userSettings)
-    unstableStore.set('settings', {
-      overallTheme: userSettings.overallTheme === 'light-' ? 'light' : 'dark',
-      keybindings: userSettings.mode === 'none' ? 'default' : userSettings.mode,
-      fontFamily,
-      lineHeight,
-      fontSize: userSettings.fontSize,
-      isNewEditor: canUseNewEditor() && userSettings.enableNewEditor,
+    const { patch, keysToRemove } = getLegacyWriteAndCiteMigration(userSettings)
+    if (Object.keys(patch).length === 0) {
+      keysToRemove.forEach(customLocalStorage.removeItem)
+      return
+    }
+
+    Promise.all(
+      Object.entries(patch).map(([key, value]) =>
+        saveUserSettings(
+          key as keyof Pick<UserSettings, 'mendeley' | 'zotero' | 'papers'>,
+          value
+        )
+      )
+    ).then(() => {
+      setUserSettings(currentSettings => ({
+        ...currentSettings,
+        ...patch,
+      }))
+      keysToRemove.forEach(customLocalStorage.removeItem)
     })
-  }, [unstableStore, userSettings])
+    // Only run once when the provider mounts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const value = useMemo<UserSettingsContextValue>(
     () => ({

@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import classNames from 'classnames'
 import {
   Dropdown,
   DropdownDivider,
@@ -8,9 +7,10 @@ import {
   DropdownItem,
   DropdownMenu,
   DropdownToggle,
-} from '@/features/ui/components/bootstrap-5/dropdown-menu'
-import FormControl from '@/features/ui/components/bootstrap-5/form/form-control'
+} from '@/shared/components/dropdown/dropdown-menu'
+import FormControl from '@/shared/components/form/form-control'
 import { isMac } from '@/shared/utils/os'
+import { Shortcut } from '@/shared/components/shortcut'
 
 const shortcuts = isMac
   ? {
@@ -75,6 +75,7 @@ function PdfZoomDropdown({
         id="pdf-zoom-dropdown"
         variant="link"
         className="pdf-toolbar-btn pdfjs-zoom-dropdown-button small"
+        aria-label={t('pdf_zoom_level')}
       >
         {rawScaleToPercentage(rawScale)}
       </DropdownToggle>
@@ -89,6 +90,7 @@ function PdfZoomDropdown({
             <FormControl
               onFocus={event => event.target.select()}
               value={customZoomValue}
+              type="text"
               onKeyDown={event => {
                 if (event.key === 'Enter') {
                   const zoom = Number(customZoomValue.replace('%', '')) / 100
@@ -167,23 +169,6 @@ function PdfZoomDropdown({
         ))}
       </DropdownMenu>
     </Dropdown>
-  )
-}
-
-function Shortcut({ keys }: { keys: string[] }) {
-  return (
-    <span className="float-end">
-      {keys.map((key, idx) => (
-        <span
-          className={classNames({
-            'pdfjs-zoom-dropdown-mac-shortcut-char': key.length === 1,
-          })}
-          key={`${key}${idx}`}
-        >
-          {key}
-        </span>
-      ))}
-    </span>
   )
 }
 

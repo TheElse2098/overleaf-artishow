@@ -14,7 +14,7 @@ function getManagedGroupSubscriptions(
   const subscriptionOne = {
     _id: 'bcd567',
     userIsGroupMember: true,
-    planLevelName: 'Professional',
+    planLevelName: 'Pro',
     admin_id: {
       email: 'you@example.com',
     },
@@ -28,7 +28,7 @@ function getManagedGroupSubscriptions(
   const subscriptionTwo = {
     _id: 'def456',
     userIsGroupMember: false,
-    planLevelName: 'Collaborator',
+    planLevelName: 'Standard',
     admin_id: {
       email: 'someone@example.com',
     },
@@ -42,7 +42,7 @@ function getManagedGroupSubscriptions(
   const subscriptionMemberAndAdmin = {
     _id: 'group2abc',
     userIsGroupMember: true,
-    planLevelName: 'Collaborator',
+    planLevelName: 'Standard',
     admin_id: {
       email: 'admin@example.com',
     },
@@ -56,7 +56,7 @@ function getManagedGroupSubscriptions(
   const subscriptionAdmin = {
     _id: 'group123abc',
     userIsGroupMember: false,
-    planLevelName: 'Collaborator',
+    planLevelName: 'Standard',
     admin_id: {
       email: 'admin@example.com',
     },
@@ -105,16 +105,16 @@ describe('<ManagedGroupSubscriptions />', function () {
     })
     expect(elements.length).to.equal(4)
     expect(elements[0].textContent).to.equal(
-      'You are a manager and member of the Professional group subscription GAS administered by you@example.com.'
+      'You are a manager and member of the Pro group subscription GAS administered by you@example.com.'
     )
     expect(elements[1].textContent).to.equal(
-      'You are a manager of the Collaborator group subscription GASWPLC administered by someone@example.com.'
+      'You are a manager of the Standard group subscription GASWPLC administered by someone@example.com.'
     )
     expect(elements[2].textContent).to.equal(
-      'You are a manager and member of the Collaborator group subscription Testing administered by you (admin@example.com).'
+      'You are a manager and member of the Standard group subscription Testing administered by you (admin@example.com).'
     )
     expect(elements[3].textContent).to.equal(
-      'You are a manager of the Collaborator group subscription Testing Another administered by you (admin@example.com).'
+      'You are a manager of the Standard group subscription Testing Another administered by you (admin@example.com).'
     )
 
     const links = screen.getAllByRole('link')
@@ -138,14 +138,14 @@ describe('<ManagedGroupSubscriptions />', function () {
     expect(links[10].getAttribute('href')).to.equal(
       '/manage/groups/group2abc/managers'
     )
-    expect(links[11].getAttribute('href')).to.equal('/metrics/groups/group2abc')
-    expect(links[13].getAttribute('href')).to.equal(
+    expect(links[12].getAttribute('href')).to.equal('/metrics/groups/group2abc')
+    expect(links[14].getAttribute('href')).to.equal(
       '/manage/groups/group123abc/members'
     )
-    expect(links[14].getAttribute('href')).to.equal(
+    expect(links[15].getAttribute('href')).to.equal(
       '/manage/groups/group123abc/managers'
     )
-    expect(links[15].getAttribute('href')).to.equal(
+    expect(links[17].getAttribute('href')).to.equal(
       '/metrics/groups/group123abc'
     )
   })
@@ -175,6 +175,79 @@ describe('<ManagedGroupSubscriptions />', function () {
     expect(screen.queryByText('Manage group settings')).to.be.null
     expect(screen.queryByText('Configure and manage SSO and Managed Users')).to
       .be.null
+  })
+
+  it('does not render the Group Audit Log settings row when the user is not the group admin', function () {
+    renderWithSubscriptionDashContext(<ManagedGroupSubscriptions />, {
+      metaTags: [
+        {
+          name: 'ol-managedGroupSubscriptions',
+          value: managedGroupSubscriptions2,
+        },
+        {
+          name: 'ol-groupSettingsEnabledFor',
+          value: [],
+        },
+      ],
+    })
+
+    expect(screen.queryByText('Audit logs')).to.be.null
+  })
+
+  it('renders the Group Audit Log settings row when the user is the group admin', async function () {
+    renderWithSubscriptionDashContext(<ManagedGroupSubscriptions />, {
+      metaTags: [
+        {
+          name: 'ol-managedGroupSubscriptions',
+          value: managedGroupSubscriptions,
+        },
+        { name: 'ol-usersEmail', value: 'admin@example.com' },
+      ],
+    })
+
+    await screen.findAllByText('Audit logs')
+  })
+
+  it('does not render the Sharing Permissions settings row when the user is not the group admin', function () {
+    renderWithSubscriptionDashContext(<ManagedGroupSubscriptions />, {
+      metaTags: [
+        {
+          name: 'ol-managedGroupSubscriptions',
+          value: managedGroupSubscriptions2,
+        },
+        {
+          name: 'ol-groupSettingsEnabledFor',
+          value: [],
+        },
+        {
+          name: 'ol-splitTestVariants',
+          value: { 'sharing-updates': 'enabled' },
+        },
+      ],
+    })
+
+    expect(screen.queryByText(/sharing permissions/i)).to.be.null
+    expect(screen.queryByText(/manage how group members share projects/i)).to.be
+      .null
+  })
+
+  it('renders the Sharing Permissions settings row when the user is the group admin and plan is professional', async function () {
+    renderWithSubscriptionDashContext(<ManagedGroupSubscriptions />, {
+      metaTags: [
+        {
+          name: 'ol-managedGroupSubscriptions',
+          value: managedGroupSubscriptions,
+        },
+        { name: 'ol-usersEmail', value: 'you@example.com' },
+        {
+          name: 'ol-splitTestVariants',
+          value: { 'sharing-updates': 'enabled' },
+        },
+      ],
+    })
+
+    await screen.findAllByText(/sharing permissions/i)
+    await screen.findAllByText(/manage how group members share projects/i)
   })
 
   it('renders Managed Group / Group SSO settings row when both features are turned on', async function () {

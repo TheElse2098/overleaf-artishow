@@ -1,8 +1,7 @@
 import classnames from 'classnames'
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import * as eventTracking from '../../../../infrastructure/event-tracking'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import MaterialIcon from '@/shared/components/material-icon'
+import OLButton from '@/shared/components/ol/ol-button'
 
 export default function FileTreeModalCreateFileMode({
   mode,

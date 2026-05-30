@@ -1,32 +1,23 @@
-// TODO: This file was created by bulk-decaffeinate.
-// Fix any style issues and re-enable lint.
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
- */
 const sinon = require('sinon')
 const { expect } = require('chai')
 
 const MockWebApi = require('./helpers/MockWebApi')
 const DocUpdaterClient = require('./helpers/DocUpdaterClient')
 const DocUpdaterApp = require('./helpers/DocUpdaterApp')
+const { RequestFailedError } = require('@overleaf/fetch-utils')
+const PersistenceManager = require('../../../app/js/PersistenceManager')
 
 describe('Getting a document', function () {
-  before(function (done) {
+  before(async function () {
     this.lines = ['one', 'two', 'three']
     this.version = 42
-    return DocUpdaterApp.ensureRunning(done)
+    await DocUpdaterApp.ensureRunning()
   })
 
   describe('when the document is not loaded', function () {
-    before(function (done) {
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
+    before(async function () {
+      this.project_id = DocUpdaterClient.randomId()
+      this.doc_id = DocUpdaterClient.randomId()
       sinon.spy(MockWebApi, 'getDocument')
 
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
@@ -34,87 +25,113 @@ describe('Getting a document', function () {
         version: this.version,
       })
 
-      return DocUpdaterClient.getDoc(
+      this.returnedDoc = await DocUpdaterClient.getDoc(
         this.project_id,
-        this.doc_id,
-        (error, res, returnedDoc) => {
-          if (error) return done(error)
-          this.returnedDoc = returnedDoc
-          return done()
-        }
+        this.doc_id
       )
     })
 
     after(function () {
-      return MockWebApi.getDocument.restore()
+      MockWebApi.getDocument.restore()
     })
 
     it('should load the document from the web API', function () {
-      return MockWebApi.getDocument
+      MockWebApi.getDocument
         .calledWith(this.project_id, this.doc_id)
         .should.equal(true)
     })
 
     it('should return the document lines', function () {
-      return this.returnedDoc.lines.should.deep.equal(this.lines)
+      this.returnedDoc.lines.should.deep.equal(this.lines)
     })
 
-    return it('should return the document at its current version', function () {
-      return this.returnedDoc.version.should.equal(this.version)
+    it('should return the document at its current version', function () {
+      this.returnedDoc.version.should.equal(this.version)
     })
   })
 
-  describe('when the document is already loaded', function () {
-    before(function (done) {
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
+  describe('when the document is not loaded and the peek option is used', function () {
+    before(async function () {
+      const origGetDocumentController =
+        MockWebApi.getDocumentController.bind(MockWebApi)
+      sinon
+        .stub(MockWebApi, 'getDocumentController')
+        .callsFake((req, res, next) => {
+          expect(req.query.peek).to.equal('true')
+          return origGetDocumentController(req, res, next)
+        })
+      this.project_id = DocUpdaterClient.randomId()
+      this.doc_id = DocUpdaterClient.randomId()
+      sinon.spy(MockWebApi, 'getDocument')
 
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
       })
-      return DocUpdaterClient.preloadDoc(
+      // This is only used by the resync code and not exposed on the HTTP
+      // api so we are calling it directly.
+      this.returnedDoc = await PersistenceManager.promises.getDoc(
         this.project_id,
         this.doc_id,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          sinon.spy(MockWebApi, 'getDocument')
-          return DocUpdaterClient.getDoc(
-            this.project_id,
-            this.doc_id,
-            (error, res, returnedDoc) => {
-              if (error) return done(error)
-              this.returnedDoc = returnedDoc
-              return done()
-            }
-          )
-        }
+        { peek: true }
       )
     })
 
     after(function () {
-      return MockWebApi.getDocument.restore()
+      MockWebApi.getDocumentController.restore()
+      MockWebApi.getDocument.restore()
+    })
+
+    it('should load the document from the web API with peek=true', function () {
+      MockWebApi.getDocument
+        .calledWith(this.project_id, this.doc_id)
+        .should.equal(true)
+    })
+
+    it('should return the document lines', function () {
+      this.returnedDoc.lines.should.deep.equal(this.lines)
+    })
+
+    it('should return the document at its current version', function () {
+      this.returnedDoc.version.should.equal(this.version)
+    })
+  })
+
+  describe('when the document is already loaded', function () {
+    before(async function () {
+      this.project_id = DocUpdaterClient.randomId()
+      this.doc_id = DocUpdaterClient.randomId()
+
+      MockWebApi.insertDoc(this.project_id, this.doc_id, {
+        lines: this.lines,
+        version: this.version,
+      })
+      await DocUpdaterClient.preloadDoc(this.project_id, this.doc_id)
+
+      sinon.spy(MockWebApi, 'getDocument')
+      this.returnedDoc = await DocUpdaterClient.getDoc(
+        this.project_id,
+        this.doc_id
+      )
+    })
+
+    after(function () {
+      MockWebApi.getDocument.restore()
     })
 
     it('should not load the document from the web API', function () {
-      return MockWebApi.getDocument.called.should.equal(false)
+      MockWebApi.getDocument.called.should.equal(false)
     })
 
-    return it('should return the document lines', function () {
-      return this.returnedDoc.lines.should.deep.equal(this.lines)
+    it('should return the document lines', function () {
+      this.returnedDoc.lines.should.deep.equal(this.lines)
     })
   })
 
   describe('when the request asks for some recent ops', function () {
-    before(function (done) {
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
+    before(async function () {
+      this.project_id = DocUpdaterClient.randomId()
+      this.doc_id = DocUpdaterClient.randomId()
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: (this.lines = ['one', 'two', 'three']),
       })
@@ -125,159 +142,263 @@ describe('Getting a document', function () {
         v,
       }))
 
-      return DocUpdaterClient.sendUpdates(
+      await DocUpdaterClient.sendUpdates(
         this.project_id,
         this.doc_id,
-        this.updates,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          sinon.spy(MockWebApi, 'getDocument')
-          return done()
-        }
+        this.updates
       )
+      sinon.spy(MockWebApi, 'getDocument')
     })
 
     after(function () {
-      return MockWebApi.getDocument.restore()
+      MockWebApi.getDocument.restore()
     })
 
     describe('when the ops are loaded', function () {
-      before(function (done) {
-        return DocUpdaterClient.getDocAndRecentOps(
+      before(async function () {
+        this.returnedDoc = await DocUpdaterClient.getDocAndRecentOps(
           this.project_id,
           this.doc_id,
-          190,
-          (error, res, returnedDoc) => {
-            if (error) return done(error)
-            this.returnedDoc = returnedDoc
-            return done()
-          }
+          190
         )
       })
 
-      return it('should return the recent ops', function () {
+      it('should return the recent ops', function () {
         this.returnedDoc.ops.length.should.equal(10)
-        return Array.from(this.updates.slice(190, -1)).map((update, i) =>
+        for (const [i, update] of this.updates.slice(190, -1).entries()) {
           this.returnedDoc.ops[i].op.should.deep.equal(update.op)
-        )
+        }
       })
     })
 
-    return describe('when the ops are not all loaded', function () {
-      before(function (done) {
+    describe('when the ops are not all loaded', function () {
+      it('should return UnprocessableEntity', async function () {
         // We only track 100 ops
-        return DocUpdaterClient.getDocAndRecentOps(
-          this.project_id,
-          this.doc_id,
-          10,
-          (error, res, returnedDoc) => {
-            if (error) return done(error)
-            this.res = res
-            this.returnedDoc = returnedDoc
-            return done()
-          }
+        await expect(
+          DocUpdaterClient.getDocAndRecentOps(this.project_id, this.doc_id, 10)
         )
-      })
-
-      return it('should return UnprocessableEntity', function () {
-        return this.res.statusCode.should.equal(422)
+          .to.be.rejectedWith(RequestFailedError)
+          .and.eventually.have.nested.property('response.status', 422)
       })
     })
   })
 
   describe('when the document does not exist', function () {
-    before(function (done) {
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
-      return DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          this.statusCode = res.statusCode
-          return done()
-        }
-      )
-    })
-
-    return it('should return 404', function () {
-      return this.statusCode.should.equal(404)
+    it('should return 404', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 404)
     })
   })
 
   describe('when the web api returns an error', function () {
-    before(function (done) {
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
-      sinon
-        .stub(MockWebApi, 'getDocument')
-        .callsFake((projectId, docId, callback) => {
-          if (callback == null) {
-            callback = function () {}
-          }
-          return callback(new Error('oops'))
-        })
-      return DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          this.statusCode = res.statusCode
-          return done()
-        }
-      )
+    beforeEach(function () {
+      sinon.stub(MockWebApi, 'getDocument').rejects(new Error('oops'))
     })
 
-    after(function () {
-      return MockWebApi.getDocument.restore()
+    afterEach(function () {
+      MockWebApi.getDocument.restore()
     })
 
-    return it('should return 500', function () {
-      return this.statusCode.should.equal(500)
+    it('should return 500', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 500)
+    })
+
+    it('should retry the request', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 500)
+      expect(MockWebApi.getDocument).to.be.calledTwice
     })
   })
 
-  return describe('when the web api http request takes a long time', function () {
-    before(function (done) {
-      this.timeout = 10000
-      ;[this.project_id, this.doc_id] = Array.from([
-        DocUpdaterClient.randomId(),
-        DocUpdaterClient.randomId(),
-      ])
+  describe('when the web api returns a retryable error on the first attempt', function () {
+    beforeEach(function () {
+      const origGetDocumentController =
+        MockWebApi.getDocumentController.bind(MockWebApi)
+      const getDocumentStub = sinon
+        .stub(MockWebApi, 'getDocumentController')
+        .onCall(0)
+        .callsFake((req, res, next) => {
+          res.destroy() // simulate a network error
+        })
+      getDocumentStub.onCall(1).callsFake(origGetDocumentController)
+    })
+
+    afterEach(function () {
+      MockWebApi.getDocumentController.restore()
+    })
+
+    it('should return 200', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      MockWebApi.insertDoc(projectId, docId, {
+        lines: this.lines,
+        version: this.version,
+      })
+
+      await expect(
+        DocUpdaterClient.getDoc(projectId, docId)
+      ).to.eventually.deep.include({ lines: this.lines, version: this.version })
+    })
+
+    it('should retry the request', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      MockWebApi.insertDoc(projectId, docId, {
+        lines: this.lines,
+        version: this.version,
+      })
+      await expect(
+        DocUpdaterClient.getDoc(projectId, docId)
+      ).to.eventually.deep.include({ lines: this.lines, version: this.version })
+
+      expect(MockWebApi.getDocumentController).to.be.calledTwice
+    })
+  })
+
+  describe('when the web api returns a 413 error', function () {
+    beforeEach(function () {
+      sinon
+        .stub(MockWebApi, 'getDocumentController')
+        .callsFake((req, res, next) => {
+          res.sendStatus(413)
+        })
+    })
+
+    afterEach(function () {
+      MockWebApi.getDocumentController.restore()
+    })
+
+    it('should return 413', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 413)
+    })
+
+    it('should not retry the request', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 413)
+      expect(MockWebApi.getDocumentController).to.be.calledOnce
+    })
+  })
+
+  describe('when the web api returns an incomplete doc', function () {
+    afterEach(function () {
+      MockWebApi.getDocument.restore()
+    })
+
+    it('should return an error for missing lines', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
       sinon
         .stub(MockWebApi, 'getDocument')
-        .callsFake((projectId, docId, callback) => {
-          if (callback == null) {
-            callback = function () {}
-          }
-          return setTimeout(callback, 30000)
-        })
-      return done()
+        .resolves({ version: 123, pathname: 'test' })
+
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 422)
+    })
+
+    it('should return an error for missing version', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      sinon
+        .stub(MockWebApi, 'getDocument')
+        .resolves({ lines: [''], pathname: 'test' })
+
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 422)
+    })
+
+    it('should return an error for missing pathname', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      sinon
+        .stub(MockWebApi, 'getDocument')
+        .resolves({ lines: [''], version: 123 })
+
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 422)
+    })
+  })
+
+  describe('when the web api http request times out on the first request', function () {
+    before(function (done) {
+      this.project_id = DocUpdaterClient.randomId()
+      this.doc_id = DocUpdaterClient.randomId()
+      MockWebApi.insertDoc(this.project_id, this.doc_id, {
+        lines: this.lines,
+        version: this.version,
+      })
+      sinon
+        .stub(MockWebApi, 'getDocument')
+        .onFirstCall()
+        .returns(
+          new Promise(resolve => {
+            setTimeout(() => resolve(null), 30_000)
+          })
+        )
+        .callThrough() // subsequent requests return normally
+      done()
     })
 
     after(function () {
-      return MockWebApi.getDocument.restore()
+      MockWebApi.getDocument.restore()
     })
 
-    return it('should return quickly(ish)', function (done) {
-      const start = Date.now()
-      return DocUpdaterClient.getDoc(
+    it('should retry the request and return the document', async function () {
+      const returnedDoc = await DocUpdaterClient.getDoc(
         this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          res.statusCode.should.equal(500)
-          const delta = Date.now() - start
-          expect(delta).to.be.below(20000)
-          return done()
-        }
+        this.doc_id
       )
+      expect(returnedDoc).to.deep.include({
+        lines: this.lines,
+        version: this.version,
+      })
+    })
+  })
+
+  describe('when the web api http request times out repeatedly', function () {
+    before(function (done) {
+      this.timeout = 10000
+      sinon.stub(MockWebApi, 'getDocument').returns(
+        new Promise(resolve => {
+          setTimeout(() => resolve(null), 30_000)
+        })
+      )
+      done()
+    })
+
+    after(function () {
+      MockWebApi.getDocument.restore()
+    })
+
+    it('should return an error after two attempts', async function () {
+      const projectId = DocUpdaterClient.randomId()
+      const docId = DocUpdaterClient.randomId()
+      const start = Date.now()
+      await expect(DocUpdaterClient.getDoc(projectId, docId))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 500)
+      const delta = Date.now() - start
+      expect(delta).to.be.above(10_000)
+      expect(delta).to.be.below(20_000)
     })
   })
 })

@@ -31,6 +31,15 @@ import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-ope
 import { isValidTeXFile } from '@/main/is-valid-tex-file'
 import { mousedown } from '@/features/source-editor/extensions/visual/selection'
 
+const visualPreviewTheme = EditorView.theme({
+  '&.cm-editor': {
+    background: '#fff',
+  },
+  '.ol-cm-preamble-wrapper, .ol-cm-end-document-widget': {
+    visibility: 'hidden',
+  },
+})
+
 export const VisualPreview: FC<{ view: EditorView }> = ({ view }) => {
   const [previewState, setPreviewState] = useState<EditorState>()
 
@@ -47,6 +56,9 @@ export const VisualPreview: FC<{ view: EditorView }> = ({ view }) => {
     labels: new Set(),
     packageNames: new Set(),
     referenceKeys: new Set(),
+    searchLocalReferences() {
+      return Promise.resolve({ hits: [] })
+    },
     commands: [],
     fileTreeData,
   })
@@ -71,14 +83,7 @@ export const VisualPreview: FC<{ view: EditorView }> = ({ view }) => {
           lineHeight: 'normal',
           activeOverallTheme: 'light',
         }),
-        EditorView.theme({
-          '&.cm-editor': {
-            background: '#fff',
-          },
-          '.ol-cm-preamble-wrapper, .ol-cm-end-document-widget': {
-            visibility: 'hidden',
-          },
-        }),
+        visualPreviewTheme,
         visualTheme,
         visualHighlightStyle,
         tableGeneratorTheme,

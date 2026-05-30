@@ -1,19 +1,15 @@
-const FileHandler = require('./FileHandler')
-const metrics = require('@overleaf/metrics')
-const parseRange = require('range-parser')
-const Errors = require('./Errors')
-const { pipeline } = require('node:stream')
+import FileHandler from './FileHandler.js'
+import metrics from '@overleaf/metrics'
+import parseRange from 'range-parser'
+import Errors from './Errors.js'
+import { pipeline } from 'node:stream'
 
 const maxSizeInBytes = 1024 * 1024 * 1024 // 1GB
 
-module.exports = {
+export default {
   getFile,
   getFileHead,
   insertFile,
-  copyFile,
-  deleteFile,
-  deleteProject,
-  directorySize,
 }
 
 function getFile(req, res, next) {
@@ -25,6 +21,7 @@ function getFile(req, res, next) {
     format,
     style,
   }
+  if (req.useSubdirectories) options.useSubdirectories = true
 
   metrics.inc('getFile')
   req.requestLogger.setMessage('getting file')
@@ -65,13 +62,22 @@ function getFile(req, res, next) {
         return
       }
 
+      if (res.destroyed) {
+        fileStream.destroy()
+        return
+      }
+
       if (req.query.cacheWarm) {
         fileStream.destroy()
         return res.sendStatus(200).end()
       }
 
       pipeline(fileStream, res, err => {
-        if (err && err.code === 'ERR_STREAM_PREMATURE_CLOSE') {
+        if (
+          err &&
+          (err.code === 'ERR_STREAM_PREMATURE_CLOSE' ||
+            err.code === 'ERR_STREAM_UNABLE_TO_PIPE')
+        ) {
           res.end()
         } else if (err) {
           next(
@@ -121,85 +127,6 @@ function insertFile(req, res, next) {
     } else {
       res.sendStatus(200)
     }
-  })
-}
-
-function copyFile(req, res, next) {
-  metrics.inc('copyFile')
-  const { key, bucket } = req
-  const oldProjectId = req.body.source.project_id
-  const oldFileId = req.body.source.file_id
-
-  req.requestLogger.addFields({
-    key,
-    bucket,
-    oldProject_id: oldProjectId,
-    oldFile_id: oldFileId,
-  })
-  req.requestLogger.setMessage('copying file')
-
-  FileHandler.copyObject(bucket, `${oldProjectId}/${oldFileId}`, key, err => {
-    if (err) {
-      if (err instanceof Errors.NotFoundError) {
-        res.sendStatus(404)
-      } else {
-        next(err)
-      }
-    } else {
-      res.sendStatus(200)
-    }
-  })
-}
-
-function deleteFile(req, res, next) {
-  metrics.inc('deleteFile')
-  const { key, bucket } = req
-
-  req.requestLogger.addFields({ key, bucket })
-  req.requestLogger.setMessage('deleting file')
-
-  FileHandler.deleteFile(bucket, key, function (err) {
-    if (err) {
-      next(err)
-    } else {
-      res.sendStatus(204)
-    }
-  })
-}
-
-function deleteProject(req, res, next) {
-  metrics.inc('deleteProject')
-  const { key, bucket } = req
-
-  req.requestLogger.setMessage('deleting project')
-  req.requestLogger.addFields({ key, bucket })
-
-  FileHandler.deleteProject(bucket, key, function (err) {
-    if (err) {
-      if (err instanceof Errors.InvalidParametersError) {
-        return res.sendStatus(400)
-      }
-      next(err)
-    } else {
-      res.sendStatus(204)
-    }
-  })
-}
-
-function directorySize(req, res, next) {
-  metrics.inc('projectSize')
-  const { project_id: projectId, bucket } = req
-
-  req.requestLogger.setMessage('getting project size')
-  req.requestLogger.addFields({ projectId, bucket })
-
-  FileHandler.getDirectorySize(bucket, projectId, function (err, size) {
-    if (err) {
-      return next(err)
-    }
-
-    res.json({ 'total bytes': size })
-    req.requestLogger.addFields({ size })
   })
 }
 

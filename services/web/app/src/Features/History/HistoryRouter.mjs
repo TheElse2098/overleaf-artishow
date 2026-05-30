@@ -1,12 +1,12 @@
 // @ts-check
 
 import Settings from '@overleaf/settings'
-import { Joi, validate } from '../../infrastructure/Validation.js'
-import { RateLimiter } from '../../infrastructure/RateLimiter.js'
-import AuthenticationController from '../Authentication/AuthenticationController.js'
-import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.js'
-import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.js'
-import HistoryController from './HistoryController.js'
+import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.mjs'
+import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.mjs'
+import HistoryController from './HistoryController.mjs'
+import AsyncLocalStorage from '../../infrastructure/AsyncLocalStorage.mjs'
 
 const rateLimiters = {
   downloadProjectRevision: new RateLimiter('download-project-revision', {
@@ -24,36 +24,24 @@ const rateLimiters = {
   }),
 }
 
+/**
+ * @param {any} webRouter
+ * @param {any} privateApiRouter
+ */
 function apply(webRouter, privateApiRouter) {
   // Blobs
 
   webRouter.head(
     '/project/:project_id/blob/:hash',
-    validate({
-      params: Joi.object({
-        project_id: Joi.objectId().required(),
-        hash: Joi.string().required().hex().length(40),
-      }),
-      query: Joi.object({
-        fallback: Joi.objectId().optional(),
-      }),
-    }),
     RateLimiterMiddleware.rateLimit(rateLimiters.getProjectBlob),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.headBlob
   )
   webRouter.get(
     '/project/:project_id/blob/:hash',
-    validate({
-      params: Joi.object({
-        project_id: Joi.objectId().required(),
-        hash: Joi.string().required().hex().length(40),
-      }),
-      query: Joi.object({
-        fallback: Joi.objectId().optional(),
-      }),
-    }),
     RateLimiterMiddleware.rateLimit(rateLimiters.getProjectBlob),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.getBlob
   )
@@ -62,24 +50,28 @@ function apply(webRouter, privateApiRouter) {
 
   webRouter.get(
     '/project/:Project_id/updates',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.proxyToHistoryApiAndInjectUserDetails
   )
   webRouter.get(
     '/project/:Project_id/doc/:doc_id/diff',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.proxyToHistoryApi
   )
   webRouter.get(
     '/project/:Project_id/diff',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.proxyToHistoryApiAndInjectUserDetails
   )
   webRouter.get(
     '/project/:Project_id/filetree/diff',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.proxyToHistoryApi
@@ -118,6 +110,7 @@ function apply(webRouter, privateApiRouter) {
   webRouter.post(
     '/project/:Project_id/flush',
     RateLimiterMiddleware.rateLimit(rateLimiters.flushHistory),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.proxyToHistoryApi
@@ -132,6 +125,7 @@ function apply(webRouter, privateApiRouter) {
 
   webRouter.get(
     '/project/:Project_id/labels',
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.getLabels
@@ -151,25 +145,14 @@ function apply(webRouter, privateApiRouter) {
 
   webRouter.get(
     '/project/:project_id/latest/history',
-    validate({
-      params: Joi.object({
-        project_id: Joi.objectId().required(),
-      }),
-    }),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.getLatestHistory
   )
   webRouter.get(
     '/project/:project_id/changes',
-    validate({
-      params: Joi.object({
-        project_id: Joi.objectId().required(),
-      }),
-      query: Joi.object({
-        since: Joi.number().integer().min(0).optional(),
-      }),
-    }),
+    AsyncLocalStorage.middleware,
     AuthorizationMiddleware.blockRestrictedUserFromProject,
     AuthorizationMiddleware.ensureUserCanReadProject,
     HistoryController.getChanges

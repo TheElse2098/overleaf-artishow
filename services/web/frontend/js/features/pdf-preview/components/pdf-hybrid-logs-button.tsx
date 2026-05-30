@@ -1,13 +1,13 @@
-import { memo, useCallback } from 'react'
+import { forwardRef, memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useDetachCompileContext as useCompileContext } from '@/shared/context/detach-compile-context'
 import * as eventTracking from '@/infrastructure/event-tracking'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLBadge from '@/features/ui/components/ol/ol-badge'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLBadge from '@/shared/components/ol/ol-badge'
 
-function PdfHybridLogsButton() {
+const PdfHybridLogsButton = forwardRef<HTMLButtonElement>((_, ref) => {
   const { error, logEntries, toggleLogs, showLogs, stoppedOnFirstError } =
     useCompileContext()
 
@@ -25,6 +25,20 @@ function PdfHybridLogsButton() {
   const warningCount = Number(logEntries?.warnings?.length)
   const totalCount = errorCount + warningCount
 
+  if (showLogs) {
+    return (
+      <OLButton
+        ref={ref}
+        variant="secondary"
+        size="sm"
+        disabled={Boolean(error || stoppedOnFirstError)}
+        onClick={handleClick}
+      >
+        {t('back_to_pdf')}
+      </OLButton>
+    )
+  }
+
   return (
     <OLTooltip
       id="logs-toggle"
@@ -32,17 +46,17 @@ function PdfHybridLogsButton() {
       overlayProps={{ placement: 'bottom' }}
     >
       <OLButton
+        ref={ref}
         variant="link"
         disabled={Boolean(error || stoppedOnFirstError)}
-        active={showLogs}
         className="pdf-toolbar-btn toolbar-item log-btn"
         onClick={handleClick}
         style={{ position: 'relative' }}
-        aria-label={showLogs ? t('view_pdf') : t('view_logs')}
+        aria-label={t('view_logs')}
       >
         <MaterialIcon type="description" />
 
-        {!showLogs && totalCount > 0 && (
+        {totalCount > 0 && (
           <OLBadge bg={errorCount === 0 ? 'warning' : 'danger'}>
             {totalCount}
           </OLBadge>
@@ -50,6 +64,8 @@ function PdfHybridLogsButton() {
       </OLButton>
     </OLTooltip>
   )
-}
+})
+
+PdfHybridLogsButton.displayName = 'PdfHybridLogsButton'
 
 export default memo(PdfHybridLogsButton)

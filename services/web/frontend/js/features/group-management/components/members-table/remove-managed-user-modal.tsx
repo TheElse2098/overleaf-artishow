@@ -5,17 +5,18 @@ import { useTranslation, Trans } from 'react-i18next'
 import { useLocation } from '@/shared/hooks/use-location'
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
+} from '@/shared/components/ol/ol-modal'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLNotification from '@/shared/components/ol/ol-notification'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import { sendMB } from '@/infrastructure/event-tracking'
 
 type RemoveManagedUserModalProps = {
@@ -128,6 +129,7 @@ export default function RemoveManagedUserModal({
             variant="danger"
             disabled={isLoading || isSuccess || !shouldEnableRemoveUserButton}
             isLoading={isLoading}
+            loadingLabel={t('removing')}
           >
             {t('remove_user')}
           </OLButton>

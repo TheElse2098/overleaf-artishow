@@ -1,19 +1,19 @@
 import { CookieJar } from 'tough-cookie'
-import AuthenticationManager from '../../../../app/src/Features/Authentication/AuthenticationManager.js'
+import AuthenticationManager from '../../../../app/src/Features/Authentication/AuthenticationManager.mjs'
 import Settings from '@overleaf/settings'
-import InstitutionsAPI from '../../../../app/src/Features/Institutions/InstitutionsAPI.js'
-import UserCreator from '../../../../app/src/Features/User/UserCreator.js'
-import UserGetter from '../../../../app/src/Features/User/UserGetter.js'
-import UserUpdater from '../../../../app/src/Features/User/UserUpdater.js'
+import InstitutionsAPI from '../../../../app/src/Features/Institutions/InstitutionsAPI.mjs'
+import UserCreator from '../../../../app/src/Features/User/UserCreator.mjs'
+import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
+import UserUpdater from '../../../../app/src/Features/User/UserUpdater.mjs'
 import moment from 'moment'
 import fetch from 'node-fetch'
 import mongodb from 'mongodb-legacy'
 
-import { UserAuditLogEntry } from '../../../../app/src/models/UserAuditLogEntry.js'
+import { UserAuditLogEntry } from '../../../../app/src/models/UserAuditLogEntry.mjs'
 
 // Import the rate limiter so we can clear it between tests
 
-import { RateLimiter } from '../../../../app/src/infrastructure/RateLimiter.js'
+import { RateLimiter } from '../../../../app/src/infrastructure/RateLimiter.mjs'
 
 const { ObjectId } = mongodb
 
@@ -55,6 +55,16 @@ class UserHelper {
   getAuditLogWithoutNoise() {
     return (this.user.auditLog || []).filter(entry => {
       return entry.operation !== 'login'
+    })
+  }
+
+  /**
+   * Get auditLog by operation
+   * @return {object[]}
+   */
+  getAuditLogByOperation(operation) {
+    return (this.user.auditLog || []).filter(entry => {
+      return entry.operation === operation
     })
   }
 

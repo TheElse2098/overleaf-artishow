@@ -7,13 +7,13 @@ import {
   renameSync,
 } from 'fs'
 import { pipeline } from 'stream/promises'
-import DocumentUpdaterHandler from '../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.js'
+import DocumentUpdaterHandler from '../../../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs'
 import ProjectZipStreamManager from '../../../app/src/Features/Downloads/ProjectZipStreamManager.mjs'
 import logger from '@overleaf/logger'
 import { promisify } from '@overleaf/promise-utils'
-import { gracefulShutdown } from '../../../app/src/infrastructure/GracefulShutdown.js'
-import { Project } from '../../../app/src/models/Project.js'
-import { User } from '../../../app/src/models/User.js'
+import { gracefulShutdown } from '../../../app/src/infrastructure/GracefulShutdown.mjs'
+import { Project } from '../../../app/src/models/Project.mjs'
+import { User } from '../../../app/src/models/User.mjs'
 import readline from 'readline'
 
 function parseArgs() {

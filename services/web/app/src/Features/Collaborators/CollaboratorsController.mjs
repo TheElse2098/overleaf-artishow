@@ -1,20 +1,25 @@
 import OError from '@overleaf/o-error'
-import HttpErrorHandler from '../../Features/Errors/HttpErrorHandler.js'
+import HttpErrorHandler from '../../Features/Errors/HttpErrorHandler.mjs'
 import mongodb from 'mongodb-legacy'
-import CollaboratorsHandler from './CollaboratorsHandler.js'
-import CollaboratorsGetter from './CollaboratorsGetter.js'
-import OwnershipTransferHandler from './OwnershipTransferHandler.js'
-import SessionManager from '../Authentication/SessionManager.js'
-import EditorRealTimeController from '../Editor/EditorRealTimeController.js'
-import TagsHandler from '../Tags/TagsHandler.js'
+import CollaboratorsHandler from './CollaboratorsHandler.mjs'
+import CollaboratorsGetter from './CollaboratorsGetter.mjs'
+import OwnershipTransferHandler from './OwnershipTransferHandler.mjs'
+import SessionManager from '../Authentication/SessionManager.mjs'
+import EditorRealTimeController from '../Editor/EditorRealTimeController.mjs'
+import TagsHandler from '../Tags/TagsHandler.mjs'
 import Errors from '../Errors/Errors.js'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
-import { hasAdminAccess } from '../Helpers/AdminAuthorizationHelper.js'
-import TokenAccessHandler from '../TokenAccess/TokenAccessHandler.js'
-import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.js'
-import LimitationsManager from '../Subscription/LimitationsManager.js'
+import AdminAuthorizationHelper from '../Helpers/AdminAuthorizationHelper.mjs'
+import TokenAccessHandler from '../TokenAccess/TokenAccessHandler.mjs'
+import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
+import LimitationsManager from '../Subscription/LimitationsManager.mjs'
+import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
+import { z, zz, parseReq } from '../../infrastructure/Validation.mjs'
+import Features from '../../infrastructure/Features.mjs'
+import UserGetter from '../User/UserGetter.mjs'
 
+const { hasAdminAccess } = AdminAuthorizationHelper
 const ObjectId = mongodb.ObjectId
 
 export default {
@@ -35,12 +40,20 @@ async function removeUserFromProject(req, res, next) {
     members: true,
   })
 
+  const removedUser = await UserGetter.promises.getUser(
+    { _id: userId },
+    { email: 1 }
+  )
+
   ProjectAuditLogHandler.addEntryInBackground(
     projectId,
     'remove-collaborator',
     sessionUserId,
     req.ip,
-    { userId }
+    {
+      userId,
+      collaboratorEmail: removedUser?.email,
+    }
   )
 
   res.sendStatus(204)
@@ -50,6 +63,9 @@ async function removeSelfFromProject(req, res, next) {
   const projectId = req.params.Project_id
   const userId = SessionManager.getLoggedInUserId(req.session)
   await _removeUserIdFromProject(projectId, userId)
+  EditorRealTimeController.emitToRoom(projectId, 'project:membership:changed', {
+    members: true,
+  })
 
   ProjectAuditLogHandler.addEntryInBackground(
     projectId,
@@ -73,11 +89,26 @@ async function getAllMembers(req, res, next) {
   res.json({ members })
 }
 
+const setCollaboratorInfoSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+    user_id: zz.objectId(),
+  }),
+  body: z.object({
+    privilegeLevel: z.enum([
+      PrivilegeLevels.READ_ONLY,
+      PrivilegeLevels.READ_AND_WRITE,
+      PrivilegeLevels.REVIEW,
+    ]),
+  }),
+})
+
 async function setCollaboratorInfo(req, res, next) {
   try {
-    const projectId = req.params.Project_id
-    const userId = req.params.user_id
-    const { privilegeLevel } = req.body
+    const { params, body } = parseReq(req, setCollaboratorInfoSchema)
+    const projectId = params.Project_id
+    const userId = params.user_id
+    const { privilegeLevel } = body
 
     const allowed =
       await LimitationsManager.promises.canChangeCollaboratorPrivilegeLevel(
@@ -93,10 +124,17 @@ async function setCollaboratorInfo(req, res, next) {
       )
     }
 
+    const auditInfo = {
+      ipAddress: req.ip,
+      initiatorId: SessionManager.getLoggedInUserId(req.session),
+    }
+
     await CollaboratorsHandler.promises.setCollaboratorPrivilegeLevel(
       projectId,
       userId,
-      privilegeLevel
+      privilegeLevel,
+      {},
+      auditInfo
     )
     EditorRealTimeController.emitToRoom(
       projectId,
@@ -113,10 +151,20 @@ async function setCollaboratorInfo(req, res, next) {
   }
 }
 
+const transferOwnershipSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+  }),
+  body: z.object({
+    user_id: zz.objectId(),
+  }),
+})
+
 async function transferOwnership(req, res, next) {
   const sessionUser = SessionManager.getSessionUser(req.session)
-  const projectId = req.params.Project_id
-  const toUserId = req.body.user_id
+  const { params, body } = parseReq(req, transferOwnershipSchema)
+  const projectId = params.Project_id
+  const toUserId = body.user_id
   try {
     await OwnershipTransferHandler.promises.transferOwnership(
       projectId,
@@ -158,6 +206,10 @@ async function _removeUserIdFromProject(projectId, userId) {
 async function getShareTokens(req, res) {
   const projectId = req.params.Project_id
   const userId = SessionManager.getLoggedInUserId(req.session)
+
+  if (!Features.hasFeature('link-sharing')) {
+    return res.sendStatus(403) // return Forbidden if link sharing is not enabled
+  }
 
   let tokens
   if (userId) {

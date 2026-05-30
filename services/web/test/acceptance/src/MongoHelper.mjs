@@ -1,13 +1,12 @@
 import { expect } from 'chai'
 import mongodb from 'mongodb-legacy'
 import mongoose from 'mongoose'
-import { User as UserModel } from '../../../app/src/models/User.js'
-import { db } from '../../../app/src/infrastructure/mongodb.js'
-import {
-  normalizeQuery,
-  normalizeMultiQuery,
-} from '../../../app/src/Features/Helpers/Mongo.js'
+import { User as UserModel } from '../../../app/src/models/User.mjs'
+import { db } from '../../../app/src/infrastructure/mongodb.mjs'
+import MongoHelpers from '../../../app/src/Features/Helpers/Mongo.mjs'
 import UserHelper from './helpers/User.mjs'
+
+const { normalizeQuery, normalizeMultiQuery } = MongoHelpers
 
 const User = UserHelper.promises
 
@@ -164,9 +163,10 @@ describe('MongoTests', function () {
     })
 
     describe('with an object as query', function () {
+      const signUpDate = new Date('2025-11-03T16:38:17.320Z')
       beforeEach(async function addHiddenFlag() {
         // add a mongo field that does not exist on the other users
-        await ghost.mongoUpdate({ $set: { hidden: 1 } })
+        await ghost.mongoUpdate({ $set: { signUpDate } })
       })
 
       it('should pass through the query', function () {
@@ -177,7 +177,7 @@ describe('MongoTests', function () {
 
       describe('when searching for hidden users', function () {
         it('should match the ghost only', async function () {
-          const query = normalizeMultiQuery({ hidden: 1 })
+          const query = normalizeMultiQuery({ signUpDate })
 
           const users = await db.users.find(query).toArray()
           expect(users).to.have.length(1)
@@ -187,7 +187,7 @@ describe('MongoTests', function () {
 
       describe('when searching for non hidden users', function () {
         it('should find the three users', async function () {
-          const query = normalizeMultiQuery({ hidden: { $exists: false } })
+          const query = normalizeMultiQuery({ signUpDate: { $ne: signUpDate } })
 
           await expectToFindTheThreeUsers(query)
         })

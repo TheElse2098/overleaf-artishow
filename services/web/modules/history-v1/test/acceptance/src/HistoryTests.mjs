@@ -1,7 +1,7 @@
 import { expect } from 'chai'
 
 import _ from 'lodash'
-import { db, ObjectId } from '../../../../../app/src/infrastructure/mongodb.js'
+import { db, ObjectId } from '../../../../../app/src/infrastructure/mongodb.mjs'
 import User from '../../../../../test/acceptance/src/helpers/User.mjs'
 import MockV1HistoryApiClass from '../../../../../test/acceptance/src/mocks/MockV1HistoryApi.mjs'
 
@@ -208,6 +208,24 @@ describe('History', function () {
                 done()
               }
             )
+          }
+        )
+      })
+    })
+
+    it('should return 404 for invalid version', function (done) {
+      this.owner.createProject('example-project', (error, projectId) => {
+        if (error) {
+          return done(error)
+        }
+        this.owner.request(
+          `/project/${projectId}/version/invalid/zip`,
+          (error, response) => {
+            if (error) {
+              return done(error)
+            }
+            expect(response.statusCode).to.equal(404)
+            done()
           }
         )
       })

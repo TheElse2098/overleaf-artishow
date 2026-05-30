@@ -7,6 +7,8 @@ import { Trans, useTranslation } from 'react-i18next'
 import { useSubscriptionDashboardContext } from '../../context/subscription-dashboard-context'
 import { RowLink } from './row-link'
 import { ManagedGroupSubscription } from '../../../../../../types/subscription/dashboard/subscription'
+import { sendMB } from '@/infrastructure/event-tracking'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
 
 function ManagedGroupAdministrator({
   subscription,
@@ -87,7 +89,14 @@ function ManagedGroupAdministrator({
 
 export default function ManagedGroupSubscriptions() {
   const { t } = useTranslation()
+
+  const usersEmail = getMeta('ol-usersEmail')
+
   const { managedGroupSubscriptions } = useSubscriptionDashboardContext()
+
+  const combinedUserManagement = useFeatureFlag('combined-user-management')
+
+  const isSharingUpdatesEnabled = useFeatureFlag('sharing-updates')
 
   if (!managedGroupSubscriptions) {
     return null
@@ -100,6 +109,8 @@ export default function ManagedGroupSubscriptions() {
   return (
     <>
       {managedGroupSubscriptions.map(subscription => {
+        const isAdmin = usersEmail === subscription.admin_id.email
+
         return (
           <div key={`managed-group-${subscription._id}`}>
             <h2 className="h3 fw-bold">{t('group_management')}</h2>
@@ -107,23 +118,59 @@ export default function ManagedGroupSubscriptions() {
               <ManagedGroupAdministrator subscription={subscription} />
             </p>
             <ul className="list-group p-0">
-              <RowLink
-                href={`/manage/groups/${subscription._id}/members`}
-                heading={t('group_members')}
-                subtext={t('manage_group_members_subtext')}
-                icon="groups"
-              />
-              <RowLink
-                href={`/manage/groups/${subscription._id}/managers`}
-                heading={t('group_managers')}
-                subtext={t('manage_managers_subtext')}
-                icon="manage_accounts"
-              />
+              {combinedUserManagement && (
+                <RowLink
+                  href={`/manage/groups/${subscription._id}/users`}
+                  heading={t('user_management')}
+                  subtext={t('manage_users_subtext')}
+                  icon="groups"
+                />
+              )}
+              {!combinedUserManagement && (
+                <>
+                  <RowLink
+                    href={`/manage/groups/${subscription._id}/members`}
+                    heading={t('group_members')}
+                    subtext={t('manage_group_members_subtext')}
+                    icon="groups"
+                  />
+                  <RowLink
+                    href={`/manage/groups/${subscription._id}/managers`}
+                    heading={t('group_managers')}
+                    subtext={t('manage_managers_subtext')}
+                    icon="manage_accounts"
+                  />
+                </>
+              )}
               {groupSettingsEnabledFor?.includes(subscription._id) && (
                 <GroupSettingsButton subscription={subscription} />
               )}
               {groupSettingsAdvertisedFor?.includes(subscription._id) && (
                 <GroupSettingsButtonWithAdBadge subscription={subscription} />
+              )}
+              {isAdmin && (
+                <>
+                  {isSharingUpdatesEnabled &&
+                    subscription.planLevelName === 'Pro' && (
+                      <RowLink
+                        href={`/manage/groups/${subscription._id}/sharing-permissions`}
+                        heading={t('sharing_permissions')}
+                        subtext={t('manage_group_sharing_permissions_subtext')}
+                        icon="share"
+                      />
+                    )}
+                  <RowLink
+                    href={`/manage/groups/${subscription._id}/audit-logs`}
+                    heading={t('audit_logs')}
+                    subtext={t('view_audit_logs_group_subtext')}
+                    icon="list"
+                    onClick={() =>
+                      sendMB('group-audit-log-click', {
+                        subscriptionId: subscription._id,
+                      })
+                    }
+                  />
+                </>
               )}
               <RowLink
                 href={`/metrics/groups/${subscription._id}`}

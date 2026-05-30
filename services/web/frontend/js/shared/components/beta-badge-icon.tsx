@@ -1,6 +1,6 @@
 import type { FC } from 'react'
 import MaterialIcon from '@/shared/components/material-icon'
-import OLBadge from '@/features/ui/components/ol/ol-badge'
+import OLBadge from '@/shared/components/ol/ol-badge'
 
 const BetaBadgeIcon: FC<{
   phase?: string
@@ -14,13 +14,21 @@ const BetaBadgeIcon: FC<{
         α
       </OLBadge>
     )
+  } else if (badgeClass === 'labs-badge') {
+    return <MaterialIcon type="science" className="align-middle labs-badge" />
   } else {
-    return <OLBadge bg="warning">β</OLBadge>
+    return (
+      <OLBadge className="beta-badge" bg="beta">
+        β
+      </OLBadge>
+    )
   }
 }
 
 function chooseBadgeClass(phase?: string) {
   switch (phase) {
+    case 'labs':
+      return 'labs-badge'
     case 'release':
       return 'info-badge'
     case 'alpha':

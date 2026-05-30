@@ -2,8 +2,8 @@ import chai, { expect } from 'chai'
 import mongodb from 'mongodb-legacy'
 import Path from 'node:path'
 import fs from 'node:fs'
-import { Project } from '../../../app/src/models/Project.js'
-import ProjectGetter from '../../../app/src/Features/Project/ProjectGetter.js'
+import { Project } from '../../../app/src/models/Project.mjs'
+import ProjectGetter from '../../../app/src/Features/Project/ProjectGetter.mjs'
 import UserHelper from './helpers/User.mjs'
 import MockDocStoreApiClass from './mocks/MockDocstoreApi.mjs'
 import MockDocUpdaterApiClass from './mocks/MockDocUpdaterApi.mjs'
@@ -247,6 +247,24 @@ describe('ProjectStructureChanges', function () {
       const project = await ProjectGetter.promises.getProject(exampleProjectId)
       expect(project.rootFolder[0].folders[0].name).to.equal('styles')
       expect(project.rootFolder[0].folders[0].docs[0].name).to.equal('ao.sty')
+    })
+  })
+
+  describe('uploading a project containing a filename that is too long', function () {
+    let res
+
+    beforeEach(async function () {
+      const { response } = await uploadExampleProject(
+        owner,
+        'test_project_with_too_long_filename.zip',
+        { allowBadStatus: true }
+      )
+
+      res = response
+    })
+
+    it('should fail with 422 error', function () {
+      expect(res.statusCode).to.equal(422)
     })
   })
 

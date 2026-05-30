@@ -1,8 +1,8 @@
-import ProjectGetter from '../Project/ProjectGetter.js'
-import DocumentUpdaterHandler from '../DocumentUpdater/DocumentUpdaterHandler.js'
-import HistoryManager from '../History/HistoryManager.js'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
+import DocumentUpdaterHandler from '../DocumentUpdater/DocumentUpdaterHandler.mjs'
+import HistoryManager from '../History/HistoryManager.mjs'
 import * as RealTimeHandler from '../References/RealTime/RealTimeHandler.mjs'
-import ProjectOptionsHandler from '../Project/ProjectOptionsHandler.js'
+import ProjectOptionsHandler from '../Project/ProjectOptionsHandler.mjs'
 import {
   NotFoundError,
   FoundConnectedClientsError,

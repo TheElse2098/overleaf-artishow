@@ -1,17 +1,20 @@
-const Path = require('node:path')
-const { promisify } = require('node:util')
-const Settings = require('@overleaf/settings')
-const logger = require('@overleaf/logger')
-const CommandRunner = require('./CommandRunner')
-const fs = require('node:fs')
+import Path from 'node:path'
+import { promisify } from 'node:util'
+import Settings from '@overleaf/settings'
+import logger from '@overleaf/logger'
+import CommandRunner from './CommandRunner.js'
+import LatexMetrics from './LatexMetrics.js'
+import fs from 'node:fs'
+
+const { addLatexMkMetrics } = LatexMetrics
 
 const ProcessTable = {} // table of currently running jobs (pids or docker container names)
 
-const TIME_V_METRICS = Object.entries({
-  'cpu-percent': /Percent of CPU this job got: (\d+)/m,
-  'cpu-time': /User time.*: (\d+.\d+)/m,
-  'sys-time': /System time.*: (\d+.\d+)/m,
-})
+const TIME_V_METRICS = [
+  ['cpu-percent', /Percent of CPU this job got: (\d+)/m],
+  ['cpu-time', /User time.*: (\d+.\d+)/m],
+  ['sys-time', /System time.*: (\d+.\d+)/m],
+]
 
 const COMPILER_FLAGS = {
   latex: '-pdfdvi',
@@ -70,13 +73,24 @@ function runLatex(projectId, options, callback) {
     timeout,
     environment,
     compileGroup,
+    null,
     function (error, output) {
       delete ProcessTable[id]
       if (error) {
         return callback(error)
       }
+      if (stats.latexmk) {
+        try {
+          addLatexMkMetrics(output, stats)
+        } catch (err) {
+          logger.error({ err, projectId }, 'error adding latexmk metrics')
+        }
+      }
+      // number of latex runs and whether there were errors
       const runs =
-        output?.stderr?.match(/^Run number \d+ of .*latex/gm)?.length || 0
+        output?.stdout?.match(/^Run number \d+ of .*latex/gm)?.length || // TeXLive 2022 and later
+        output?.stderr?.match(/^Run number \d+ of .*latex/gm)?.length || // TeXLive 2021 and earlier
+        0
       const failed = output?.stdout?.match(/^Latexmk: Errors/m) != null ? 1 : 0
       // counters from latexmk output
       stats['latexmk-errors'] = failed
@@ -131,10 +145,15 @@ function _writeLogOutput(projectId, directory, output, callback) {
   })
 }
 
+function isRunning(projectId) {
+  const id = `${projectId}`
+  return ProcessTable[id] != null
+}
+
 function killLatex(projectId, callback) {
   const id = `${projectId}`
   logger.debug({ id }, 'killing running compile')
-  if (ProcessTable[id] == null) {
+  if (!isRunning(projectId)) {
     logger.warn({ id }, 'no such project to kill')
     callback(null)
   } else {
@@ -161,7 +180,8 @@ function _buildLatexCommand(mainFile, opts = {}) {
     '-auxdir=$COMPILE_DIR',
     '-outdir=$COMPILE_DIR',
     '-synctex=1',
-    '-interaction=batchmode'
+    '-interaction=batchmode',
+    '-time'
   )
 
   // Stop on first error option
@@ -193,7 +213,8 @@ function _buildLatexCommand(mainFile, opts = {}) {
   return command
 }
 
-module.exports = {
+export default {
+  isRunning,
   runLatex,
   killLatex,
   promises: {

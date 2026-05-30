@@ -4,6 +4,29 @@ export class MissingThreadError extends Error {}
 
 export const GLOBAL_THREAD = 'GLOBAL'
 
+/**
+ * @param {string} sourceProjectId
+ * @param {string} targetProjectId
+ * @return {Promise<{from:ObjectId, to: ObjectId}[]>}
+ */
+export async function cloneThreads(sourceProjectId, targetProjectId) {
+  sourceProjectId = new ObjectId(sourceProjectId)
+  targetProjectId = new ObjectId(targetProjectId)
+  const rooms = await db.rooms
+    .find({ project_id: sourceProjectId, thread_id: { $exists: true } })
+    .toArray()
+  const mapping = []
+  await db.rooms.insertMany(
+    rooms.map(room => {
+      const from = room._id
+      const to = new ObjectId()
+      mapping.push({ from, to })
+      return { ...room, _id: to, project_id: targetProjectId }
+    })
+  )
+  return mapping
+}
+
 export async function findOrCreateThread(projectId, threadId) {
   let query, update
   projectId = new ObjectId(projectId.toString())
@@ -145,6 +168,22 @@ export async function duplicateThread(projectId, threadId) {
   const confirmation = await db.rooms.insertOne(newRoom)
   newRoom._id = confirmation.insertedId
   return { oldRoom: room, newRoom }
+}
+
+export async function findThread(projectId, threadId) {
+  projectId = new ObjectId(projectId.toString())
+  if (threadId !== GLOBAL_THREAD) {
+    threadId = new ObjectId(threadId.toString())
+  }
+
+  const room = await db.rooms.findOne({
+    project_id: projectId,
+    thread_id: threadId === GLOBAL_THREAD ? { $exists: false } : threadId,
+  })
+  if (!room) {
+    throw new MissingThreadError('Thread not found')
+  }
+  return room
 }
 
 export async function findThreadsById(projectId, threadIds) {

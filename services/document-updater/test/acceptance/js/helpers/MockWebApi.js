@@ -1,17 +1,10 @@
-/* eslint-disable
-    no-return-assign,
-*/
-// TODO: This file was created by bulk-decaffeinate.
-// Fix any style issues and re-enable lint.
-/*
- * decaffeinate suggestions:
- * DS102: Remove unnecessary code created because of implicit returns
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
- */
 let MockWebApi
+const basicAuth = require('basic-auth')
+const tsscmp = require('tsscmp')
 const express = require('express')
 const bodyParser = require('body-parser')
+const { expressify } = require('@overleaf/promise-utils')
+const Settings = require('@overleaf/settings')
 const app = express()
 const MAX_REQUEST_SIZE = 2 * (2 * 1024 * 1024 + 64 * 1024)
 
@@ -33,76 +26,97 @@ module.exports = MockWebApi = {
     return (this.docs[`${projectId}:${docId}`] = doc)
   },
 
-  setDocument(
+  async setDocument(
     projectId,
     docId,
     lines,
     version,
     ranges,
     lastUpdatedAt,
-    lastUpdatedBy,
-    callback
+    lastUpdatedBy
   ) {
-    if (callback == null) {
-      callback = function () {}
+    if (!(`${projectId}:${docId}` in this.docs)) {
+      return false
     }
-    const doc =
-      this.docs[`${projectId}:${docId}`] ||
-      (this.docs[`${projectId}:${docId}`] = {})
+    const doc = this.docs[`${projectId}:${docId}`]
     doc.lines = lines
     doc.version = version
     doc.ranges = ranges
     doc.pathname = '/a/b/c.tex'
     doc.lastUpdatedAt = lastUpdatedAt
     doc.lastUpdatedBy = lastUpdatedBy
-    return callback(null)
+    return true
   },
 
-  getDocument(projectId, docId, callback) {
-    if (callback == null) {
-      callback = function () {}
+  async getDocument(projectId, docId) {
+    return this.docs[`${projectId}:${docId}`]
+  },
+
+  async getDocumentController(req, res, next) {
+    try {
+      const doc = await this.getDocument(
+        req.params.project_id,
+        req.params.doc_id
+      )
+      if (doc != null) {
+        return res.send(JSON.stringify(doc))
+      } else {
+        return res.sendStatus(404)
+      }
+    } catch (error) {
+      return res.sendStatus(500)
     }
-    return callback(null, this.docs[`${projectId}:${docId}`])
+  },
+
+  async setDocumentController(req, res, next) {
+    try {
+      const ok = await this.setDocument(
+        req.params.project_id,
+        req.params.doc_id,
+        req.body.lines,
+        req.body.version,
+        req.body.ranges,
+        req.body.lastUpdatedAt,
+        req.body.lastUpdatedBy
+      )
+      if (!ok) {
+        return res.sendStatus(404)
+      }
+      return res.json({ rev: '123' })
+    } catch (error) {
+      return res.sendStatus(500)
+    }
   },
 
   run() {
-    app.get('/project/:project_id/doc/:doc_id', (req, res, next) => {
-      return this.getDocument(
-        req.params.project_id,
-        req.params.doc_id,
-        (error, doc) => {
-          if (error != null) {
-            return res.sendStatus(500)
-          } else if (doc != null) {
-            return res.send(JSON.stringify(doc))
-          } else {
-            return res.sendStatus(404)
-          }
-        }
-      )
+    app.use((req, res, next) => {
+      const credentials = basicAuth(req)
+      if (
+        !credentials ||
+        !Settings.apis.web.user ||
+        credentials.name !== Settings.apis.web.user ||
+        !Settings.apis.web.pass ||
+        !tsscmp(credentials.pass, Settings.apis.web.pass)
+      ) {
+        return res.sendStatus(401)
+      } else {
+        next()
+      }
     })
+
+    app.get(
+      '/project/:project_id/doc/:doc_id',
+      expressify(async (req, res, next) => {
+        await this.getDocumentController(req, res, next)
+      })
+    )
 
     app.post(
       '/project/:project_id/doc/:doc_id',
       bodyParser.json({ limit: MAX_REQUEST_SIZE }),
-      (req, res, next) => {
-        return MockWebApi.setDocument(
-          req.params.project_id,
-          req.params.doc_id,
-          req.body.lines,
-          req.body.version,
-          req.body.ranges,
-          req.body.lastUpdatedAt,
-          req.body.lastUpdatedBy,
-          error => {
-            if (error != null) {
-              return res.sendStatus(500)
-            } else {
-              return res.json({ rev: '123' })
-            }
-          }
-        )
-      }
+      expressify(async (req, res, next) => {
+        await this.setDocumentController(req, res, next)
+      })
     )
 
     return app

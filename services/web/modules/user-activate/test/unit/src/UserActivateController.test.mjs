@@ -30,19 +30,19 @@ describe('UserActivateController', function () {
       },
     }
 
-    vi.doMock('../../../../../app/src/Features/User/UserGetter.js', () => ({
+    vi.doMock('../../../../../app/src/Features/User/UserGetter.mjs', () => ({
       default: ctx.UserGetter,
     }))
 
     vi.doMock(
-      '../../../../../app/src/Features/User/UserRegistrationHandler.js',
+      '../../../../../app/src/Features/User/UserRegistrationHandler.mjs',
       () => ({
         default: ctx.UserRegistrationHandler,
       })
     )
 
     vi.doMock(
-      '../../../../../app/src/Features/Errors/ErrorController.js',
+      '../../../../../app/src/Features/Errors/ErrorController.mjs',
       () => ({
         default: ctx.ErrorController,
       })

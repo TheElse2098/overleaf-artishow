@@ -6,9 +6,11 @@ import {
   backupProject,
   initializeProjects,
   configureBackup,
+  closeConnections,
 } from './backup.mjs'
 
-const CONCURRENCY = 15
+const JOB_CONCURRENCY = parseInt(process.env.JOB_CONCURRENCY, 10) || 15
+const UPLOAD_CONCURRENCY = parseInt(process.env.UPLOAD_CONCURRENCY, 10) || 50
 const WARN_THRESHOLD = 2 * 60 * 60 * 1000 // warn if projects are older than this
 const redisOptions = config.get('redis.queue')
 const JOB_TIME_BUCKETS = [10, 100, 500, 1000, 5000, 10000, 30000, 60000] // milliseconds
@@ -17,7 +19,20 @@ const LAG_TIME_BUCKETS_HRS = [
 ] // hours
 
 // Configure backup settings to match worker concurrency
-configureBackup({ concurrency: 50, useSecondary: true })
+configureBackup({ concurrency: UPLOAD_CONCURRENCY, useSecondary: true })
+
+let gracefulShutdownInitiated = false
+
+process.on('SIGINT', handleSignal)
+process.on('SIGTERM', handleSignal)
+
+async function handleSignal() {
+  if (!gracefulShutdownInitiated) {
+    gracefulShutdownInitiated = true
+    logger.info({}, 'graceful shutdown: stopping backup worker')
+    await drainQueue()
+  }
+}
 
 // Create a Bull queue named 'backup'
 const backupQueue = new Queue('backup', {
@@ -25,7 +40,7 @@ const backupQueue = new Queue('backup', {
   settings: {
     lockDuration: 15 * 60 * 1000, // 15 minutes
     lockRenewTime: 60 * 1000, // 1 minute
-    maxStalledCount: 0, // mark stalled jobs as failed
+    maxStalledCount: 1, // allow stalled jobs to retried
   },
 })
 
@@ -61,15 +76,15 @@ backupQueue.on('lock-extension-failed', (job, err) => {
 })
 
 backupQueue.on('paused', () => {
-  logger.info('queue paused')
+  logger.info({}, 'queue paused')
 })
 
 backupQueue.on('resumed', () => {
-  logger.info('queue resumed')
+  logger.info({}, 'queue resumed')
 })
 
 // Process jobs
-backupQueue.process(CONCURRENCY, async job => {
+backupQueue.process(JOB_CONCURRENCY, async job => {
   const { projectId, startDate, endDate } = job.data
 
   if (projectId) {
@@ -114,9 +129,14 @@ async function runBackup(projectId, data, job) {
     }
     return `backup completed ${projectId}`
   } catch (err) {
-    metrics.inc('backup_worker_project', 1, { status: 'failed' })
-    logger.error({ projectId, err }, 'backup failed')
-    throw err // Re-throw to mark job as failed
+    if (err.message === 'Project deleted') {
+      metrics.inc('backup_worker_project', 1, { status: 'deleted' })
+      logger.warn({ projectId, err }, 'skipping backup of deleted project')
+    } else {
+      metrics.inc('backup_worker_project', 1, { status: 'failed' })
+      logger.error({ projectId, err }, 'backup failed')
+      throw err // Re-throw to mark job as failed
+    }
   }
 }
 
@@ -132,10 +152,10 @@ async function runInit(startDate, endDate) {
 }
 
 export async function drainQueue() {
-  logger.info({ queue: backupQueue.name }, 'pausing queue')
-  await backupQueue.pause(true) // pause this worker and wait for jobs to finish
   logger.info({ queue: backupQueue.name }, 'closing queue')
   await backupQueue.close()
+  logger.info({ queue: backupQueue.name }, 'closing database connections')
+  await closeConnections()
 }
 
 export async function healthCheck() {

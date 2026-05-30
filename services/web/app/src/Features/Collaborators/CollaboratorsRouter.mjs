@@ -1,13 +1,11 @@
 import CollaboratorsController from './CollaboratorsController.mjs'
-import AuthenticationController from '../Authentication/AuthenticationController.js'
-import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.js'
-import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.mjs'
 import CollaboratorsInviteController from './CollaboratorsInviteController.mjs'
-import { RateLimiter } from '../../infrastructure/RateLimiter.js'
-import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.js'
-import CaptchaMiddleware from '../Captcha/CaptchaMiddleware.js'
-import AnalyticsRegistrationSourceMiddleware from '../Analytics/AnalyticsRegistrationSourceMiddleware.js'
-import { Joi, validate } from '../../infrastructure/Validation.js'
+import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
+import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.mjs'
+import CaptchaMiddleware from '../Captcha/CaptchaMiddleware.mjs'
+import AnalyticsRegistrationSourceMiddleware from '../Analytics/AnalyticsRegistrationSourceMiddleware.mjs'
 
 const rateLimiters = {
   inviteToProjectByProjectId: new RateLimiter(
@@ -30,6 +28,10 @@ const rateLimiters = {
     points: 20,
     duration: 60,
   }),
+  acceptProjectInvite: new RateLimiter('accept-project-invite', {
+    points: 25, // just over view-project-invite
+    duration: 60,
+  }),
 }
 
 export default {
@@ -43,21 +45,6 @@ export default {
     webRouter.put(
       '/project/:Project_id/users/:user_id',
       AuthenticationController.requireLogin(),
-      validate({
-        params: Joi.object({
-          Project_id: Joi.objectId(),
-          user_id: Joi.objectId(),
-        }),
-        body: Joi.object({
-          privilegeLevel: Joi.string()
-            .valid(
-              PrivilegeLevels.READ_ONLY,
-              PrivilegeLevels.READ_AND_WRITE,
-              PrivilegeLevels.REVIEW
-            )
-            .required(),
-        }),
-      }),
       AuthorizationMiddleware.ensureUserCanAdminProject,
       CollaboratorsController.setCollaboratorInfo
     )
@@ -80,14 +67,6 @@ export default {
     webRouter.post(
       '/project/:Project_id/transfer-ownership',
       AuthenticationController.requireLogin(),
-      validate({
-        params: Joi.object({
-          Project_id: Joi.objectId(),
-        }),
-        body: Joi.object({
-          user_id: Joi.objectId(),
-        }),
-      }),
       AuthorizationMiddleware.ensureUserCanAdminProject,
       CollaboratorsController.transferOwnership
     )
@@ -103,18 +82,6 @@ export default {
       }),
       CaptchaMiddleware.validateCaptcha('invite'),
       AuthenticationController.requireLogin(),
-      validate({
-        body: Joi.object({
-          email: Joi.string().required(),
-          privileges: Joi.string()
-            .valid(
-              PrivilegeLevels.READ_ONLY,
-              PrivilegeLevels.READ_AND_WRITE,
-              PrivilegeLevels.REVIEW
-            )
-            .required(),
-        }),
-      }),
       AuthorizationMiddleware.ensureUserCanAdminProject,
       CollaboratorsInviteController.inviteToProject
     )
@@ -161,6 +128,7 @@ export default {
         'project-invite'
       ),
       AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(rateLimiters.acceptProjectInvite),
       CollaboratorsInviteController.acceptInvite,
       AnalyticsRegistrationSourceMiddleware.clearSource()
     )
