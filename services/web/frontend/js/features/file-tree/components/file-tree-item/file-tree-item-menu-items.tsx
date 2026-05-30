@@ -137,7 +137,7 @@ function FileTreeItemMenuItems() {
                  }
               })
                .catch( error => {
-                 alert(error.data.errorReason);
+                 console.error('git-add failed:', error?.data?.errorReason || error?.message)
                })
             )
       }}>Add</DropdownItem>

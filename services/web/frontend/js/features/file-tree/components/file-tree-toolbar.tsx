@@ -19,22 +19,7 @@ const fileTreeToolbarComponents = importOverleafModules(
 ) as { import: { default: ElementType }; path: string }[]
 
 
-import useAsync from '../../../shared/hooks/use-async'
-import {
-  getUserFacingMessage,
-  postJSON,
-} from '../../../infrastructure/fetch-json'
-
-type NewProjectData = {
-  project_id: string
-  owner_ref: string
-  owner: {
-    first_name: string
-    last_name: string
-    email: string
-    id: string
-  }
-}
+import GitPullButton from './GitPullButton'
 
 function FileTreeToolbar() {
   const { fileTreeReadOnly } = useFileTreeData()
@@ -54,7 +39,6 @@ function FileTreeToolbar() {
 }
 
 function FileTreeToolbarLeft() {
-  const { isLoading, isError, error, runAsync } = useAsync<NewProjectData>()
   const { t } = useTranslation()
   const { id: userId } = useUserContext()
   const { projectId } = useProjectContext()
@@ -107,37 +91,7 @@ function FileTreeToolbarLeft() {
           <MaterialIcon type="upload" accessibilityLabel={t('upload')} />
         </button>
       </OLTooltip>
-      <OLTooltip
-        id="pull"
-        description='Pull'
-        overlayProps={{ placement: 'bottom' }}
-      >
-      <Button onClick={() => {
-        const confirmed = window.confirm(
-          'Le pull va intégrer les modifications du dépôt git distant.\n\n' +
-          'Vos modifications locales commitées dans git seront conservées via un merge.\n' +
-          'Les modifications en cours non commitées seront sauvegardées (stash) et restaurées automatiquement après le pull.\n\n' +
-          'Voulez-vous continuer ?'
-        )
-        if (!confirmed) return
-        runAsync(
-            postJSON('/git-pull', {
-              body:{
-                projectId: projectId,
-                userId: userId
-              }
-            })
-            .then(response => {
-                alert("Pull successful");
-            })
-            .catch( error => {
-                alert(error.data.errorReason);
-            })
-        );
-      }}>
-        <MaterialIcon type="repeat" fw accessibilityLabel={t('pull')} />
-      </Button>
-    </OLTooltip>
+      <GitPullButton projectId={projectId} userId={userId} />
     </div>
   )
 }
