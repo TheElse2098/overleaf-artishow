@@ -77,7 +77,7 @@ services:
       ## so the following environment variables must be commented out to avoid compile issues.
       ##
       ## Sandboxed Compiles: https://docs.overleaf.com/on-premises/configuration/overleaf-toolkit/server-pro-only-configuration/sandboxed-compiles
-      SANDBOXED_COMPILES: "true"
+      SANDBOXED_COMPILES: "false"
       ### Bind-mount source for /var/lib/overleaf/data/compiles inside the container.
       SANDBOXED_COMPILES_HOST_DIR_COMPILES: "/home/user/sharelatex_data/data/compiles"
       ### Bind-mount source for /var/lib/overleaf/data/output inside the container.
