@@ -7232,9 +7232,9 @@ __metadata:
     "@pollyjs/adapter-node-http": "npm:^6.0.6"
     "@pollyjs/core": "npm:^6.0.6"
     "@pollyjs/persister-fs": "npm:^6.0.6"
-    "@replit/codemirror-emacs": "overleaf/codemirror-emacs#4394c03858f27053f8768258e9493866e06e938e"
-    "@replit/codemirror-indentation-markers": "overleaf/codemirror-indentation-markers#371ce3b56f453a392eb0d3b85ab019c185c68e1f"
-    "@replit/codemirror-vim": "overleaf/codemirror-vim#1bef138382d948018f3f9b8a4d7a70ab61774e4b"
+    "@replit/codemirror-emacs": "npm:6.0.0"
+    "@replit/codemirror-indentation-markers": "npm:6.5.3"
+    "@replit/codemirror-vim": "npm:6.2.1"
     "@sentry/browser": "npm:7.46.0"
     "@slack/webhook": "npm:^7.0.2"
     "@storybook/addon-a11y": "npm:10.3.5"
@@ -8114,40 +8114,37 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@replit/codemirror-emacs@overleaf/codemirror-emacs#4394c03858f27053f8768258e9493866e06e938e":
+"@replit/codemirror-emacs@npm:6.0.0":
   version: 6.0.0
-  resolution: "@replit/codemirror-emacs@https://github.com/overleaf/codemirror-emacs.git#commit=4394c03858f27053f8768258e9493866e06e938e"
+  resolution: "@replit/codemirror-emacs@npm:6.0.0"
   peerDependencies:
     "@codemirror/autocomplete": ^6.0.2
     "@codemirror/commands": ^6.0.0
     "@codemirror/search": ^6.0.0
     "@codemirror/state": ^6.0.1
     "@codemirror/view": ^6.3.0
-  checksum: 10c0/dcbd44cc5a52ab779dafb32be3c9c1dbf50c98238b8c9961e9f84b21f4e7052d8586145a703c327330c745d6fbfec9055170d48fb161832ece9441c5e0961f58
   languageName: node
   linkType: hard
 
-"@replit/codemirror-indentation-markers@overleaf/codemirror-indentation-markers#371ce3b56f453a392eb0d3b85ab019c185c68e1f":
+"@replit/codemirror-indentation-markers@npm:6.5.3":
   version: 6.5.3
-  resolution: "@replit/codemirror-indentation-markers@https://github.com/overleaf/codemirror-indentation-markers.git#commit=371ce3b56f453a392eb0d3b85ab019c185c68e1f"
+  resolution: "@replit/codemirror-indentation-markers@npm:6.5.3"
   peerDependencies:
     "@codemirror/language": ^6.0.0
     "@codemirror/state": ^6.0.0
     "@codemirror/view": ^6.0.0
-  checksum: 10c0/d7e5da519d69544d5903329bc5c02dfab4cfd704b830a8e9f8294e337213073426ff9d8752c2a075b52c3ffae2cd1cdd367e131a32d09cdc0d7ca22ebcd805fb
   languageName: node
   linkType: hard
 
-"@replit/codemirror-vim@overleaf/codemirror-vim#1bef138382d948018f3f9b8a4d7a70ab61774e4b":
+"@replit/codemirror-vim@npm:6.2.1":
   version: 6.2.1
-  resolution: "@replit/codemirror-vim@https://github.com/overleaf/codemirror-vim.git#commit=1bef138382d948018f3f9b8a4d7a70ab61774e4b"
+  resolution: "@replit/codemirror-vim@npm:6.2.1"
   peerDependencies:
     "@codemirror/commands": ^6.0.0
     "@codemirror/language": ^6.1.0
     "@codemirror/search": ^6.2.0
     "@codemirror/state": ^6.0.1
     "@codemirror/view": ^6.0.3
-  checksum: 10c0/d660062a309f65d1d08d98a5d06352bed90f370eb0b922f38a44b0098e0b83d85c419c6aa7890137d8ac8f3d7c78d6664a9324036f2cdc44c24e163df84ea616
   languageName: node
   linkType: hard
 
