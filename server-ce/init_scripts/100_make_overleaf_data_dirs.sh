@@ -18,7 +18,7 @@ mkdir -p /var/lib/overleaf/data/output
 chown www-data:www-data /var/lib/overleaf/data/output
 
 mkdir -p /var/lib/overleaf/data/cache
-chown www-data:www-data /var/lib/overleaf/data/cache
+chown -R www-data:www-data /var/lib/overleaf/data/cache
 
 mkdir -p /var/lib/overleaf/data/template_files
 chown www-data:www-data /var/lib/overleaf/data/template_files

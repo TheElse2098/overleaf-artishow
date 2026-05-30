@@ -12,21 +12,24 @@ import {
   getJSON,
   postJSON,
 } from '../../../infrastructure/fetch-json'
+import GitTokenTab from './GitTokenTab'
 
-function Modal({ 
-  isOpen, 
-  onClose, 
-  onCommit, 
-  onPush, 
-  onRollback, 
-  notStagedFiles, 
-  stagedFiles, 
-  commitHistory, 
+function Modal({
+  isOpen,
+  onClose,
+  onCommit,
+  onPush,
+  onRollback,
+  notStagedFiles,
+  stagedFiles,
+  commitHistory,
   isRollbackLoading,
   branches,
   selectedBranch,
   onSelectBranch,
-  onCreateBranch
+  onCreateBranch,
+  projectId,
+  userId,
 }) {
   const [activeTab, setActiveTab] = useState('commit')
   const [selectedCommit, setSelectedCommit] = useState('')
@@ -92,17 +95,29 @@ function Modal({
             >
               Branches
             </button>
-            <button 
+            <button
               onClick={() => setActiveTab('documentation')}
-              style={{ 
-                padding: '10px 20px', 
-                border: 'none', 
+              style={{
+                padding: '10px 20px',
+                border: 'none',
                 backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
                 color: activeTab === 'documentation' ? 'white' : 'black',
                 cursor: 'pointer'
               }}
             >
               Documentation
+            </button>
+            <button
+              onClick={() => setActiveTab('token')}
+              style={{
+                padding: '10px 20px',
+                border: 'none',
+                backgroundColor: activeTab === 'token' ? '#45a444' : 'transparent',
+                color: activeTab === 'token' ? 'white' : 'black',
+                cursor: 'pointer'
+              }}
+            >
+              Token
             </button>
           </div>
 
@@ -292,6 +307,11 @@ function Modal({
               </div>
             </>
           )}
+          {/* Token Tab */}
+          {activeTab === 'token' && (
+            <GitTokenTab projectId={projectId} userId={userId} />
+          )}
+
           {/* Documentation Tab */}
           {activeTab === 'documentation' && (
             <div style={{ color: 'black', fontFamily: 'sans-serif', lineHeight: '1.6' }}>
@@ -564,6 +584,8 @@ function GitToggleButton() {
         selectedBranch={selectedBranch}
         onSelectBranch={handleSelectBranch}
         onCreateBranch={handleCreateBranch}
+        projectId={projectId}
+        userId={userId}
       />
     </div>
   )

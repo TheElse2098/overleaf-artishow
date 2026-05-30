@@ -103,6 +103,19 @@ const ProjectSchema = new Schema(
       },
     ],
     deferredTpdsFlushCounter: { type: Number },
+    git: {
+      remoteUrl: { type: String },
+      branch: { type: String },
+      linkedAt: { type: Date },
+      token: {
+        type: String,
+        index: {
+          unique: true,
+          sparse: true,
+        },
+      },
+      tokenType: { type: String },
+    },
   },
   { minimize: false }
 )

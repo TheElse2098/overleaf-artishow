@@ -3,6 +3,8 @@ const path = require('path')
 const fs = require('fs-extra')
 const dataPath = "/var/lib/overleaf/data/git/"
 const outputPath = "/var/lib/overleaf/data/compiles/"
+const uploadsPath = "/var/lib/overleaf/tmp/uploads/"
+const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController')
 const HistoryManager = require('../History/HistoryManager')
@@ -12,6 +14,7 @@ const Errors = require('../Errors/Errors')
 const HttpErrorHandler = require('../Errors/HttpErrorHandler')
 const crypto = require('crypto')
 const sshpk = require('sshpk')
+const { Project } = require('../../models/Project')
 
 const gitOptions = {
   baseDir: dataPath,
@@ -184,21 +187,21 @@ async function _buildProjectWithUpsert(currentPath, gitRootPath, projectId, owne
     } else {
       try { await fs.chmod(itemPath, 0o644) } catch (e) {}
       const fileStat = await fs.stat(itemPath)
-      // Log les 8 premiers octets pour vérifier l'intégrité du fichier (JPEG : FF D8 FF, PNG : 89 50 4E 47)
+      console.log(`Upserting binary: ${relPath}, size=${fileStat.size}`)
+      // Copier vers le dossier uploads standard avant l'upsert pour reproduire exactement
+      // le chemin d'un upload manuel (qui fonctionne). Un upload direct depuis le dossier git
+      // peut échouer silencieusement au niveau du filestore selon les permissions/contexte.
+      const tmpName = `${Date.now()}_${path.basename(itemPath)}`
+      const tmpPath = path.join(uploadsPath, tmpName)
       try {
-        const fd = await fs.open(itemPath, 'r')
-        const buf = Buffer.alloc(8)
-        await fs.read(fd, buf, 0, 8, 0)
-        await fs.close(fd)
-        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=${buf.toString('hex')}`)
-      } catch (e) {
-        console.log(`Upserting binary: ${relPath}, size=${fileStat.size}, verif_image=unreadable`)
-      }
-      try {
-        await EditorController.promises.upsertFileWithPath(projectId, relPath, itemPath, null, 'editor', ownerId)
+        await fs.ensureDir(uploadsPath)
+        await fs.copy(itemPath, tmpPath)
+        await EditorController.promises.upsertFileWithPath(projectId, relPath, tmpPath, null, 'editor', ownerId)
         console.log(`Upserted binary: ${relPath}`)
       } catch (err) {
         console.error(`Error upserting file ${relPath}:`, err.message)
+      } finally {
+        try { await fs.remove(tmpPath) } catch (_) {}
       }
     }
   }
@@ -232,6 +235,57 @@ async function resyncHistory(projectId) {
   } catch (err) {
     console.error(`Échec de la resynchronisation de l'historique pour ${projectId}:`, err.message)
   }
+}
+
+// Détecte si une erreur git est due à un conflit de merge
+function isConflictError(error) {
+  const msg = (error.git?.message || error.message || '').toLowerCase()
+  return (
+    msg.includes('conflict') ||
+    msg.includes('automatic merge failed') ||
+    msg.includes('unresolved conflict') ||
+    msg.includes('unfinished merge')
+  )
+}
+
+// Annule le merge en cours et retourne la liste des fichiers en conflit
+async function abortMergeAndGetConflicts(projectId, userId, knownConflicts) {
+  const localGit = getGitForProject(projectId, userId)
+  let conflictedFiles = [...knownConflicts]
+  if (conflictedFiles.length === 0) {
+    try {
+      const status = await localGit.status()
+      conflictedFiles = status.conflicted
+    } catch (_) {}
+  }
+  try {
+    await localGit.merge(['--abort'])
+    console.log(`Merge annulé pour le projet ${projectId}`)
+  } catch (abortErr) {
+    console.error("Impossible d'annuler le merge:", abortErr.message)
+  }
+  return conflictedFiles
+}
+
+// Formate le message d'erreur retourné à l'utilisateur en cas de conflit
+function formatConflictMessage(conflictedFiles) {
+  if (conflictedFiles.length === 0) {
+    return 'Conflit de merge détecté. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.'
+  }
+  const fileList = conflictedFiles.join(', ')
+  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
+}
+
+async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType = null) {
+  const fields = {
+    'git.remoteUrl': remoteUrl || null,
+    'git.branch': branch || 'main',
+    'git.linkedAt': new Date(),
+  }
+  if (token) fields['git.token'] = token
+  if (tokenType) fields['git.tokenType'] = tokenType
+  await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+  console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
 }
 
 function move(projectId, userId) {
@@ -312,35 +366,65 @@ async function withSshKey(userId, fn) {
   }
 }
 
+// Construit une URL HTTPS authentifiée par token
+// tokenType 'github' → x-access-token, 'gitlab' → oauth2
+function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
+  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
+  const sshPattern = /^git@([^:]+):(.+\.git)$/
+  const match = remoteUrl.match(sshPattern)
+  if (match) {
+    return `https://${username}:${token}@${match[1]}/${match[2]}`
+  }
+  try {
+    const url = new URL(remoteUrl)
+    url.username = username
+    url.password = token
+    return url.toString()
+  } catch {
+    return remoteUrl
+  }
+}
+
+// Exécute fn(remote, info) avec l'authentification :
+// - token disponible → URL HTTPS authentifiée (jamais loggée)
+// - pas de token     → clé SSH, remote = 'origin'
+async function withRemoteAuth(projectId, userId, fn) {
+  const info = await getGitInfo(projectId)
+  if (info?.token && info?.remoteUrl) {
+    const authUrl = buildAuthenticatedUrl(info.remoteUrl, info.token, info.tokenType)
+    return fn(authUrl, info)
+  }
+  return withSshKey(userId, () => fn('origin', info))
+}
+
 async function getBranches(projectId, userId) {
-    try {
-      move(projectId, userId);
-      return await withSshKey(userId, async () => {
-        await git.fetch('origin');
-        console.log("fetched");
-        const branches = await git.branch(['-r']);
-        console.log('Remote branches:', branches.all);
-        return branches.all;
-      })
-    } catch (err) {
-      console.error("Error fetching branches:", err);
-      return []
-    }
+  try {
+    move(projectId, userId)
+    return await withRemoteAuth(projectId, userId, async (remote) => {
+      await git.fetch(remote)
+      console.log("fetched")
+      const branches = await git.branch(['-r'])
+      console.log('Remote branches:', branches.all)
+      return branches.all
+    })
+  } catch (err) {
+    console.error("Error fetching branches:", err)
+    return []
+  }
 }
 
 async function getCurrentBranch(projectId, userId) {
   try {
-    move(projectId, userId);
-    return await withSshKey(userId, async () => {
-      const br = await git.branch(["-r"]);
-      const stat = await git.status();
-      console.log("Current Branch: ", br.current);
-      console.log("Current Branch (status): ", stat.current);
-      return `origin/${stat.current}`;
+    move(projectId, userId)
+    return await withRemoteAuth(projectId, userId, async (remote) => {
+      await git.fetch(remote)
+      const stat = await git.status()
+      console.log("Current Branch (status):", stat.current)
+      return `origin/${stat.current}`
     })
   } catch (err) {
-    console.error("Error fetching current branches:", err);
-    return "";
+    console.error("Error fetching current branches:", err)
+    return ""
   }
 }
 
@@ -442,30 +526,40 @@ async function disableBinaryConversion(repoPath) {
   }
 }
 
-async function gitClone(projectId, ownerId, link){
+async function gitClone(projectId, ownerId, link, branch = null, token = null, tokenType = null){
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
     fs.mkdirSync(repoPath)
   }
 
-  const key = await getKey(ownerId, 'private')
-  const sshCommand = `ssh -o StrictHostKeyChecking=no -i ${key}`
+  // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
+  const cloneOptions = ['--no-checkout']
+  if (branch) cloneOptions.push('--branch', branch)
 
-  // process.env contourne la validation de simple-git sur GIT_SSH_COMMAND
-  // nécessaire pour le clone car le dépôt n'existe pas encore
-  const prevSSH = process.env.GIT_SSH_COMMAND
-  process.env.GIT_SSH_COMMAND = sshCommand
-  try {
-    // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
-    await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, ['--no-checkout'])
-    console.log("Repository: " + link + " cloned (no checkout) successfully!")
-  } catch (error) {
-    console.error('Error when cloning:', error)
-    throw error
-  } finally {
-    if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
-    else delete process.env.GIT_SSH_COMMAND
+  if (token) {
+    const authUrl = buildAuthenticatedUrl(link, token, tokenType)
+    try {
+      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(authUrl, repoPath, cloneOptions)
+      console.log("Repository cloned via HTTPS token (no checkout) successfully!")
+    } catch (error) {
+      console.error('Error when cloning (token):', error)
+      throw error
+    }
+  } else {
+    const key = await getKey(ownerId, 'private')
+    const prevSSH = process.env.GIT_SSH_COMMAND
+    process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
+    try {
+      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
+      console.log("Repository cloned via SSH (no checkout) successfully!")
+    } catch (error) {
+      console.error('Error when cloning (SSH):', error)
+      throw error
+    } finally {
+      if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
+      else delete process.env.GIT_SSH_COMMAND
+    }
   }
 
   // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
@@ -479,7 +573,101 @@ async function gitClone(projectId, ownerId, link){
     throw checkoutErr
   }
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
+  await saveGitLink(projectId, link, branch, token, tokenType)
+
+  try {
+    await fs.remove(outputPath + projectId + "-" + ownerId)
+    console.log('Répertoire de compilation CLSI supprimé')
+  } catch (e) {
+    console.log('Impossible de supprimer le répertoire de compilation CLSI:', e.message)
+  }
+  try {
+    await fs.chmod(clsiCachePath, 0o777)
+    await fs.remove(clsiCachePath + projectId)
+    console.log('Cache CLSI du projet supprimé')
+  } catch (e) {
+    console.log('Impossible de corriger le cache CLSI:', e.message)
+  }
+
   resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+}
+
+// Vérifie si le dossier projet est déjà lié à un repo git
+async function isGitRepo(projectId, ownerId) {
+  const project = await Project.findById(projectId, 'git').lean().exec()
+  if (project?.git?.linkedAt) return true
+  const repoPath = dataPath + projectId + "-" + ownerId
+  return fs.pathExists(path.join(repoPath, '.git'))
+}
+
+async function getGitInfo(projectId) {
+  const project = await Project.findById(projectId, 'git').lean().exec()
+  return project?.git || null
+}
+
+
+// Initialise un repo git local pour le projet, puis y attache un remote et pousse la branche initiale.
+// Si le dossier n'existe pas encore, il est créé.
+// remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
+async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
+  const repoPath = dataPath + projectId + "-" + ownerId
+ 
+  await fs.ensureDir(repoPath)
+ 
+  const alreadyRepo = await isGitRepo(projectId, ownerId)
+  if (alreadyRepo) {
+    console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
+    return { created: false, remoteLinked: false }
+  }
+ 
+  // Initialiser le repo
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf']
+  })
+  await localGit.init()
+  await localGit.addConfig('user.name', 'overleaf')
+  await localGit.addConfig('user.email', 'overleaf@overleaf.com')
+ 
+  // Écrire les attributs binaires pour éviter toute conversion de fins de ligne
+  await disableBinaryConversion(repoPath)
+ 
+  // Commit initial vide pour que la branche existe
+  await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
+ 
+  // Renommer la branche par défaut si besoin (git init crée "master" par défaut)
+  try {
+    await localGit.raw(['branch', '-M', defaultBranch])
+  } catch (err) {
+    console.warn(`Impossible de renommer la branche en "${defaultBranch}":`, err.message)
+  }
+ 
+  console.log(`Repo git initialisé dans ${repoPath} (branche: ${defaultBranch})`)
+ 
+  // Lier le remote et pousser si une URL est fournie
+  let remoteLinked = false
+  if (remoteUrl) {
+    await localGit.addRemote('origin', remoteUrl)
+    console.log(`Remote "origin" configuré sur ${remoteUrl}`)
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, () =>
+          localGit.push(['-u', 'origin', defaultBranch])
+        )
+      }
+      console.log(`Branche "${defaultBranch}" poussée sur origin`)
+      remoteLinked = true
+    } catch (pushErr) {
+      console.error('Push initial échoué (le remote est configuré mais pas synchronisé):', pushErr.message)
+      // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
+    }
+  }
+
+  await saveGitLink(projectId, remoteUrl, defaultBranch, token, tokenType)
+  return { created: true, remoteLinked }
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -662,67 +850,219 @@ GitController = {
     res.sendStatus(200)
   },
 
-  pull(req, res) {
+  async gitInfo(req, res) {
+    const projectId = req.query.projectId
+    if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
+    try {
+      const info = await getGitInfo(projectId)
+      res.json(info || {})
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
+    // Initialise un repo git local pour le projet et, si remoteUrl est fourni, le lie au remote.
+  // Body attendu : { projectId, userId, remoteUrl? (optionnel), branch? (défaut: "main") }
+  async init(req, res) {
+    const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
+ 
+    if (!projectId || !userId) {
+      return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    }
+ 
+    try {
+      const alreadyRepo = await isGitRepo(projectId, userId)
+      if (alreadyRepo) {
+        console.log(`Projet ${projectId} déjà lié à un repo git.`)
+        return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
+      }
+ 
+      const result = await gitInit(projectId, userId, remoteUrl, branch, token, tokenType)
+      console.log(`gitInit terminé pour ${projectId}:`, result)
+ 
+      return res.status(200).json({
+        ...result,
+        message: result.created
+          ? (result.remoteLinked
+              ? `Repo créé et lié au remote ${remoteUrl} (branche: ${branch}).`
+              : `Repo créé localement${remoteUrl ? ', mais le push initial a échoué (vérifiez l\'URL et les droits SSH).' : '.'}`)
+          : 'Ce projet est déjà un repo git.'
+      })
+    } catch (error) {
+      console.error('Erreur dans gitInit:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  async pull(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
-    console.log("compiling in pull")
-    try {
-      compileProject(projectId, userId)
-    }
-    catch(error){console.log("error when compiling in git pull")}
+
     console.log("Pulling")
     move(projectId, userId)
-    disableBinaryConversion(projectPath)
-      .then(() => withSshKey(userId, () => git.pull({'--no-rebase': null})))
-      .then(async update => {
-        console.log("Repository pulled");
-        // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
-        const localGit = getGitForProject(projectId, userId)
+    const localGit = getGitForProject(projectId, userId)
+
+    // Compiler pour copier le contenu actuel de l'éditeur Overleaf (MongoDB) vers compiles/,
+    // puis gitUpdate copie compiles/ → dossier git. Sans cette étape, des éditions non compilées
+    // seraient invisibles pour le stash et seraient perdues lors du pull.
+    try {
+      await compileProject(projectId, userId)
+      console.log("Compilation réussie avant pull")
+    } catch (compileError) {
+      console.log("Compilation échouée avant pull, on utilise le dernier état compilé:", compileError.message)
+    }
+
+    // Synchroniser le contenu Overleaf (compiles/) → dossier git avant de stasher.
+    try {
+      await gitUpdate(projectId, userId)
+      console.log("gitUpdate effectué avant stash")
+    } catch (updateError) {
+      console.log("gitUpdate échoué avant stash, on continue:", updateError.message)
+    }
+
+    // Sauvegarder les changements locaux non commités pour les restaurer après le pull
+    let stashed = false
+    try {
+      const status = await localGit.status()
+      if (status.files.length > 0) {
+        await localGit.stash(['push', '-u', '-m', 'overleaf-auto-stash-before-pull'])
+        stashed = true
+        console.log(`${status.files.length} fichier(s) stashé(s) avant pull`)
+      }
+    } catch (stashErr) {
+      console.log("Stash échoué, on continue:", stashErr.message)
+    }
+
+    try {
+      await disableBinaryConversion(projectPath)
+      const update = await withRemoteAuth(projectId, userId, (remote, info) =>
+        localGit.pull(remote, info?.branch || null, {'--no-rebase': null})
+      )
+
+      if (update.conflicts && update.conflicts.length > 0) {
+        // Conflit de merge : restaurer le stash avant d'abandonner le merge
+        if (stashed) {
+          try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
+        }
+        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, update.conflicts)
+        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+      }
+
+      console.log("Repository pulled")
+      // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
+      try {
+        await localGit.raw(['checkout', 'HEAD', '--', '.'])
+        console.log("Files re-checked out with binary attributes applied")
+      } catch (recheckoutErr) {
+        console.error("Re-checkout failed:", recheckoutErr.message)
+      }
+
+      // Restaurer les changements stashés par-dessus le résultat du pull
+      let stashConflict = false
+      if (stashed) {
         try {
-          await localGit.raw(['checkout', 'HEAD', '--', '.'])
-          console.log("Files re-checked out with binary attributes applied")
-        } catch (recheckoutErr) {
-          console.error("Re-checkout failed:", recheckoutErr.message)
+          await localGit.stash(['pop'])
+          console.log("Stash restauré après pull")
+        } catch (stashPopErr) {
+          stashConflict = true
+          console.error("Conflit lors de la restauration du stash:", stashPopErr.message)
+          // Le stash entre en conflit avec le remote : abandonner le stash, garder l'état pullé
+          try {
+            await localGit.raw(['reset', '--hard', 'HEAD'])
+            await localGit.stash(['drop'])
+          } catch (_) {}
         }
-        // Supprimer les fichiers de compilation parasites du dossier Git
-        // avant de reconstruire Overleaf pour éviter qu'ils soient importés
-        for (const banned of bannedFiles) {
-          const bannedPath = path.join(projectPath, banned)
-          if (await fs.pathExists(bannedPath)) {
-            await fs.remove(bannedPath)
-            console.log(`Removed banned file after pull: ${banned}`)
-          }
+      }
+
+      // Supprimer les fichiers de compilation parasites du dossier Git
+      for (const banned of bannedFiles) {
+        const bannedPath = path.join(projectPath, banned)
+        if (await fs.pathExists(bannedPath)) {
+          await fs.remove(bannedPath)
+          console.log(`Removed banned file after pull: ${banned}`)
         }
-        await buildProject(projectPath, projectId, userId, getRootId(projectId));
-        resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
-      })
-      .then(() => res.sendStatus(200))
-      .catch(error => {
-        console.error("Error.git: ", error.git);
-        console.error("Error.message: ", error.message);
-        if (error.git?.message === "Exiting because of an unresolved conflict." ||
-          error.git?.message === "Exiting because of unfinished merge.") {
-          HttpErrorHandler.gitMethodError(req, res, "Please fix all conflicts before merging")
-        } else {
-          HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
-        }
-        return buildProject(projectPath, projectId, userId, getRootId(projectId));
-      });
+      }
+
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+
+      // Le service CLSI (www-data) ne peut pas écrire dans son cache si le dossier du projet
+      // a été créé par root. On supprime le cache et le dossier de compilation du projet
+      // (en tant que root on peut tout supprimer) et on s'assure que le dossier parent du
+      // cache est accessible en écriture, afin que CLSI les recrée lui-même avec les bonnes
+      // permissions lors du prochain compile.
+      try {
+        await fs.remove(outputPath + projectId + "-" + userId)
+        console.log('Répertoire de compilation CLSI supprimé')
+      } catch (e) {
+        console.log('Impossible de supprimer le répertoire de compilation CLSI:', e.message)
+      }
+      try {
+        await fs.chmod(clsiCachePath, 0o777)
+        await fs.remove(clsiCachePath + projectId)
+        console.log('Cache CLSI du projet supprimé')
+      } catch (e) {
+        console.log('Impossible de corriger le cache CLSI:', e.message)
+      }
+
+      resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+
+      if (stashConflict) {
+        return HttpErrorHandler.gitMethodError(req, res,
+          'Pull effectué, mais vos modifications locales non commitées étaient en conflit avec le dépôt distant et ont été écartées.')
+      }
+      res.sendStatus(200)
+
+    } catch (error) {
+      if (res.headersSent) return
+      // En cas d'erreur, tenter de restaurer le stash
+      if (stashed) {
+        try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
+      }
+      if (isConflictError(error)) {
+        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, [])
+        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
+      }
+      console.error("Error.git: ", error.git)
+      console.error("Error.message: ", error.message)
+      HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
+    }
   },
 
   async add(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const filePath = req.body.filePath
-    console.log("Adding " + filePath)
+    const deleted = req.body.deleted === true
+    console.log("Adding " + filePath + (deleted ? " (deletion)" : ""))
     move(projectId, userId)
-    try {
-      // Synchroniser le fichier depuis compiles/ vers git/ sans passer par une compilation
-      await gitUpdate(projectId, userId, [filePath])
-    } catch(error) {
-      console.log("error when syncing in git add", error)
+
+    if (deleted) {
+      // File was deleted from Overleaf: remove it from the git working tree
+      // (if still present from a previous state) then let git.add stage the deletion.
+      const gitFilePath = path.join(dataPath + projectId + "-" + userId, filePath)
+      try {
+        if (await fs.pathExists(gitFilePath)) {
+          await fs.remove(gitFilePath)
+          console.log(`Removed deleted file from git working tree: ${filePath}`)
+        }
+      } catch (err) {
+        console.log(`Could not remove ${filePath} from git working tree:`, err.message)
+      }
+    } else {
+      try {
+        await compileProject(projectId, userId)
+        console.log("Compilation réussie avant le add")
+      } catch (compileError) {
+        console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
+      }
+      try {
+        await gitUpdate(projectId, userId, [filePath])
+      } catch(error) {
+        console.log("error when syncing in git add", error)
+      }
     }
+
     git.add(filePath, (error) => {
         if (error) {
           console.error("Could not add the file", error)
@@ -764,14 +1104,16 @@ GitController = {
     const userId = req.body.userId
     console.log("Pushing")
     move(projectId, userId)
-    withSshKey(userId, () => git.push())
+    withRemoteAuth(projectId, userId, (remote, info) =>
+      git.push(remote, info?.branch || null)
+    )
       .then(() => {
         console.log('Push successful')
-        res.sendStatus(200);
+        res.sendStatus(200)
       })
       .catch(error => {
         console.error("Error:", error)
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
+        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
       })
   },
 
@@ -889,44 +1231,36 @@ GitController = {
   },
 
   async switch_branch(req, res) {
-    const { projectId, userId, branchName } = req.body;
-    const projectPath = dataPath + projectId + "-" + userId;
-    console.log("switch branch to: ", branchName)
+    const { projectId, userId, branchName } = req.body
+    const projectPath = dataPath + projectId + "-" + userId
+    console.log("switch branch to:", branchName)
 
     try {
+      move(projectId, userId)
+      await withRemoteAuth(projectId, userId, (remote) => git.fetch(remote))
 
-      move(projectId, userId);
-      await withSshKey(userId, () => git.fetch('origin'));
-
-      const [, localBranch] = branchName.split('/');
-      const localBranches = await git.branchLocal();
-
-      var stat = await git.status();
-      var br = await git.branch();
-      console.log("Current Branch:", br.current);
-      console.log("Current Branch (status): ",stat.current)
+      // branchName est au format "origin/ma-branche", on extrait la partie locale
+      const [, localBranch] = branchName.split('/')
+      const localBranches = await git.branchLocal()
 
       if (localBranches.all.includes(localBranch)) {
-        await git.checkout(localBranch);
+        await git.checkout(localBranch)
       } else {
-        await git.checkout(['-b', localBranch, branchName]);
+        await git.checkout(['-b', localBranch, branchName])
       }
+      console.log("Switched to branch:", localBranch)
 
-      br = await git.branch();
-      stat = await git.status();
-      console.log("Switched to Branch:", br.current);
-      console.log("Switched to Branch (status): ", stat.current);
-      console.log("Status: ", stat)
+      // Appliquer les attributs binaires et ré-extraire pour éviter la corruption des fichiers binaires
+      await disableBinaryConversion(projectPath)
+      const localGit = getGitForProject(projectId, userId)
+      await localGit.raw(['checkout', 'HEAD', '--', '.'])
 
-      await buildProject(projectPath, projectId, userId, getRootId(projectId));
-
-      res.sendStatus(200);
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
+      res.sendStatus(200)
     } catch (error) {
-      console.error("Git checkout failed:", error);
-      HttpErrorHandler.gitMethodError(req, res, error);
-
-      // still attempt to build the project in case of partial failure
-      await buildProject(projectPath, projectId, userId, getRootId(projectId));
+      console.error("Git checkout failed:", error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
 
@@ -939,7 +1273,9 @@ GitController = {
       const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
       console.log("created new branch: ", newBranchName)
 
-      await withSshKey(userId, () => git.push(['-u', 'origin', newBranchName]))
+      await withRemoteAuth(projectId, userId, (remote) =>
+        git.push(remote, newBranchName, ['--set-upstream'])
+      )
       console.log(`Branch '${newBranchName}' pushed to origin`)
 
       res.sendStatus(200);
@@ -967,7 +1303,21 @@ GitController = {
     privateKey.then((privateKeyValue) => {
       res.send(privateKeyValue)
     });
-  }
+  },
+
+  async saveToken(req, res) {
+    const { projectId, token, tokenType } = req.body
+    if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
+    try {
+      const fields = {}
+      if (token !== undefined) fields['git.token'] = token || null
+      if (tokenType !== undefined) fields['git.tokenType'] = tokenType || null
+      await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+      res.json({ success: true })
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
 }
 
-module.exports = {GitController, gitClone, gitUpdate}
+module.exports = {GitController, gitClone, gitUpdate, gitInit}

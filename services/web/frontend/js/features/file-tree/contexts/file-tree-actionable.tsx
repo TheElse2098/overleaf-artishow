@@ -25,6 +25,8 @@ import { useProjectContext } from '../../../shared/context/project-context'
 import { useFileTreeData } from '../../../shared/context/file-tree-data-context'
 import { useFileTreeSelectable } from './file-tree-selectable'
 import { getFullPath } from './get-full-path'
+import { useUserContext } from '../../../shared/context/user-context'
+import { postJSON } from '../../../infrastructure/fetch-json'
 
 import {
   InvalidFilenameError,
@@ -227,6 +229,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
   children,
 }) => {
   const { projectId } = useProjectContext()
+  const { id: userId } = useUserContext()
   const { fileTreeReadOnly } = useFileTreeData()
   const { indexAllReferences } = useReferencesContext()
   const { write } = usePermissionsContext()
@@ -302,14 +305,24 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
         const found = findInTreeOrThrow(fileTreeData, id)
         shouldReindexReferences =
           shouldReindexReferences || /\.bib$/.test(found.entity.name)
-        return syncDelete(projectId, found.type, found.entity._id).catch(
-          error => {
+        // Compute path before deletion while entity is still in the tree
+        const filePath =
+          found.type !== 'folder' ? getFullPath(fileTreeData, id).slice(1) : null
+        return syncDelete(projectId, found.type, found.entity._id)
+          .then(() => {
+            // Auto-stage deletion in git (fire-and-forget, errors are silenced)
+            if (filePath) {
+              postJSON('/git-add', {
+                body: { projectId, userId, filePath, deleted: true },
+              }).catch(() => {})
+            }
+          })
+          .catch(error => {
             // throw unless 404
             if (error.info.statusCode !== 404) {
               throw error
             }
-          }
-        )
+          })
       })
         // @ts-ignore (TODO: improve mapSeries types)
         .then(() => {
@@ -323,7 +336,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
           dispatch({ type: ACTION_TYPES.ERROR, error })
         })
     )
-  }, [fileTreeData, projectId, selectedEntityIds, indexAllReferences])
+  }, [fileTreeData, projectId, userId, selectedEntityIds, indexAllReferences])
 
   // moves entities. Tree is updated immediately and data are sync'd after.
   const finishMoving = useCallback(
