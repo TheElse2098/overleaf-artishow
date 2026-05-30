@@ -6,15 +6,15 @@ const outputPath = "/var/lib/overleaf/data/compiles/"
 const uploadsPath = "/var/lib/overleaf/tmp/uploads/"
 const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
-const EditorController = require('../Editor/EditorController')
-const HistoryManager = require('../History/HistoryManager')
-const CompileManager = require('../Compile/CompileManager');
-const ClsiCookieManager = require('../Compile/ClsiCookieManager');
+const EditorController = require('../Editor/EditorController.mjs').default
+const HistoryManager = require('../History/HistoryManager.mjs').default
+const CompileManager = require('../Compile/CompileManager.mjs').default
+const ClsiCookieManager = require('../Compile/ClsiCookieManager.mjs').default
 const Errors = require('../Errors/Errors')
-const HttpErrorHandler = require('../Errors/HttpErrorHandler')
+const HttpErrorHandler = require('../Errors/HttpErrorHandler.mjs').default
 const crypto = require('crypto')
 const sshpk = require('sshpk')
-const { Project } = require('../../models/Project')
+const { Project } = require('../../models/Project.mjs')
 
 const gitOptions = {
   baseDir: dataPath,
