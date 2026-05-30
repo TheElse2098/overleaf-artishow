@@ -104,7 +104,7 @@ services:
 
   mongo:
     restart: always
-    image: mongo:8.0
+    image: mongo:7.0
     container_name: mongo
     command: "--replSet overleaf"
     volumes:
