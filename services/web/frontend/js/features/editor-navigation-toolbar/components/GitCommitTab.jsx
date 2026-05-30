@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { postJSON } from '../../../infrastructure/fetch-json'
+import { GitNotif } from './GitFeedback'
 
 var BTN_BASE = {
   padding: '8px 14px',
@@ -11,7 +12,6 @@ var BTN_BASE = {
 }
 
 var BTN_GREEN = Object.assign({}, BTN_BASE, { backgroundColor: '#45a444', color: 'white' })
-var BTN_GREY = Object.assign({}, BTN_BASE, { backgroundColor: '#6c757d', color: 'white' })
 var BTN_OUTLINE = Object.assign({}, BTN_BASE, {
   backgroundColor: 'transparent',
   color: '#45a444',
@@ -61,13 +61,24 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
   )
 }
 
-function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit, onPush, onRefresh }) {
+function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefresh }) {
+  var [commitMessage, setCommitMessage] = useState('')
+  var [isCommitting, setIsCommitting] = useState(false)
+  var [isPushing, setIsPushing] = useState(false)
   var [selected, setSelected] = useState({})
   var [addingFile, setAddingFile] = useState(null)
   var [isAddingAll, setIsAddingAll] = useState(false)
-  var [feedback, setFeedback] = useState(null)
+  var [notification, setNotification] = useState(null)
 
   var selectedCount = Object.values(selected).filter(Boolean).length
+
+  function showNotif(type, message) {
+    setNotification({ type: type, message: message })
+  }
+
+  function dismissNotif() {
+    setNotification(null)
+  }
 
   function toggleFile(filePath) {
     setSelected(function(prev) {
@@ -88,9 +99,40 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
     }
   }
 
-  function showFeedback(type, message) {
-    setFeedback({ type: type, message: message })
-    setTimeout(function() { setFeedback(null) }, 3000)
+  async function handleCommit() {
+    if (!commitMessage.trim()) {
+      showNotif('warning', 'Le message de commit ne peut pas etre vide.')
+      return
+    }
+    setIsCommitting(true)
+    setNotification(null)
+    try {
+      await postJSON('/git-commit', {
+        body: { projectId: projectId, userId: userId, message: commitMessage.trim() },
+      })
+      setCommitMessage('')
+      await onRefresh()
+      showNotif('success', 'Commit effectue avec succes.')
+    } catch (err) {
+      showNotif('error', 'Echec du commit : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
+    } finally {
+      setIsCommitting(false)
+    }
+  }
+
+  async function handlePush() {
+    setIsPushing(true)
+    setNotification(null)
+    try {
+      await postJSON('/git-push', {
+        body: { projectId: projectId, userId: userId },
+      })
+      showNotif('success', 'Push effectue avec succes.')
+    } catch (err) {
+      showNotif('error', 'Echec du push : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
+    } finally {
+      setIsPushing(false)
+    }
   }
 
   async function handleAddOne(filePath) {
@@ -106,7 +148,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
       })
       await onRefresh()
     } catch (err) {
-      showFeedback('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
+      showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
       setAddingFile(null)
     }
@@ -125,7 +167,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
       setSelected({})
       await onRefresh()
     } catch (err) {
-      showFeedback('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
+      showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
       setAddingFile(null)
     }
@@ -139,48 +181,69 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
       })
       setSelected({})
       await onRefresh()
-      showFeedback('success', 'Tous les fichiers ont ete ajoutes au staging.')
+      showNotif('success', 'Tous les fichiers ont ete ajoutes au staging.')
     } catch (err) {
-      showFeedback('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
+      showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
       setIsAddingAll(false)
     }
   }
 
   var allChecked = notStagedFiles.length > 0 && notStagedFiles.every(function(f) { return selected[f] })
-  var isBusy = addingFile !== null || isAddingAll
+  var isStagingBusy = addingFile !== null || isAddingAll
 
   return (
     <div>
+      {notification && (
+        <GitNotif type={notification.type} message={notification.message} onDismiss={dismissNotif} />
+      )}
+
       <div>
-        <label htmlFor="commit-message" style={{ color: 'black' }}>Commit message</label>
+        <label style={{ color: 'black', fontSize: '13px', fontWeight: '500' }}>
+          Message de commit
+        </label>
         <textarea
-          id="commit-message"
+          value={commitMessage}
+          onChange={function(e) { setCommitMessage(e.target.value) }}
           rows="3"
-          style={{ color: 'dimgray', width: '100%', marginTop: '4px', boxSizing: 'border-box' }}
+          style={{
+            color: 'dimgray',
+            width: '100%',
+            marginTop: '4px',
+            boxSizing: 'border-box',
+            padding: '6px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            fontSize: '13px',
+            resize: 'vertical',
+          }}
         />
       </div>
 
       <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
-        <button onClick={onCommit} style={Object.assign({}, BTN_GREEN, { flex: 1 })}>Commit</button>
-        <button onClick={onPush} style={Object.assign({}, BTN_OUTLINE, { flex: 1 })}>Push</button>
-      </div>
-
-      {feedback && (
-        <div
-          style={{
-            marginTop: '10px',
-            padding: '8px 10px',
-            borderRadius: '4px',
-            fontSize: '13px',
-            backgroundColor: feedback.type === 'success' ? '#d4edda' : '#f8d7da',
-            color: feedback.type === 'success' ? '#155724' : '#721c24',
-            border: '1px solid ' + (feedback.type === 'success' ? '#c3e6cb' : '#f5c6cb'),
-          }}
+        <button
+          onClick={handleCommit}
+          disabled={isCommitting || isPushing}
+          style={Object.assign({}, BTN_GREEN, {
+            flex: 1,
+            opacity: (isCommitting || isPushing) ? 0.6 : 1,
+            cursor: (isCommitting || isPushing) ? 'not-allowed' : 'pointer',
+          })}
         >
-          {feedback.message}
-        </div>
-      )}
+          {isCommitting ? 'Commit...' : 'Commit'}
+        </button>
+        <button
+          onClick={handlePush}
+          disabled={isCommitting || isPushing}
+          style={Object.assign({}, BTN_OUTLINE, {
+            flex: 1,
+            opacity: (isCommitting || isPushing) ? 0.6 : 1,
+            cursor: (isCommitting || isPushing) ? 'not-allowed' : 'pointer',
+          })}
+        >
+          {isPushing ? 'Push...' : 'Push'}
+        </button>
+      </div>
 
       <div style={{ marginTop: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -207,13 +270,13 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
             {selectedCount > 0 && (
               <button
                 onClick={handleAddSelected}
-                disabled={isBusy}
+                disabled={isStagingBusy}
                 style={Object.assign({}, BTN_BASE, {
                   padding: '5px 10px',
                   fontSize: '12px',
-                  backgroundColor: isBusy ? '#ccc' : '#45a444',
+                  backgroundColor: isStagingBusy ? '#ccc' : '#45a444',
                   color: 'white',
-                  cursor: isBusy ? 'not-allowed' : 'pointer',
+                  cursor: isStagingBusy ? 'not-allowed' : 'pointer',
                 })}
               >
                 Ajouter ({selectedCount})
@@ -221,13 +284,13 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onCommit
             )}
             <button
               onClick={handleAddAll}
-              disabled={isBusy || notStagedFiles.length === 0}
+              disabled={isStagingBusy || notStagedFiles.length === 0}
               style={Object.assign({}, BTN_BASE, {
                 padding: '5px 10px',
                 fontSize: '12px',
-                backgroundColor: (isBusy || notStagedFiles.length === 0) ? '#ccc' : '#1976d2',
+                backgroundColor: (isStagingBusy || notStagedFiles.length === 0) ? '#ccc' : '#1976d2',
                 color: 'white',
-                cursor: (isBusy || notStagedFiles.length === 0) ? 'not-allowed' : 'pointer',
+                cursor: (isStagingBusy || notStagedFiles.length === 0) ? 'not-allowed' : 'pointer',
               })}
             >
               {isAddingAll ? 'Ajout...' : 'Tout ajouter'}
