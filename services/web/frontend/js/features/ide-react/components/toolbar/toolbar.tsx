@@ -15,6 +15,7 @@ import importOverleafModules from '../../../../../macros/import-overleaf-module.
 import UpgradeButton from './upgrade-button'
 import getMeta from '@/utils/meta'
 import { useIdeReactContext } from '@/features/ide-react/context/ide-react-context'
+import GitToggleButton from '@/features/editor-navigation-toolbar/components/git-toggle-button'
 
 const [publishModalModules] = importOverleafModules('publishModal')
 const SubmitProjectButton = publishModalModules?.import.NewPublishToolbarButton
@@ -60,6 +61,7 @@ export const Toolbar = () => {
           <SubmitProjectButton cobranding={cobranding} />
         )}
         <ShareProjectButton />
+        <GitToggleButton />
         {getMeta('ol-showUpgradePrompt') && <UpgradeButton />}
       </div>
     </nav>
