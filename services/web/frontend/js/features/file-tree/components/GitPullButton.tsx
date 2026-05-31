@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { postJSON } from '../../../infrastructure/fetch-json'
 import MaterialIcon from '@/shared/components/material-icon'
 import { GitNotif, GitConfirm } from '../../editor-navigation-toolbar/components/GitFeedback'
@@ -19,8 +20,13 @@ export default function GitPullButton({ projectId, userId }: Props) {
   const [showConfirm, setShowConfirm] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [notif, setNotif] = useState<Notif | null>(null)
+  const [popupRect, setPopupRect] = useState<DOMRect | null>(null)
+  const buttonRef = useRef<HTMLDivElement>(null)
 
   function handleClick() {
+    if (buttonRef.current) {
+      setPopupRect(buttonRef.current.getBoundingClientRect())
+    }
     setNotif(null)
     setShowConfirm(true)
   }
@@ -29,6 +35,9 @@ export default function GitPullButton({ projectId, userId }: Props) {
     setShowConfirm(false)
     setIsLoading(true)
     setNotif(null)
+    if (buttonRef.current) {
+      setPopupRect(buttonRef.current.getBoundingClientRect())
+    }
     try {
       await postJSON('/git-pull', { body: { projectId, userId } })
       setNotif({ type: 'success', message: 'Pull effectue avec succes.' })
@@ -45,27 +54,15 @@ export default function GitPullButton({ projectId, userId }: Props) {
     }
   }
 
-  return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        className="btn"
-        onClick={handleClick}
-        disabled={isLoading}
-        title="Pull"
-        style={{ opacity: isLoading ? 0.6 : 1 }}
-      >
-        <MaterialIcon type="repeat" fw accessibilityLabel="pull" />
-      </button>
-
-      {(showConfirm || notif) && (
+  const popup = (showConfirm || notif) && popupRect
+    ? createPortal(
         <div
           style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            zIndex: 1000,
+            position: 'fixed',
+            top: popupRect.bottom + 4,
+            left: popupRect.left,
+            zIndex: 9999,
             width: '320px',
-            paddingTop: '4px',
           }}
         >
           {showConfirm && (
@@ -85,8 +82,23 @@ export default function GitPullButton({ projectId, userId }: Props) {
               onDismiss={() => setNotif(null)}
             />
           )}
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+    : null
+
+  return (
+    <div ref={buttonRef} style={{ display: 'inline-block' }}>
+      <button
+        className="btn"
+        onClick={handleClick}
+        disabled={isLoading}
+        title="Pull"
+        style={{ opacity: isLoading ? 0.6 : 1 }}
+      >
+        <MaterialIcon type="repeat" fw accessibilityLabel="pull" />
+      </button>
+      {popup}
     </div>
   )
 }
