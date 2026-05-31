@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import classNames from 'classnames'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useProjectContext } from '@/shared/context/project-context'
 import { useUserContext } from '../../../shared/context/user-context'
 import MaterialIcon from '../../../shared/components/material-icon'
@@ -273,18 +274,21 @@ function GitToggleButton() {
         <MaterialIcon type="comment" fw className={''} />
         <p className="toolbar-label">{'Git menu'}</p>
       </button>
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        notStagedFiles={notStagedFiles}
-        stagedFiles={stagedFiles}
-        commitHistory={commitHistory}
-        branches={branches}
-        selectedBranch={selectedBranch}
-        projectId={projectId}
-        userId={userId}
-        onRefresh={loadGitData}
-      />
+      {createPortal(
+        <Modal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          notStagedFiles={notStagedFiles}
+          stagedFiles={stagedFiles}
+          commitHistory={commitHistory}
+          branches={branches}
+          selectedBranch={selectedBranch}
+          projectId={projectId}
+          userId={userId}
+          onRefresh={loadGitData}
+        />,
+        document.body
+      )}
     </div>
   )
 }
