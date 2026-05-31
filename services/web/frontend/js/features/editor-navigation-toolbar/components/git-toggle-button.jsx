@@ -94,18 +94,6 @@ function Modal({
               Branches
             </button>
             <button
-              onClick={() => setActiveTab('documentation')}
-              style={{
-                padding: '10px 20px',
-                border: 'none',
-                backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
-                color: activeTab === 'documentation' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Documentation
-            </button>
-            <button
               onClick={() => setActiveTab('token')}
               style={{
                 padding: '10px 20px',
@@ -116,6 +104,18 @@ function Modal({
               }}
             >
               Token
+            </button>
+            <button
+              onClick={() => setActiveTab('documentation')}
+              style={{
+                padding: '10px 20px',
+                border: 'none',
+                backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
+                color: activeTab === 'documentation' ? 'white' : 'black',
+                cursor: 'pointer'
+              }}
+            >
+              Documentation
             </button>
           </div>
 
