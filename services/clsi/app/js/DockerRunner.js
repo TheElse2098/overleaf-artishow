@@ -35,7 +35,7 @@ function containerToHostPath(containerPath) {
 }
 
 const DockerRunner = {
-  run(projectId, command, directory, image, timeout, environment, compileGroup, cwd, callback) {
+  run(projectId, command, directory, image, timeout, environment, _compileGroup, cwd, callback) {
     const resolvedCmd = resolveCommand(command, directory)
     const workDir = cwd ? Path.join(directory, cwd) : directory
     const containerName = `overleaf-compile-${projectId}-${Date.now()}`
@@ -100,30 +100,24 @@ const DockerRunner = {
             return callback(waitErr)
           }
 
-          // Fetch logs after container stops to avoid race condition with streaming attach.
-          // container.attach fires before all data is drained; container.logs is safe post-exit.
-          container.logs({ stdout: true, stderr: false, follow: false }, (logErr, logStream) => {
-            if (logErr || !logStream) {
-              container.remove({ force: true }, () => {})
-              logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished (no log stream)')
-              return callback(null, { stdout: '', exitCode: data.StatusCode })
-            }
-
+          // container.logs({ follow: false }) returns a Buffer (Docker multiplexed format),
+          // not a stream. Parse the 8-byte frame headers manually: [type(1), pad(3), size(4BE)].
+          container.logs({ stdout: true, stderr: false, follow: false }, (logErr, logData) => {
+            container.remove({ force: true }, () => {})
             let stdout = ''
-            container.modem.demuxStream(
-              logStream,
-              { write: chunk => { stdout += chunk.toString() } },
-              { write: () => {} }
-            )
-            logStream.on('end', () => {
-              container.remove({ force: true }, () => {})
-              logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished')
-              callback(null, { stdout, exitCode: data.StatusCode })
-            })
-            logStream.on('error', () => {
-              container.remove({ force: true }, () => {})
-              callback(null, { stdout, exitCode: data.StatusCode })
-            })
+            if (!logErr && logData) {
+              const buf = Buffer.isBuffer(logData) ? logData : Buffer.from(String(logData))
+              let i = 0
+              while (i + 8 <= buf.length) {
+                const type = buf[i]
+                const size = buf.readUInt32BE(i + 4)
+                if (i + 8 + size > buf.length) break
+                if (type === 1) stdout += buf.slice(i + 8, i + 8 + size).toString()
+                i += 8 + size
+              }
+            }
+            logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished')
+            callback(null, { stdout, exitCode: data.StatusCode })
           })
         })
       })
