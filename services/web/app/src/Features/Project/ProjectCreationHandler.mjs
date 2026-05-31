@@ -19,6 +19,7 @@ import TpdsUpdateSender from '../ThirdPartyDataStore/TpdsUpdateSender.mjs'
 import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import ClsiCacheManager from '../Compile/ClsiCacheManager.mjs'
 import crypto from 'node:crypto'
+import { gitClone } from '../Git/GitController.js'
 
 const { ObjectId } = mongodb
 
