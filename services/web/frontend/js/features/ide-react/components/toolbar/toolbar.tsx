@@ -60,8 +60,8 @@ export const Toolbar = () => {
         {shouldDisplaySubmitButton && cobranding && (
           <SubmitProjectButton cobranding={cobranding} />
         )}
+        <GitToggleButton /> // décaler la ligne pour changer la position du bouton
         <ShareProjectButton />
-        <GitToggleButton />
         {getMeta('ol-showUpgradePrompt') && <UpgradeButton />}
       </div>
     </nav>
