@@ -5,7 +5,6 @@ import ProjectGetter from '../Project/ProjectGetter.mjs'
 import ProjectRootDocManager from '../Project/ProjectRootDocManager.mjs'
 import UserGetter from '../User/UserGetter.mjs'
 import ClsiManager from './ClsiManager.mjs'
-import { gitUpdate } from '../Git/GitController.js'
 import Metrics from '@overleaf/metrics'
 import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
 import UserAnalyticsDataCache from '../Analytics/UserAnalyticsDataCache.mjs'
@@ -89,6 +88,7 @@ async function compile(projectId, userId, options = {}) {
   } = await ClsiManager.promises.sendRequest(projectId, compileAsUser, options)
 
   if(userId){
+    const { gitUpdate } = await import('../Git/GitController.js')
     await gitUpdate(projectId, userId)
   }
 
