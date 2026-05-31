@@ -3,14 +3,12 @@ import Path from 'node:path'
 import { promisify } from 'node:util'
 import Settings from '@overleaf/settings'
 import logger from '@overleaf/logger'
-import { getLastProjectAccessTime } from './LastProjectAccess.js'
 
 const dockerSettings = Settings.clsi?.docker ?? {}
 const docker = new Docker({
   socketPath: dockerSettings.socketPath ?? '/var/run/docker.sock',
 })
 
-// containerName -> container mapping for kill()
 const activeContainers = new Map()
 
 function buildEnv(environment) {
@@ -22,11 +20,26 @@ function resolveCommand(command, directory) {
   return command.map(arg => arg.toString().replace('$COMPILE_DIR', directory))
 }
 
+// Sibling containers are created by the host Docker daemon, so bind mount sources
+// must be host paths. SANDBOXED_COMPILES_HOST_DIR maps the container compile root
+// to the equivalent host path.
+function containerToHostPath(containerPath) {
+  const containerRoot = '/var/lib/overleaf/data/compiles'
+  const hostRoot =
+    dockerSettings.sandboxedCompilesHostDir ||
+    process.env.SANDBOXED_COMPILES_HOST_DIR
+  if (hostRoot && containerPath.startsWith(containerRoot)) {
+    return hostRoot + containerPath.slice(containerRoot.length)
+  }
+  return containerPath
+}
+
 const DockerRunner = {
   run(projectId, command, directory, image, timeout, environment, compileGroup, cwd, callback) {
     const resolvedCmd = resolveCommand(command, directory)
     const workDir = cwd ? Path.join(directory, cwd) : directory
     const containerName = `overleaf-compile-${projectId}-${Date.now()}`
+    const hostDirectory = containerToHostPath(directory)
 
     const containerOptions = {
       name: containerName,
@@ -36,7 +49,7 @@ const DockerRunner = {
       Env: buildEnv(environment || {}),
       User: dockerSettings.user || 'root',
       HostConfig: {
-        Binds: [`${directory}:${directory}`],
+        Binds: [`${hostDirectory}:${directory}`],
         AutoRemove: false,
         NetworkMode: 'none',
         Runtime: dockerSettings.runtime || undefined,
@@ -49,7 +62,10 @@ const DockerRunner = {
       ]
     }
 
-    logger.debug({ projectId, containerName, image: containerOptions.Image, resolvedCmd }, 'starting Docker compile')
+    logger.debug(
+      { projectId, containerName, image: containerOptions.Image, resolvedCmd, hostDirectory },
+      'starting Docker compile'
+    )
 
     docker.createContainer(containerOptions, (err, container) => {
       if (err) {
@@ -58,7 +74,6 @@ const DockerRunner = {
       }
 
       activeContainers.set(containerName, container)
-      let stdout = ''
 
       container.start(err => {
         if (err) {
@@ -68,18 +83,6 @@ const DockerRunner = {
           return callback(err)
         }
 
-        // Attach to capture stdout+stderr
-        container.attach(
-          { stream: true, stdout: true, stderr: true },
-          (err, stream) => {
-            if (!err && stream) {
-              const stdoutBuf = { write: data => { stdout += data.toString() } }
-              const stderrBuf = { write: () => {} }
-              container.modem.demuxStream(stream, stdoutBuf, stderrBuf)
-            }
-          }
-        )
-
         const timeoutHandle = timeout
           ? setTimeout(() => {
               logger.warn({ projectId, containerName, timeout }, 'Docker compile timed out, killing container')
@@ -87,17 +90,41 @@ const DockerRunner = {
             }, timeout)
           : null
 
-        container.wait((err, data) => {
+        container.wait((waitErr, data) => {
           if (timeoutHandle) clearTimeout(timeoutHandle)
           activeContainers.delete(containerName)
-          container.remove({ force: true }, () => {})
 
-          if (err) {
-            logger.error({ err, projectId }, 'error waiting for Docker container')
-            return callback(err)
+          if (waitErr) {
+            container.remove({ force: true }, () => {})
+            logger.error({ err: waitErr, projectId }, 'error waiting for Docker container')
+            return callback(waitErr)
           }
-          logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished')
-          callback(null, { stdout, exitCode: data.StatusCode })
+
+          // Fetch logs after container stops to avoid race condition with streaming attach.
+          // container.attach fires before all data is drained; container.logs is safe post-exit.
+          container.logs({ stdout: true, stderr: false, follow: false }, (logErr, logStream) => {
+            if (logErr || !logStream) {
+              container.remove({ force: true }, () => {})
+              logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished (no log stream)')
+              return callback(null, { stdout: '', exitCode: data.StatusCode })
+            }
+
+            let stdout = ''
+            container.modem.demuxStream(
+              logStream,
+              { write: chunk => { stdout += chunk.toString() } },
+              { write: () => {} }
+            )
+            logStream.on('end', () => {
+              container.remove({ force: true }, () => {})
+              logger.debug({ projectId, exitCode: data.StatusCode }, 'Docker compile finished')
+              callback(null, { stdout, exitCode: data.StatusCode })
+            })
+            logStream.on('error', () => {
+              container.remove({ force: true }, () => {})
+              callback(null, { stdout, exitCode: data.StatusCode })
+            })
+          })
         })
       })
     })
@@ -125,9 +152,7 @@ const DockerRunner = {
     return true
   },
 
-  stopContainerMonitor() {
-    // no persistent monitor in this implementation
-  },
+  stopContainerMonitor() {},
 }
 
 DockerRunner.promises = {
