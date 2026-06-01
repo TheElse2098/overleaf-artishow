@@ -61,11 +61,29 @@ const TemplatesController = {
       { _id: projectId },
       {
         isTemplate: Boolean(isTemplate),
+        Admin: True, //rajouté par Lohé
+        owner: userId,
         templateDescription: templateDescription || '',
       }
     )
     res.json({ ok: true })
   },
+
+  async setOwnTemplateStatus(req, res) { //début modif Lohé
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    const { isTemplate, templateDescription } = req.body
+    await Project.updateOne(
+      { _id: projectId },
+      {
+        isTemplate: Boolean(isTemplate),
+        Admin: False,
+        owner: userId,
+        templateDescription: templateDescription || '',
+      }
+    )
+    res.json({ ok: true })
+  }, //fin modif Lohé
 
   async createProjectFromV1Template(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
