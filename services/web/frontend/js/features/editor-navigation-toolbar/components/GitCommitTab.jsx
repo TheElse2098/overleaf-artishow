@@ -112,7 +112,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
       })
       setCommitMessage('')
       await onRefresh()
-      showNotif('success', 'Commit effectue avec succes.')
+      showNotif('success', 'Commit effectué avec succès.')
     } catch (err) {
       showNotif('error', 'Echec du commit : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
     } finally {
@@ -127,7 +127,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
       await postJSON('/git-push', {
         body: { projectId: projectId, userId: userId },
       })
-      showNotif('success', 'Push effectue avec succes.')
+      showNotif('success', 'Push effectué avec succès.')
     } catch (err) {
       showNotif('error', 'Echec du push : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
     } finally {
@@ -181,7 +181,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
       })
       setSelected({})
       await onRefresh()
-      showNotif('success', 'Tous les fichiers ont ete ajoutes au staging.')
+      showNotif('success', 'Tous les fichiers ont ete ajoutés au staging.')
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
