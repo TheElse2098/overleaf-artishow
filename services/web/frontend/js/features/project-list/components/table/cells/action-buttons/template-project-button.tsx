@@ -8,11 +8,11 @@ import OLModal, {
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLIconButton from '@/features/ui/components/ol/ol-icon-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import getMeta from '../../../../../../utils/meta'
 
 type TemplateProjectButtonProps = {
