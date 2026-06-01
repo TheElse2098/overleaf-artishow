@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { postJSON } from '../../../../../../infrastructure/fetch-json'
 import { useProjectListContext } from '../../../../context/project-list-context'
 import { Project } from '../../../../../../../../types/project/dashboard/api'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
