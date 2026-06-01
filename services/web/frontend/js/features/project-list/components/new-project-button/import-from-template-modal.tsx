@@ -1,3 +1,4 @@
+// import-from-template-modal.tsx
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -8,7 +9,7 @@ import {
   OLModalTitle,
 } from '@/shared/components/ol/ol-modal'
 import OLButton from '@/shared/components/ol/ol-button'
-import { getJSON, postJSON } from '../../../../infrastructure/fetch-json'
+import { getJSON } from '../../../../infrastructure/fetch-json'
 import { FullSizeLoadingSpinner } from '@/shared/components/loading-spinner'
 import Notification from '@/shared/components/notification'
 import TemplatesList from './templates-list'
@@ -27,41 +28,34 @@ type ImportFromTemplateModalProps = {
   openProject: (projectId: string) => void
 }
 
-function ImportFromTemplateModal({
-  onHide,
-  openProject,
-}: ImportFromTemplateModalProps) {
+function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModalProps) {
   const { t } = useTranslation()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [creatingId, setCreatingId] = useState<string | null>(null)
 
   useEffect(() => {
-    getJSON('/project/templates')
-      .then((response: { templates: Template[] }) => {
+    const fetchTemplates = async () => {
+      try {
+        setLoading(true)
+        const response = await getJSON('/project/templates')
         setTemplates(response.templates || [])
-      })
-      .catch(() => {
-        setError(t('generic_something_went_wrong'))
-      })
-      .finally(() => {
+      } catch (err) {
+        setError('Failed to load templates')
+        console.error('Error fetching templates:', err)
+      } finally {
         setLoading(false)
-      })
-  }, [t])
-
-  const handleTemplateSelect = async (templateId: string) => {
-    setCreatingId(templateId)
-    setError(null)
-    try {
-      const response = await postJSON(
-        `/project/template/${templateId}/clone`
-      )
-      openProject(response.project_id)
-    } catch {
-      setError(t('generic_something_went_wrong'))
-      setCreatingId(null)
+      }
     }
+
+    fetchTemplates()
+  }, [])
+
+  const handleTemplateSelect = (templateId: string) => {
+    // Cette fonction sera appelée quand un template est sélectionné
+    // Elle devrait créer un nouveau projet basé sur le template
+    console.log('Template selected:', templateId)
+    // Ici on peut implémenter la logique pour créer le projet
   }
 
   return (
@@ -76,27 +70,26 @@ function ImportFromTemplateModal({
       <OLModalHeader closeButton>
         <OLModalTitle as="h3">{t('import_from_template')}</OLModalTitle>
       </OLModalHeader>
-
+      
       <OLModalBody>
         {loading && <FullSizeLoadingSpinner />}
-
+        
         {error && (
           <div className="notification-list">
             <Notification type="error" content={error} />
           </div>
         )}
-
-        {!loading && (
-          <TemplatesList
+        
+        {!loading && !error && (
+          <TemplatesList 
             templates={templates}
             onTemplateSelect={handleTemplateSelect}
-            creatingId={creatingId}
           />
         )}
       </OLModalBody>
-
+      
       <OLModalFooter>
-        <OLButton variant="secondary" onClick={onHide} disabled={!!creatingId}>
+        <OLButton variant="secondary" onClick={onHide}>
           {t('cancel')}
         </OLButton>
       </OLModalFooter>

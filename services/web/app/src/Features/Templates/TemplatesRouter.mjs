@@ -44,11 +44,5 @@ export default {
       RateLimiterMiddleware.rateLimit(rateLimiter),
       TemplatesController.createProjectFromV1Template
     )
-
-    app.post(
-      '/project/template/:templateId/clone',
-      AuthenticationController.requireLogin(),
-      TemplatesController.createProjectFromLocalTemplate
-    )
   },
 }

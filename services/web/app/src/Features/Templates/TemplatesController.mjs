@@ -2,7 +2,6 @@ import path from 'node:path'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import TemplatesManager from './TemplatesManager.mjs'
 import ProjectHelper from '../Project/ProjectHelper.mjs'
-import ProjectDuplicator from '../Project/ProjectDuplicator.mjs'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
 import { Project } from '../../models/Project.mjs'
@@ -69,28 +68,6 @@ const TemplatesController = {
     res.json({ ok: true })
   },
 
-  async createProjectFromLocalTemplate(req, res) {
-    const { templateId } = req.params
-    const currentUser = SessionManager.getSessionUser(req.session)
-
-    const template = await Project.findOne(
-      { _id: templateId, isTemplate: true },
-      { name: 1 }
-    ).lean()
-
-    if (!template) {
-      return res.sendStatus(404)
-    }
-
-    const project = await ProjectDuplicator.promises.duplicate(
-      currentUser,
-      templateId,
-      template.name
-    )
-
-    res.json({ project_id: project._id })
-  },
-
   async createProjectFromV1Template(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const project = await TemplatesManager.promises.createProjectFromV1Template(
@@ -115,9 +92,6 @@ export default {
   getV1Template: expressify(TemplatesController.getV1Template),
   createProjectFromV1Template: expressify(
     TemplatesController.createProjectFromV1Template
-  ),
-  createProjectFromLocalTemplate: expressify(
-    TemplatesController.createProjectFromLocalTemplate
   ),
   getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
   setTemplateStatus: expressify(TemplatesController.setTemplateStatus),
