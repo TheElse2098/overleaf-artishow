@@ -256,12 +256,24 @@ function NewProjectButton({
           )}
           <li role="none">
             <DropdownItem
-                onClick={e =>
-                    handleModalMenuClick(e, {
-                      modalVariant: 'import_from_git_free',
-                      dropdownMenuEvent: 'import-from-git-free',
-                    })
-                }
+              onClick={e =>
+                handleModalMenuClick(e, {
+                  modalVariant: 'from_template',
+                  dropdownMenuEvent: 'from-template',
+                })
+              }
+            >
+              {t('templates')}
+            </DropdownItem>
+          </li>
+          <li role="none">
+            <DropdownItem
+              onClick={e =>
+                handleModalMenuClick(e, {
+                  modalVariant: 'import_from_git_free',
+                  dropdownMenuEvent: 'import-from-git-free',
+                })
+              }
             >
               {'Import from Git'}
             </DropdownItem>

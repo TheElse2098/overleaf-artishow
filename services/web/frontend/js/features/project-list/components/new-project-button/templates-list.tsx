@@ -1,4 +1,3 @@
-//templates-list.tsx
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLFormControl from '@/shared/components/ol/ol-form-control'
@@ -16,22 +15,30 @@ type Template = {
 type TemplatesListProps = {
   templates: Template[]
   onTemplateSelect: (templateId: string) => void
+  creatingId?: string | null
 }
 
-function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
+function TemplatesList({
+  templates,
+  onTemplateSelect,
+  creatingId,
+}: TemplatesListProps) {
   const { t } = useTranslation()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
 
-  // Extraire les catégories uniques
-  const categories = ['all', ...new Set(templates.map(t => t.category).filter(Boolean))]
+  const categories = [
+    'all',
+    ...new Set(templates.map(t => t.category).filter(Boolean)),
+  ]
 
-  // Filtrer les templates
   const filteredTemplates = templates.filter(template => {
-    const matchesSearch = template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         template.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesCategory = selectedCategory === 'all' || template.category === selectedCategory
-    
+    const matchesSearch =
+      template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      template.description?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesCategory =
+      selectedCategory === 'all' || template.category === selectedCategory
+
     return matchesSearch && matchesCategory
   })
 
@@ -44,15 +51,17 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
               type="text"
               placeholder={t('search_templates')}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="form-control"
+              disabled={!!creatingId}
             />
           </div>
           <div className="col-md-4">
             <select
               className="form-control"
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+              onChange={e => setSelectedCategory(e.target.value)}
+              disabled={!!creatingId}
             >
               {categories.map(category => (
                 <option key={category} value={category}>
@@ -73,9 +82,11 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
           <div className="row">
             {filteredTemplates.map(template => (
               <div key={template.id} className="col-lg-4 col-md-6 mb-3">
-                <TemplateCard 
+                <TemplateCard
                   template={template}
                   onSelect={() => onTemplateSelect(template.id)}
+                  isCreating={creatingId === template.id}
+                  disabled={!!creatingId && creatingId !== template.id}
                 />
               </div>
             ))}
