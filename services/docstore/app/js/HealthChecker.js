@@ -1,10 +1,14 @@
-const { db, ObjectId } = require('./mongodb')
-const _ = require('lodash')
-const crypto = require('node:crypto')
-const settings = require('@overleaf/settings')
+import mongodb from './mongodb.js'
+import _ from 'lodash'
+import crypto from 'node:crypto'
+import settings from '@overleaf/settings'
+import logger from '@overleaf/logger'
+import { fetchNothing, fetchJson } from '@overleaf/fetch-utils'
+import OError from '@overleaf/o-error'
+
+const { db, ObjectId } = mongodb
+
 const { port } = settings.internal.docstore
-const logger = require('@overleaf/logger')
-const { fetchNothing, fetchJson } = require('@overleaf/fetch-utils')
 
 async function check() {
   const docId = new ObjectId()
@@ -27,9 +31,13 @@ async function check() {
     await db.docs.deleteOne({ _id: docId, project_id: projectId })
   }
   if (!_.isEqual(body?.lines, lines)) {
-    throw new Error(`health check lines not equal ${body.lines} != ${lines}`)
+    throw new OError('health check lines not equal', {
+      got: body.lines,
+      want: lines,
+    })
   }
 }
-module.exports = {
+
+export default {
   check,
 }

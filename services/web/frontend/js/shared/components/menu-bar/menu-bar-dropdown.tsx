@@ -2,14 +2,14 @@ import {
   Dropdown,
   DropdownMenu,
   DropdownToggle,
-} from '@/features/ui/components/bootstrap-5/dropdown-menu'
+} from '@/shared/components/dropdown/dropdown-menu'
 import { FC, forwardRef, useCallback } from 'react'
 import classNames from 'classnames'
 import { useNestableDropdown } from '@/shared/hooks/use-nestable-dropdown'
 import { NestableDropdownContextProvider } from '@/shared/context/nestable-dropdown-context'
 import { AnchorProps } from 'react-bootstrap'
 import MaterialIcon from '../material-icon'
-import { DropdownMenuProps } from '@/features/ui/components/types/dropdown-menu-props'
+import { DropdownMenuProps } from '@/shared/components/types/dropdown-menu-props'
 
 type MenuBarDropdownProps = {
   title: string
@@ -39,13 +39,9 @@ export const MenuBarDropdown: FC<
     })
   }, [id, setSelected])
 
+  const active = selected === id
   return (
-    <Dropdown
-      show={selected === id}
-      align={align}
-      onToggle={onToggle}
-      autoClose
-    >
+    <Dropdown show={active} align={align} onToggle={onToggle} autoClose>
       <DropdownToggle
         id={`${menuId}-${id}`}
         variant="secondary"
@@ -54,9 +50,11 @@ export const MenuBarDropdown: FC<
       >
         {title}
       </DropdownToggle>
-      <NestableDropdownMenu renderOnMount id={`${menuId}-${id}`}>
-        {children}
-      </NestableDropdownMenu>
+      {active && (
+        <NestableDropdownMenu renderOnMount id={`${menuId}-${id}`}>
+          {children}
+        </NestableDropdownMenu>
+      )}
     </Dropdown>
   )
 }
@@ -93,6 +91,8 @@ const NestedDropdownToggle: FC<React.PropsWithChildren> = forwardRef<
         'nested-dropdown-toggle',
         'dropdown-item'
       )}
+      role="menuitem"
+      aria-haspopup
     >
       {children}
       <MaterialIcon type="chevron_right" />
@@ -109,7 +109,10 @@ export const NestedMenuBarDropdown: FC<
   }, [id, setSelected])
   const onToggle = useCallback(
     (show: boolean) => {
-      setSelected(show ? id : null)
+      // Only handle opening
+      if (show) {
+        setSelected(id)
+      }
     },
     [setSelected, id]
   )
@@ -121,6 +124,8 @@ export const NestedMenuBarDropdown: FC<
       show={active}
       autoClose
       onToggle={onToggle}
+      as="li"
+      role="none"
     >
       <DropdownToggle
         id={`${menuId}-${id}`}
@@ -130,9 +135,11 @@ export const NestedMenuBarDropdown: FC<
       >
         {title}
       </DropdownToggle>
-      <NestableDropdownMenu renderOnMount id={`${menuId}-${id}`}>
-        {children}
-      </NestableDropdownMenu>
+      {active && (
+        <NestableDropdownMenu renderOnMount id={`${menuId}-${id}`}>
+          {children}
+        </NestableDropdownMenu>
+      )}
     </Dropdown>
   )
 }

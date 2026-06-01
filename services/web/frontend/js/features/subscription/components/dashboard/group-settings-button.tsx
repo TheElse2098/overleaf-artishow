@@ -2,7 +2,7 @@ import { RowLink } from '@/features/subscription/components/dashboard/row-link'
 import { useTranslation } from 'react-i18next'
 import { useLocation } from '@/shared/hooks/use-location'
 import MaterialIcon from '@/shared/components/material-icon'
-import OLTag from '@/features/ui/components/ol/ol-tag'
+import OLTag from '@/shared/components/ol/ol-tag'
 import { ManagedGroupSubscription } from '../../../../../../types/subscription/dashboard/subscription'
 import { sendMB } from '../../../../infrastructure/event-tracking'
 import starIcon from '../../images/star-gradient.svg'
@@ -26,7 +26,7 @@ function AvailableWithGroupProfessionalBadge() {
         onClick: handleUpgradeClick,
       }}
     >
-      <strong>{t('available_with_group_professional')}</strong>
+      <strong>{t('available_for_pro_groups')}</strong>
     </OLTag>
   )
 }

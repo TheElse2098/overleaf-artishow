@@ -8,6 +8,7 @@ block vars
 	- const suppressNavbar = true
 	- const suppressFooter = true
 	- const suppressPugCookieBanner = true
+	- isWebsiteRedesign = true
 
 block append meta
 	meta(
@@ -33,6 +34,8 @@ block append meta
 	meta(name='ol-survey' data-type='json' content=survey)
 	meta(name='ol-tags' data-type='json' content=tags)
 	meta(name='ol-portalTemplates' data-type='json' content=portalTemplates)
+	meta(name='ol-userSettings' data-type='json' content=userSettings)
+	meta(name='ol-overallThemes' data-type='json' content=overallThemes)
 	meta(
 		name='ol-prefetchedProjectsBlob'
 		data-type='json'
@@ -59,7 +62,6 @@ block append meta
 		content=groupsAndEnterpriseBannerVariant
 	)
 	meta(name='ol-showInrGeoBanner' data-type='boolean' content=showInrGeoBanner)
-	meta(name='ol-showBrlGeoBanner' data-type='boolean' content=showBrlGeoBanner)
 	meta(
 		name='ol-recommendedCurrency'
 		data-type='string'
@@ -81,17 +83,18 @@ block append meta
 		data-type='boolean'
 		content=groupSsoSetupSuccess
 	)
+	meta(name='ol-joinedGroupName' data-type='string' content=joinedGroupName)
+	meta(name='ol-viaDomainCapture' data-type='boolean' content=viaDomainCapture)
 	meta(name='ol-showUSGovBanner' data-type='boolean' content=showUSGovBanner)
 	meta(
 		name='ol-usGovBannerVariant'
 		data-type='string'
 		content=usGovBannerVariant
 	)
-	meta(
-		name='ol-showAiAssistNotification'
-		data-type='boolean'
-		content=showAiAssistNotification
-	)
+	meta(name='ol-inactiveTutorials' data-type='json' content=inactiveTutorials)
 
 block content
 	#project-list-root
+
+block append head-scripts
+	include ./_mixpanel_autocapture.pug

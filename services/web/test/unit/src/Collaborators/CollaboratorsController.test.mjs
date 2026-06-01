@@ -1,9 +1,9 @@
-import { expect, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import sinon from 'sinon'
 import mongodb from 'mongodb-legacy'
 import Errors from '../../../../app/src/Features/Errors/Errors.js'
-import MockRequest from '../helpers/MockRequest.js'
-import MockResponse from '../helpers/MockResponse.js'
+import MockRequest from '../helpers/MockRequest.mjs'
+import MockResponse from '../helpers/MockResponse.mjs'
 
 const ObjectId = mongodb.ObjectId
 
@@ -16,10 +16,10 @@ vi.mock('../../../../app/src/Features/Errors/Errors.js', () =>
 
 describe('CollaboratorsController', function () {
   beforeEach(async function (ctx) {
-    ctx.res = new MockResponse()
-    ctx.req = new MockRequest()
+    ctx.res = new MockResponse(vi)
+    ctx.req = new MockRequest(vi)
 
-    ctx.user = { _id: new ObjectId() }
+    ctx.user = { _id: new ObjectId(), email: 'user@example.com' }
     ctx.projectId = new ObjectId()
     ctx.callback = sinon.stub()
 
@@ -50,6 +50,13 @@ describe('CollaboratorsController', function () {
     ctx.SessionManager = {
       getSessionUser: sinon.stub().returns(ctx.user),
       getLoggedInUserId: sinon.stub().returns(ctx.user._id),
+    }
+
+    ctx.UserGetter = {
+      promises: {
+        getAllInvitedMembers: sinon.stub(),
+        getUser: sinon.stub().resolves(ctx.user),
+      },
     }
     ctx.OwnershipTransferHandler = {
       promises: {
@@ -88,21 +95,21 @@ describe('CollaboratorsController', function () {
     }))
 
     vi.doMock(
-      '../../../../app/src/Features/Collaborators/CollaboratorsHandler.js',
+      '../../../../app/src/Features/Collaborators/CollaboratorsHandler.mjs',
       () => ({
         default: ctx.CollaboratorsHandler,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Collaborators/CollaboratorsGetter.js',
+      '../../../../app/src/Features/Collaborators/CollaboratorsGetter.mjs',
       () => ({
         default: ctx.CollaboratorsGetter,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Collaborators/OwnershipTransferHandler.js',
+      '../../../../app/src/Features/Collaborators/OwnershipTransferHandler.mjs',
       () => ({
         default: ctx.OwnershipTransferHandler,
       })
@@ -116,50 +123,54 @@ describe('CollaboratorsController', function () {
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Errors/HttpErrorHandler.js',
+      '../../../../app/src/Features/Errors/HttpErrorHandler.mjs',
       () => ({
         default: ctx.HttpErrorHandler,
       })
     )
 
-    vi.doMock('../../../../app/src/Features/Tags/TagsHandler.js', () => ({
+    vi.doMock('../../../../app/src/Features/Tags/TagsHandler.mjs', () => ({
       default: ctx.TagsHandler,
     }))
 
     vi.doMock(
-      '../../../../app/src/Features/Authentication/SessionManager.js',
+      '../../../../app/src/Features/Authentication/SessionManager.mjs',
       () => ({
         default: ctx.SessionManager,
       })
     )
 
+    vi.doMock('../../../../app/src/Features/User/UserGetter.mjs', () => ({
+      default: ctx.UserGetter,
+    }))
+
     vi.doMock(
-      '../../../../app/src/Features/TokenAccess/TokenAccessHandler.js',
+      '../../../../app/src/Features/TokenAccess/TokenAccessHandler.mjs',
       () => ({
         default: ctx.TokenAccessHandler,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Project/ProjectAuditLogHandler.js',
+      '../../../../app/src/Features/Project/ProjectAuditLogHandler.mjs',
       () => ({
         default: ctx.ProjectAuditLogHandler,
       })
     )
 
-    vi.doMock('../../../../app/src/Features/Project/ProjectGetter.js', () => ({
+    vi.doMock('../../../../app/src/Features/Project/ProjectGetter.mjs', () => ({
       default: ctx.ProjectGetter,
     }))
 
     vi.doMock(
-      '../../../../app/src/Features/SplitTests/SplitTestHandler.js',
+      '../../../../app/src/Features/SplitTests/SplitTestHandler.mjs',
       () => ({
         default: ctx.SplitTestHandler,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Subscription/LimitationsManager.js',
+      '../../../../app/src/Features/Subscription/LimitationsManager.mjs',
       () => ({
         default: ctx.LimitationsManager,
       })
@@ -207,13 +218,23 @@ describe('CollaboratorsController', function () {
       )
     })
 
+    it('should look up the collaborator email', function (ctx) {
+      expect(ctx.UserGetter.promises.getUser).to.have.been.calledWith(
+        { _id: ctx.user._id },
+        { email: 1 }
+      )
+    })
+
     it('should write a project audit log', function (ctx) {
       ctx.ProjectAuditLogHandler.addEntryInBackground.should.have.been.calledWith(
         ctx.projectId,
         'remove-collaborator',
         ctx.user._id,
         ctx.req.ip,
-        { userId: ctx.user._id }
+        {
+          userId: ctx.user._id,
+          collaboratorEmail: 'user@example.com',
+        }
       )
     })
   })
@@ -251,6 +272,14 @@ describe('CollaboratorsController', function () {
 
     it('should return a success code', function (ctx) {
       ctx.res.sendStatus.calledWith(204).should.equal(true)
+    })
+
+    it('should emit a project:membership:changed event to the project', function (ctx) {
+      expect(ctx.EditorRealTimeController.emitToRoom).to.have.been.calledWith(
+        ctx.projectId,
+        'project:membership:changed',
+        { members: true }
+      )
     })
 
     it('should write a project audit log', function (ctx) {
@@ -323,8 +352,8 @@ describe('CollaboratorsController', function () {
   describe('setCollaboratorInfo', function () {
     beforeEach(function (ctx) {
       ctx.req.params = {
-        Project_id: ctx.projectId,
-        user_id: ctx.user._id,
+        Project_id: ctx.projectId.toString(),
+        user_id: ctx.user._id.toString(),
       }
       ctx.req.body = { privilegeLevel: 'readOnly' }
     })
@@ -335,7 +364,11 @@ describe('CollaboratorsController', function () {
           expect(status).to.equal(204)
           expect(
             ctx.CollaboratorsHandler.promises.setCollaboratorPrivilegeLevel
-          ).to.have.been.calledWith(ctx.projectId, ctx.user._id, 'readOnly')
+          ).to.have.been.calledWith(
+            ctx.projectId.toString(),
+            ctx.user._id.toString(),
+            'readOnly'
+          )
           resolve()
         }
         ctx.CollaboratorsController.setCollaboratorInfo(ctx.req, ctx.res)
@@ -389,8 +422,8 @@ describe('CollaboratorsController', function () {
                 ctx.LimitationsManager.promises
                   .canChangeCollaboratorPrivilegeLevel
               ).to.have.been.calledWith(
-                ctx.projectId,
-                ctx.user._id,
+                ctx.projectId.toString(),
+                ctx.user._id.toString(),
                 'readAndWrite'
               )
               resolve()
@@ -416,8 +449,8 @@ describe('CollaboratorsController', function () {
                 ctx.LimitationsManager.promises
                   .canChangeCollaboratorPrivilegeLevel
               ).to.have.been.calledWith(
-                ctx.projectId,
-                ctx.user._id,
+                ctx.projectId.toString(),
+                ctx.user._id.toString(),
                 'readAndWrite'
               )
               expect(
@@ -451,7 +484,11 @@ describe('CollaboratorsController', function () {
                 .to.not.have.been.called
               expect(
                 ctx.CollaboratorsHandler.promises.setCollaboratorPrivilegeLevel
-              ).to.have.been.calledWith(ctx.projectId, ctx.user._id, 'readOnly')
+              ).to.have.been.calledWith(
+                ctx.projectId.toString(),
+                ctx.user._id.toString(),
+                'readOnly'
+              )
               resolve()
             }
             ctx.CollaboratorsController.setCollaboratorInfo(ctx.req, ctx.res)
@@ -463,17 +500,15 @@ describe('CollaboratorsController', function () {
 
   describe('transferOwnership', function () {
     beforeEach(function (ctx) {
+      ctx.req.params = { Project_id: ctx.projectId.toString() }
       ctx.req.body = { user_id: ctx.user._id.toString() }
     })
 
     it('returns 204 on success', async function (ctx) {
-      await new Promise(resolve => {
-        ctx.res.sendStatus = status => {
-          expect(status).to.equal(204)
-          resolve()
-        }
-        ctx.CollaboratorsController.transferOwnership(ctx.req, ctx.res)
-      })
+      ctx.res.sendStatus = vi.fn()
+
+      await ctx.CollaboratorsController.transferOwnership(ctx.req, ctx.res)
+      expect(ctx.res.sendStatus).toHaveBeenCalledWith(204)
     })
 
     it('returns 404 if the project does not exist', async function (ctx) {
@@ -507,11 +542,11 @@ describe('CollaboratorsController', function () {
     })
 
     it('invokes HTTP forbidden error handler if the user is not a collaborator', async function (ctx) {
+      ctx.OwnershipTransferHandler.promises.transferOwnership.rejects(
+        new Errors.UserNotCollaboratorError()
+      )
       await new Promise(resolve => {
         ctx.HttpErrorHandler.forbidden = sinon.spy(() => resolve())
-        ctx.OwnershipTransferHandler.promises.transferOwnership.rejects(
-          new Errors.UserNotCollaboratorError()
-        )
         ctx.CollaboratorsController.transferOwnership(ctx.req, ctx.res)
       })
     })

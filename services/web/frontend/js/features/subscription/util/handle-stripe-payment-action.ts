@@ -1,4 +1,5 @@
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
+import getMeta from '@/utils/meta'
 import { loadStripe } from '@stripe/stripe-js/pure'
 
 export default async function handleStripePaymentAction(
@@ -10,9 +11,34 @@ export default async function handleStripePaymentAction(
   if (clientSecret && publicKey) {
     const stripe = await loadStripe(publicKey)
     if (stripe) {
-      const manualConfirmationFlow =
-        await stripe.confirmCardPayment(clientSecret)
-      if (!manualConfirmationFlow.error) {
+      const currentPath = window.location.pathname
+      const returnUrl = new URL(
+        '/user/subscription/offsite',
+        getMeta('ol-ExposedSettings').siteUrl
+      )
+      const returnParams = new URLSearchParams({
+        path: currentPath,
+      })
+      returnUrl.search = returnParams.toString()
+
+      const manualConfirmationFlow = await stripe.confirmPayment({
+        clientSecret,
+        redirect: 'if_required',
+        confirmParams: {
+          return_url: returnUrl.toString(),
+        },
+      })
+      if (manualConfirmationFlow.error) {
+        const paymentIntentId = manualConfirmationFlow.error.payment_intent?.id
+        try {
+          await postJSON(
+            `/user/subscription/void-change?payment_intent_id=${paymentIntentId}`
+          )
+        } catch (error) {
+          // do nothing
+        }
+        return { handled: false }
+      } else {
         try {
           await postJSON(`/user/subscription/sync`)
         } catch (error) {

@@ -11,7 +11,41 @@ const {
   sentryRelease,
 } = getMeta('ol-ExposedSettings')
 
+const buildIdRegex = /(\/build\/|buildId=)[a-z0-9-]+/
+
 const reporterPromise = sentryDsn ? sentryReporter() : nullReporter()
+
+const sanitizeUrl = (url: string) => {
+  return url.replace(buildIdRegex, '$1[redacted]')
+}
+
+const sanitizeUrls = (event: ErrorEvent) => {
+  if (event.request?.url) {
+    event.request.url = sanitizeUrl(event.request.url)
+  }
+  // Clean any breadcrumb URLs too
+  if (event.breadcrumbs) {
+    event.breadcrumbs = event.breadcrumbs.map(breadcrumb => {
+      if (breadcrumb.data?.url) {
+        return {
+          ...breadcrumb,
+          data: {
+            ...breadcrumb.data,
+            url: sanitizeUrl(breadcrumb.data.url),
+          },
+        }
+      }
+      return breadcrumb
+    })
+  }
+  if (event.extra?.pdfUrl) {
+    event.extra.pdfUrl = sanitizeUrl(event.extra.pdfUrl as string)
+  }
+  if (event.extra?.url) {
+    event.extra.url = sanitizeUrl(event.extra.url as string)
+  }
+  return event
+}
 
 const isPropensityNetworkError = (err: ErrorEvent) => {
   const errorBreadcrumbs = err.breadcrumbs?.filter(b => b.level === 'error')
@@ -21,10 +55,13 @@ const isPropensityNetworkError = (err: ErrorEvent) => {
     return false
   }
 
+  const breadcrumbUrl = errorBreadcrumbs[0]?.data?.url
   return Boolean(
-    errorBreadcrumbs[0]?.data?.url?.startsWith(
-      'https://analytics.propensity.com/'
-    )
+    breadcrumbUrl &&
+    [
+      'https://analytics.propensity.com/',
+      'https://analytics.propensity-abm.com/',
+    ].some(url => breadcrumbUrl.startsWith(url))
   )
 }
 
@@ -64,6 +101,8 @@ function sentryReporter() {
             // Ignore a frequent unhandled promise rejection
             /Non-Error promise rejection captured with keys: currentTarget, detail, isTrusted, target/,
             /Non-Error promise rejection captured with keys: message, status/,
+            // Ignore a frequent blocked image
+            "Blocked 'image' from 'www.googletagmanager.com'",
           ],
 
           denyUrls: [
@@ -71,8 +110,7 @@ function sentryReporter() {
             /extensions\//i,
             /^chrome:\/\//i,
           ],
-
-          beforeSend(event) {
+          beforeSend(event, hint) {
             // Limit number of events sent to Sentry to 100 events "per page load",
             // (i.e. the cap will be reset if the page is reloaded). This prevent
             // hitting their server-side event cap.
@@ -106,7 +144,18 @@ function sentryReporter() {
               return null
             }
 
-            return event
+            // Extract OError tag info so it appears in Sentry extra for all
+            // captured errors, including auto-captured unhandled rejections
+            // that bypass our captureException() wrapper.
+            const originalException = hint?.originalException
+            if (originalException && typeof originalException === 'object') {
+              const oErrorInfo = OError.getFullInfo(originalException)
+              if (Object.keys(oErrorInfo).length > 0) {
+                event.extra = { ...event.extra, ...oErrorInfo }
+              }
+            }
+
+            return sanitizeUrls(event)
           },
         })
 

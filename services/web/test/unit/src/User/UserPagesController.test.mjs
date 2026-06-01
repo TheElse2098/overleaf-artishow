@@ -1,8 +1,8 @@
 import { expect, vi } from 'vitest'
-import assert from 'assert'
+import assert from 'node:assert'
 import sinon from 'sinon'
-import MockResponse from '../helpers/MockResponse.js'
-import MockRequest from '../helpers/MockRequest.js'
+import MockResponse from '../helpers/MockResponse.mjs'
+import MockRequest from '../helpers/MockRequest.mjs'
 
 const modulePath = '../../../../app/src/Features/User/UserPagesController'
 
@@ -51,9 +51,6 @@ describe('UserPagesController', function () {
       getLoggedInUserId: sinon.stub().returns(ctx.user._id),
       getSessionUser: sinon.stub().returns(ctx.user),
     }
-    ctx.NewsletterManager = {
-      subscribed: sinon.stub().yields(),
-    }
     ctx.AuthenticationController = {
       getRedirectFromSession: sinon.stub(),
       setRedirectInSession: sinon.stub(),
@@ -94,13 +91,6 @@ describe('UserPagesController', function () {
     vi.doMock('../../../../app/src/Features/User/UserSessionsManager', () => ({
       default: ctx.UserSessionsManager,
     }))
-
-    vi.doMock(
-      '../../../../app/src/Features/Newsletter/NewsletterManager',
-      () => ({
-        default: ctx.NewsletterManager,
-      })
-    )
 
     vi.doMock('../../../../app/src/Features/Errors/ErrorController', () => ({
       default: ctx.ErrorController,
@@ -154,10 +144,10 @@ describe('UserPagesController', function () {
     }))
 
     ctx.UserPagesController = (await import(modulePath)).default
-    ctx.req = new MockRequest()
+    ctx.req = new MockRequest(vi)
     ctx.req.capabilitySet = new Set()
     ctx.req.session.user = ctx.user
-    ctx.res = new MockResponse()
+    ctx.res = new MockResponse(vi)
   })
 
   describe('registerPage', function () {
@@ -346,46 +336,6 @@ describe('UserPagesController', function () {
           }
           ctx.UserPagesController.sessionsPage(ctx.req, ctx.res, ctx.next)
         })
-      })
-    })
-  })
-
-  describe('emailPreferencesPage', function () {
-    beforeEach(function (ctx) {
-      ctx.UserGetter.getUser = sinon.stub().yields(null, ctx.user)
-    })
-
-    it('render page with subscribed status', async function (ctx) {
-      ctx.NewsletterManager.subscribed.yields(null, true)
-      await new Promise((resolve, reject) => {
-        ctx.res.callback = () => {
-          ctx.res.renderedTemplate.should.equal('user/email-preferences')
-          ctx.res.renderedVariables.title.should.equal('newsletter_info_title')
-          ctx.res.renderedVariables.subscribed.should.equal(true)
-          resolve()
-        }
-        ctx.UserPagesController.emailPreferencesPage(
-          ctx.req,
-          ctx.res,
-          ctx.rejectOnError(reject)
-        )
-      })
-    })
-
-    it('render page with unsubscribed status', async function (ctx) {
-      ctx.NewsletterManager.subscribed.yields(null, false)
-      await new Promise((resolve, reject) => {
-        ctx.res.callback = () => {
-          ctx.res.renderedTemplate.should.equal('user/email-preferences')
-          ctx.res.renderedVariables.title.should.equal('newsletter_info_title')
-          ctx.res.renderedVariables.subscribed.should.equal(false)
-          resolve()
-        }
-        ctx.UserPagesController.emailPreferencesPage(
-          ctx.req,
-          ctx.res,
-          ctx.rejectOnError(reject)
-        )
       })
     })
   })

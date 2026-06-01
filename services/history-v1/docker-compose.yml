@@ -2,7 +2,8 @@
 # Instead run bin/update_build_scripts from
 # https://github.com/overleaf/internal/
 
-version: "2.3"
+volumes:
+  minio-certs:
 
 services:
   test_unit:
@@ -14,14 +15,32 @@ services:
       - .:/overleaf/services/history-v1
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
+      - ../../.yarn:/overleaf/.yarn
+      - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ../../tools/migrations:/overleaf/tools/migrations
     working_dir: /overleaf/services/history-v1
     environment:
       MOCHA_GREP: ${MOCHA_GREP}
       LOG_LEVEL: ${LOG_LEVEL:-}
+      MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
-    command: npm run --silent test:unit
+      REDIS_HOST: redis_test
+      HISTORY_REDIS_HOST: redis_test
+      QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run --silent test:unit
     user: node
+    depends_on:
+      mongo:
+        condition: service_started
+      redis_test:
+        condition: service_healthy
 
   test_acceptance:
     build:
@@ -32,19 +51,26 @@ services:
       - .:/overleaf/services/history-v1
       - ../../node_modules:/overleaf/node_modules
       - ../../libraries:/overleaf/libraries
-      - ./test/acceptance/certs:/certs
+      - ../../package.json:/overleaf/package.json
+      - ../../.yarnrc.yml:/overleaf/.yarnrc.yml
+      - ../../yarn.lock:/overleaf/yarn.lock
+      - ../../.yarn:/overleaf/.yarn
+      - minio-certs:/certs
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
+      - ../../tools/migrations:/overleaf/tools/migrations
     working_dir: /overleaf/services/history-v1
     environment:
-      ELASTIC_SEARCH_DSN: es:9200
-      REDIS_HOST: redis
-      HISTORY_REDIS_HOST: redis
-      QUEUES_REDIS_HOST: redis
-      ANALYTICS_QUEUES_REDIS_HOST: redis
-      MONGO_HOST: mongo
+      RETRIES:
+      REDIS_HOST: redis_test
+      HISTORY_REDIS_HOST: redis_test
+      QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_REDIS_HOST: redis_test
+      ANALYTICS_QUEUES_BQ_SINK_REDIS_HOST: redis_test
+      MONGO_CONNECTION_STRING: mongodb://mongo/test-overleaf
       POSTGRES_HOST: postgres
       AWS_S3_ENDPOINT: https://minio:9000
-      AWS_S3_PATH_STYLE: 'true'
+      AWS_S3_PATH_STYLE: "true"
+      DELETE_OBJECTS_MD5_FALLBACK: true
       AWS_ACCESS_KEY_ID: OVERLEAF_HISTORY_S3_ACCESS_KEY_ID
       AWS_SECRET_ACCESS_KEY: OVERLEAF_HISTORY_S3_SECRET_ACCESS_KEY
       MINIO_ROOT_USER: MINIO_ROOT_USER
@@ -60,7 +86,7 @@ services:
     depends_on:
       mongo:
         condition: service_started
-      redis:
+      redis_test:
         condition: service_healthy
       postgres:
         condition: service_healthy
@@ -72,11 +98,11 @@ services:
         condition: service_completed_successfully
       gcs:
         condition: service_healthy
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=0 --
-    command: npm run --silent test:acceptance
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run --silent test:acceptance
 
-  redis:
-    image: redis:7.4.3
+  redis_test:
+    image: redis:7.4.8
     healthcheck:
       test: ping=$$(redis-cli ping) && [ "$$ping" = 'PONG' ]
       interval: 1s
@@ -84,9 +110,11 @@ services:
 
   mongo:
     image: mongo:8.0.11
-    command: --replSet overleaf
+    command: --replSet overleaf --notablescan
     volumes:
       - ../../bin/shared/mongodb-init-replica-set.js:/docker-entrypoint-initdb.d/mongodb-init-replica-set.js
+      - ../../bin/shared/mongodb-docker-entrypoint-wait.sh:/mongodb-docker-entrypoint-wait.sh
+    entrypoint: /mongodb-docker-entrypoint-wait.sh
     environment:
       MONGO_INITDB_DATABASE: sharelatex
     extra_hosts:
@@ -109,27 +137,30 @@ services:
       retries: 20
 
   certs:
-    image: node:22.17.0
+    build:
+      dockerfile_inline: |
+        FROM node:24.14.1
+        RUN wget -O /certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-"`dpkg --print-architecture`
+        RUN chmod +x /certgen
     volumes:
-      - ./test/acceptance/certs:/certs
+      - minio-certs:/certs
     working_dir: /certs
     entrypoint: sh
     command:
-      - '-cex'
+      - "-cex"
       - |
-        if [ ! -f ./certgen ]; then
-          wget -O ./certgen "https://github.com/minio/certgen/releases/download/v1.3.0/certgen-linux-$(dpkg --print-architecture)"
-          chmod +x ./certgen
-        fi
         if [ ! -f private.key ] || [ ! -f public.crt ]; then
-          ./certgen -host minio
+          /certgen -host minio
+        fi
+        if ! openssl x509 -checkend 864000 -noout -in public.crt > /dev/null; then
+          /certgen -host minio
         fi
 
   minio:
     image: minio/minio:RELEASE.2024-10-13T13-34-11Z
     command: server /data
     volumes:
-      - ./test/acceptance/certs:/root/.minio/certs
+      - minio-certs:/root/.minio/certs
     environment:
       MINIO_ROOT_USER: MINIO_ROOT_USER
       MINIO_ROOT_PASSWORD: MINIO_ROOT_PASSWORD
@@ -145,10 +176,10 @@ services:
         condition: service_started
     image: minio/mc:RELEASE.2024-10-08T09-37-26Z
     volumes:
-      - ./test/acceptance/certs:/root/.mc/certs/CAs
+      - minio-certs:/root/.mc/certs/CAs
     entrypoint: sh
     command:
-      - '-cex'
+      - "-cex"
       - |
         sleep 1
         mc alias set s3 https://minio:9000 MINIO_ROOT_USER MINIO_ROOT_PASSWORD \
@@ -181,7 +212,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-chunks/*"
               },
@@ -197,7 +231,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-deks/*"
               },
@@ -213,7 +250,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-global-blobs/*"
               },
@@ -229,7 +269,10 @@ services:
                 "Action": [
                   "s3:PutObject",
                   "s3:GetObject",
-                  "s3:DeleteObject"
+                  "s3:DeleteObject",
+                  "s3:AbortMultipartUpload",
+                  "s3:ListMultipartUploadParts",
+                  "s3:ListBucketMultipartUploads"
                 ],
                 "Resource": "arn:aws:s3:::overleaf-test-history-project-blobs/*"
               }
@@ -239,9 +282,10 @@ services:
         mc admin policy create s3 overleaf-history policy-history.json
         mc admin policy attach s3 overleaf-history \
           --user=OVERLEAF_HISTORY_S3_ACCESS_KEY_ID
+
   gcs:
-    image: fsouza/fake-gcs-server:1.45.2
-    command: ["--port=9090", "--scheme=http"]
+    image: fsouza/fake-gcs-server:1.52.3
+    command: ["--port=9090", "--scheme=http", "--external-url=http://gcs:9090"]
     healthcheck:
       test: wget --quiet --output-document=/dev/null http://localhost:9090/storage/v1/b
       interval: 1s

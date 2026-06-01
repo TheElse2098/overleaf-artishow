@@ -7,6 +7,7 @@ on:
       - git_integration
       - template_integration
       - git_compilation
+      - overleaf
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -58,6 +59,8 @@ jobs:
             TAG="template"
           elif [ "$BRANCH_NAME" = "git_compilation" ]; then
             TAG="git-compilation"
+          elif [ "$BRANCH_NAME" = "overleaf" ]; then
+            TAG="overleaf"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH

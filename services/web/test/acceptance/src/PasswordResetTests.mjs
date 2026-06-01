@@ -1,6 +1,6 @@
 import { expect } from 'chai'
 import UserHelper from './helpers/UserHelper.mjs'
-import { db } from '../../../app/src/infrastructure/mongodb.js'
+import { db } from '../../../app/src/infrastructure/mongodb.mjs'
 
 describe('PasswordReset', function () {
   let email, response, user, userHelper, token, emailQuery
@@ -203,7 +203,7 @@ describe('PasswordReset', function () {
           message: {
             type: 'error',
             key: 'password-contains-email',
-            text: 'Password cannot contain parts of email address',
+            text: 'Password cannot contain parts of email address.',
           },
         })
       })
@@ -230,7 +230,7 @@ describe('PasswordReset', function () {
           message: {
             type: 'error',
             key: 'password-too-similar',
-            text: 'Password is too similar to parts of email address',
+            text: 'Password is too similar to parts of email address.',
           },
         })
       })

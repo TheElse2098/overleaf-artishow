@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import classnames from 'classnames'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useCodeMirrorViewContext } from '../codemirror-context'
-import OLOverlay from '@/features/ui/components/ol/ol-overlay'
-import OLPopover from '@/features/ui/components/ol/ol-popover'
+import OLOverlay from '@/shared/components/ol/ol-overlay'
+import OLPopover from '@/shared/components/ol/ol-popover'
 
 export const ToolbarOverflow: FC<
   React.PropsWithChildren<{
@@ -12,8 +12,16 @@ export const ToolbarOverflow: FC<
     overflowOpen: boolean
     setOverflowOpen: (open: boolean) => void
     overflowRef?: React.Ref<HTMLDivElement>
+    popoverClassName?: string
   }>
-> = ({ overflowed, overflowOpen, setOverflowOpen, overflowRef, children }) => {
+> = ({
+  overflowed,
+  overflowOpen,
+  setOverflowOpen,
+  overflowRef,
+  popoverClassName,
+  children,
+}) => {
   const { t } = useTranslation()
   const buttonRef = useRef<HTMLButtonElement>(null)
   const keyboardInputRef = useRef(false)
@@ -104,7 +112,11 @@ export const ToolbarOverflow: FC<
           ref={overflowRef}
           role="toolbar"
         >
-          <div className="ol-cm-toolbar-overflow">{children}</div>
+          <div
+            className={classnames(popoverClassName, 'ol-cm-toolbar-overflow')}
+          >
+            {children}
+          </div>
         </OLPopover>
       </OLOverlay>
     </>

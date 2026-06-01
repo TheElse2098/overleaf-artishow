@@ -3,6 +3,7 @@ import * as MessageManager from './MessageManager.js'
 import * as MessageFormatter from './MessageFormatter.js'
 import * as ThreadManager from '../Threads/ThreadManager.js'
 import { ObjectId } from '../../mongodb.js'
+import { promiseMapWithLimit } from '@overleaf/promise-utils'
 
 const DEFAULT_MESSAGE_LIMIT = 50
 const MAX_MESSAGE_LENGTH = 10 * 1024 // 10kb, about 1,500 words
@@ -42,6 +43,10 @@ export async function getGlobalMessages(context) {
   return await callMessageHttpController(context, _getGlobalMessages)
 }
 
+export async function getGlobalMessage(context) {
+  return await callMessageHttpController(context, _getGlobalMessage)
+}
+
 export async function sendGlobalMessage(context) {
   return await callMessageHttpController(context, _sendGlobalMessage)
 }
@@ -52,6 +57,14 @@ export async function sendMessage(context) {
 
 export async function getThreads(context) {
   return await callMessageHttpController(context, _getAllThreads)
+}
+
+export async function getThread(context) {
+  return await callMessageHttpController(context, _getThread)
+}
+
+export async function getThreadMessage(context) {
+  return await callMessageHttpController(context, _getThreadMessage)
 }
 
 export async function resolveThread(context) {
@@ -70,12 +83,20 @@ export async function editMessage(context) {
   return await callMessageHttpController(context, _editMessage)
 }
 
+export async function editGlobalMessage(context) {
+  return await callMessageHttpController(context, _editGlobalMessage)
+}
+
 export async function deleteMessage(context) {
   return await callMessageHttpController(context, _deleteMessage)
 }
 
 export async function deleteUserMessage(context) {
   return await callMessageHttpController(context, _deleteUserMessage)
+}
+
+export async function deleteGlobalMessage(context) {
+  return await callMessageHttpController(context, _deleteGlobalMessage)
 }
 
 export async function getResolvedThreadIds(context) {
@@ -94,6 +115,10 @@ export async function generateThreadData(context) {
   return await callMessageHttpController(context, _generateThreadData)
 }
 
+export async function cloneCommentThreads(context) {
+  return await callMessageHttpController(context, _cloneCommentThreads)
+}
+
 export async function getStatus(context) {
   const message = 'chat is alive'
   context.res.status(200).setBody(message)
@@ -102,6 +127,31 @@ export async function getStatus(context) {
 
 const _getGlobalMessages = async (req, res) => {
   await _getMessages(ThreadManager.GLOBAL_THREAD, req, res)
+}
+
+const _getGlobalMessage = async (req, res) => {
+  const { projectId, messageId } = req.params
+  logger.debug({ projectId, messageId }, 'getting single global message')
+  try {
+    const room = await ThreadManager.findThread(
+      projectId,
+      ThreadManager.GLOBAL_THREAD
+    )
+
+    const message = await MessageManager.getMessage(room._id, messageId)
+    const formattedMsg = MessageFormatter.formatMessageForClientSide(message)
+
+    res.status(200).setBody(formattedMsg)
+  } catch (error) {
+    if (
+      error instanceof ThreadManager.MissingThreadError ||
+      error instanceof MessageManager.MissingMessageError
+    ) {
+      res.status(404)
+      return
+    }
+    throw error
+  }
 }
 
 async function _sendGlobalMessage(req, res) {
@@ -142,6 +192,53 @@ const _generateThreadData = async (req, res) => {
   logger.debug({ rooms, messages }, 'looked up messages in the rooms')
   const threadData = MessageFormatter.groupMessagesByThreads(rooms, messages)
   res.json(threadData)
+}
+
+const _getThread = async (req, res) => {
+  const { projectId, threadId } = req.params
+  logger.debug({ projectId, threadId }, 'getting specific thread')
+  try {
+    const room = await ThreadManager.findThread(projectId, threadId)
+    const messages = await MessageManager.findAllMessagesInRooms([room._id])
+    const threads = MessageFormatter.groupMessagesByThreads([room], messages)
+
+    const thread = threads[threadId] || null
+    if (!thread) {
+      res.status(404)
+      return
+    }
+    res.json(thread)
+  } catch (error) {
+    if (error instanceof ThreadManager.MissingThreadError) {
+      res.status(404)
+      return
+    }
+    throw error
+  }
+}
+
+const _getThreadMessage = async (req, res) => {
+  const { projectId, threadId, messageId } = req.params
+  logger.debug(
+    { projectId, threadId, messageId },
+    'getting single thread message'
+  )
+  try {
+    const room = await ThreadManager.findThread(projectId, threadId)
+    const message = await MessageManager.getMessage(room._id, messageId)
+    const formattedMsg = MessageFormatter.formatMessageForClientSide(message)
+
+    res.status(200).setBody(formattedMsg)
+  } catch (error) {
+    if (
+      error instanceof ThreadManager.MissingThreadError ||
+      error instanceof MessageManager.MissingMessageError
+    ) {
+      res.status(404)
+      return
+    }
+    throw error
+  }
 }
 
 const _resolveThread = async (req, res) => {
@@ -186,6 +283,28 @@ const _editMessage = async (req, res) => {
   res.status(204)
 }
 
+const _editGlobalMessage = async (req, res) => {
+  const { content, userId } = req.body
+  const { projectId, messageId } = req.params
+  logger.debug({ projectId, messageId, content }, 'editing global message')
+  const room = await ThreadManager.findOrCreateThread(
+    projectId,
+    ThreadManager.GLOBAL_THREAD
+  )
+  const found = await MessageManager.updateMessage(
+    room._id,
+    messageId,
+    userId,
+    content,
+    Date.now()
+  )
+  if (!found) {
+    res.status(404)
+    return
+  }
+  res.status(204)
+}
+
 const _deleteMessage = async (req, res) => {
   const { projectId, threadId, messageId } = req.params
   logger.debug({ projectId, threadId, messageId }, 'deleting message')
@@ -198,6 +317,16 @@ const _deleteUserMessage = async (req, res) => {
   const { projectId, threadId, userId, messageId } = req.params
   const room = await ThreadManager.findOrCreateThread(projectId, threadId)
   await MessageManager.deleteUserMessage(userId, room._id, messageId)
+  res.status(204)
+}
+
+const _deleteGlobalMessage = async (req, res) => {
+  const { projectId, messageId } = req.params
+  const room = await ThreadManager.findOrCreateThread(
+    projectId,
+    ThreadManager.GLOBAL_THREAD
+  )
+  await MessageManager.deleteMessage(room._id, messageId)
   res.status(204)
 }
 
@@ -251,6 +380,7 @@ async function _sendMessage(userId, projectId, content, clientThreadId, res) {
   )
   message = MessageFormatter.formatMessageForClientSide(message)
   message.room_id = projectId
+
   res.status(201).setBody(message)
 }
 
@@ -310,4 +440,17 @@ async function _duplicateCommentThreads(req, res) {
     }
   }
   res.json({ newThreads: result })
+}
+
+async function _cloneCommentThreads(req, res) {
+  const { projectId: sourceProjectId } = req.params
+  const { targetProjectId } = req.body
+  const rooms = await ThreadManager.cloneThreads(
+    sourceProjectId,
+    targetProjectId
+  )
+  await promiseMapWithLimit(10, rooms, async ({ from, to }) => {
+    await MessageManager.duplicateRoomToOtherRoom(from, to)
+  })
+  res.status(204)
 }

@@ -5,6 +5,8 @@ import { classHighlighter } from './class-highlighter'
 import classNames from 'classnames'
 import { FontFamily, LineHeight, userStyles } from '@/shared/utils/styles'
 import { ActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
+import { ThemeCache } from '../utils/theme-cache'
+import getMeta from '@/utils/meta'
 
 const optionsThemeConf = new Compartment()
 const selectedThemeConf = new Compartment()
@@ -50,6 +52,8 @@ const svgUrl = (content: string) =>
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40">${content}</svg>`
   )}')`
 
+const tooltipThemeCache = new ThemeCache()
+
 const createThemeFromOptions = ({
   fontSize = 12,
   fontFamily = 'monaco',
@@ -74,9 +78,7 @@ const createThemeFromOptions = ({
         .map(([key, value]) => `${key}: ${value}`)
         .join(';'),
     }),
-    // set variables for tooltips, which are outside the editor
-    // TODO: set these on document.body, or a new container element for the tooltips, without using a style mod
-    EditorView.theme({
+    tooltipThemeCache.get({
       '.cm-tooltip': {
         '--font-size': styles.fontSize,
         '--source-font-family': styles.fontFamily,
@@ -90,6 +92,12 @@ const createThemeFromOptions = ({
  * Base styles that can have &dark and &light variants
  */
 const baseTheme = EditorView.baseTheme({
+  '&light.cm-editor': {
+    colorScheme: 'light',
+  },
+  '&dark.cm-editor': {
+    colorScheme: 'dark',
+  },
   '.cm-content': {
     fontSize: 'var(--font-size)',
     fontFamily: 'var(--source-font-family)',
@@ -160,6 +168,9 @@ const baseTheme = EditorView.baseTheme({
   '.cm-diagnostic:last-of-type .ol-cm-diagnostic-actions': {
     marginBottom: '4px',
   },
+  '.cm-vim-panel': {
+    color: 'var(--content-primary-themed)',
+  },
   '.cm-vim-panel input': {
     color: 'inherit',
   },
@@ -179,6 +190,12 @@ const staticTheme = EditorView.theme({
   // remove the outline from the focused editor
   '&.cm-editor.cm-focused:not(:focus-visible)': {
     outline: 'none',
+  },
+  '.cm-panels': {
+    backgroundColor: 'var(--bg-secondary-themed)',
+  },
+  '.cm-panel-bottom': {
+    borderTop: '1px solid var(--border-primary-themed)',
   },
   // override default styles for the search panel
   '.cm-panel.cm-search label': {
@@ -276,12 +293,24 @@ const loadSelectedTheme = async (editorTheme: string) => {
   }
 
   if (!themeCache.has(editorTheme)) {
+    const themes = getMeta('ol-editorThemes') || []
+    const legacyThemes = getMeta('ol-legacyEditorThemes') || []
+    const themeExists =
+      themes.some(theme => theme.name === editorTheme) ||
+      legacyThemes.some(theme => theme.name === editorTheme)
+    if (!themeExists) {
+      editorTheme = 'textmate' // fallback to default if the theme is not found
+    }
+
     const { theme, highlightStyle, dark } = await import(
       /* webpackChunkName: "cm6-theme" */ `../themes/cm6/${editorTheme}.json`
     )
 
+    // We store these in a cache, so we'll reuse after the first load
     const extension = [
+      // eslint-disable-next-line @overleaf/no-generated-editor-themes
       EditorView.theme(theme, { dark }),
+      // eslint-disable-next-line @overleaf/no-generated-editor-themes
       EditorView.theme(highlightStyle, { dark }),
     ]
 

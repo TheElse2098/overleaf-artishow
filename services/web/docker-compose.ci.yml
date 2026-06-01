@@ -1,10 +1,7 @@
-version: "2.3"
-
 volumes:
   data:
 
 services:
-
   test_unit:
     build:
       context: ../..
@@ -15,17 +12,27 @@ services:
     user: node
     volumes:
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=0 --
-    command: npm run test:unit:app
+      - ./data/coverage:/overleaf/services/web/data/coverage
+      - ./data/reports:/overleaf/services/web/data/reports
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run test:unit:app
     working_dir: /overleaf/services/web
     env_file: docker-compose.common.env
     environment:
+      CI:
+      MODULE_NAME:
+      JUNIT_ROOT_SUITE_NAME:
       BASE_CONFIG:
       OVERLEAF_CONFIG:
       NODE_ENV: test
       NODE_OPTIONS: "--unhandled-rejections=strict"
+      REDIS_HOST: redis_test
       VITEST_NO_CACHE: true
+      COVERAGE_UNIT_TESTS:
+      NO_COLOR: true
+      MONOREPO:
     depends_on:
+      - redis_test
       - mongo
 
   test_acceptance:
@@ -38,24 +45,77 @@ services:
     working_dir: /overleaf/services/web
     env_file: docker-compose.common.env
     environment:
+      CI:
+      MODULE_NAME:
+      JUNIT_ROOT_SUITE_NAME:
       BASE_CONFIG:
       OVERLEAF_CONFIG:
+      REDIS_HOST: redis_test
+      COVERAGE_ACCEPTANCE_TESTS:
+      NO_COLOR: true
+      MONOREPO:
+      RETRIES:
     extra_hosts:
-      - 'www.overleaf.test:127.0.0.1'
+      - "www.overleaf.test:127.0.0.1"
     volumes:
       - ../../bin/shared/wait_for_it:/overleaf/bin/shared/wait_for_it
-    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=0 --
-    command: npm run test:acceptance:app
-    user: root
+      - ./data/coverage:/overleaf/services/web/data/coverage
+      - ./data/reports:/overleaf/services/web/data/reports
+    entrypoint: /overleaf/bin/shared/wait_for_it mongo:27017 --timeout=60 --
+    command: yarn run test:acceptance:app
     depends_on:
-      - redis
+      - redis_test
       - mongo
       - saml
       - ldap
     tmpfs:
-      - /overleaf/services/web/data
+      - /overleaf/services/web/data:uid=1000,gid=1000
 
-  test_frontend:
+  test_frontend_jsdom:
+    build:
+      context: ../..
+      dockerfile: services/web/Dockerfile
+    image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER
+    volumes:
+      - ./data/reports:/overleaf/services/web/data/reports
+    logging:
+      driver: local
+    user: node
+    working_dir: /overleaf/services/web
+    command: yarn run test:frontend
+    environment:
+      NODE_OPTIONS: "--unhandled-rejections=strict"
+      CI:
+      JUNIT_ROOT_SUITE_NAME:
+      NO_COLOR: true
+
+  test_frontend_ct:
+    build:
+      context: ../../dockerfiles/cypress
+      args:
+        - USER_UID
+        - USER_GID
+    logging:
+      driver: local
+    working_dir: /overleaf/services/web
+    environment:
+      CI:
+      CYPRESS_DOWNLOADS:
+      CYPRESS_RESULTS:
+      CYPRESS_SPEC_PATTERN:
+      CYPRESS_EXCLUDE_SPEC_PATTERN:
+      NO_COLOR: true
+    volumes:
+      - /dev/shm/overleaf:/overleaf
+      - ./data/reports:/overleaf/services/web/data/reports
+    tmpfs:
+      - /overleaf/services/web/node_modules/.cache:uid=1000,gid=1000
+    entrypoint: yarn
+    command:
+      - "run"
+      - "cypress:run-ct"
+
+  test_writefull:
     build:
       context: ../..
       dockerfile: services/web/Dockerfile
@@ -64,25 +124,14 @@ services:
       driver: local
     user: node
     working_dir: /overleaf/services/web
-    command: npm run test:frontend
-    environment:
-      NODE_OPTIONS: "--unhandled-rejections=strict"
-
-  test_frontend_ct:
-    image: cypress/included:13.13.2
-    logging:
-      driver: local
-    working_dir: /overleaf/services/web
-    environment:
-      CYPRESS_SPEC_PATTERN: ${CYPRESS_SPEC_PATTERN:-}
-      CYPRESS_EXCLUDE_SPEC_PATTERN: ${CYPRESS_EXCLUDE_SPEC_PATTERN:-}
+    command: yarn run test:writefull
     volumes:
-      - ${CYPRESS_RESULTS:-./cypress/results}:/overleaf/services/web/cypress/results/
-      - /dev/shm/overleaf:/overleaf
-    entrypoint: npm
-    command:
-      - "run"
-      - "cypress:run-ct"
+      - ./data/reports:/overleaf/services/web/data/reports
+    environment:
+      CI:
+      JUNIT_ROOT_SUITE_NAME:
+      NODE_OPTIONS: "--unhandled-rejections=strict"
+      NO_COLOR: true
 
   tar:
     image: ci/$PROJECT_NAME:$BRANCH_NAME-$BUILD_NUMBER-webpack
@@ -91,16 +140,16 @@ services:
     command: tar -cf /tmp/build/build.tar public/
     user: root
 
-  redis:
-    image: redis:7.4.3
+  redis_test:
+    image: redis:7.4.8
 
   mongo:
     image: mongo:8.0.11
-    logging:
-      driver: none
-    command: --replSet overleaf
+    command: --replSet overleaf --notablescan
     volumes:
       - ../../bin/shared/mongodb-init-replica-set.js:/docker-entrypoint-initdb.d/mongodb-init-replica-set.js
+      - ../../bin/shared/mongodb-docker-entrypoint-wait.sh:/mongodb-docker-entrypoint-wait.sh
+    entrypoint: /mongodb-docker-entrypoint-wait.sh
     environment:
       MONGO_INITDB_DATABASE: sharelatex
     extra_hosts:
@@ -117,15 +166,15 @@ services:
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63877553
     # REF: https://github.com/moby/moby/issues/8231#issuecomment-63871343
     command:
-      - 'bash'
-      - '-c'
-      - 'ulimit -n 1024 && exec bash /run.sh'
+      - "bash"
+      - "-c"
+      - "ulimit -n 1024 && exec bash /run.sh"
 
   saml:
-      image: us-east1-docker.pkg.dev/overleaf-ops/ol-docker/saml-test
-      logging:
-        driver: none
-      environment:
-          SAML_BASE_URL_PATH: 'http://saml/simplesaml/'
-          SAML_TEST_SP_ENTITY_ID: 'overleaf-test-saml'
-          SAML_TEST_SP_LOCATION: 'http://www.overleaf.test:23000/saml/callback'
+    image: us-east1-docker.pkg.dev/overleaf-ops/ol-docker/saml-test
+    logging:
+      driver: none
+    environment:
+      SAML_BASE_URL_PATH: "http://saml/simplesaml/"
+      SAML_TEST_SP_ENTITY_ID: "overleaf-test-saml"
+      SAML_TEST_SP_LOCATION: "http://www.overleaf.test:23000/saml/callback"

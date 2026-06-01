@@ -7,15 +7,19 @@ import {
 } from '../../../../../../../../infrastructure/fetch-json'
 import getMeta from '../../../../../../../../utils/meta'
 import { useSubscriptionDashboardContext } from '../../../../../../context/subscription-dashboard-context'
-import { subscriptionUpdateUrl } from '../../../../../../data/subscription-url'
+import {
+  subscriptionUpdateUrl,
+  reloadWithoutHasSubscription,
+} from '../../../../../../data/subscription-url'
 import { useLocation } from '../../../../../../../../shared/hooks/use-location'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 import PaymentErrorNotification from '@/features/subscription/components/shared/payment-error-notification'
 import handleStripePaymentAction from '@/features/subscription/util/handle-stripe-payment-action'
 
@@ -39,12 +43,12 @@ export function ConfirmChangePlanModal() {
           plan_code: planCodeToChangeTo,
         },
       })
-      location.reload()
+      reloadWithoutHasSubscription(location)
     } catch (e) {
       const fetchError = e as FetchError
       const { handled } = await handleStripePaymentAction(fetchError)
       if (handled) {
-        location.reload()
+        reloadWithoutHasSubscription(location)
       } else {
         setError(fetchError)
         setInflight(false)

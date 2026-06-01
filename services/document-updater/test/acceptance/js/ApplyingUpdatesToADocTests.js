@@ -1,6 +1,6 @@
 const sinon = require('sinon')
 const { expect } = require('chai')
-const async = require('async')
+const { setTimeout } = require('node:timers/promises')
 const Settings = require('@overleaf/settings')
 const rclientProjectHistory = require('@overleaf/redis-wrapper').createClient(
   Settings.redis.project_history
@@ -14,9 +14,17 @@ const ProjectHistoryKeys = Settings.redis.project_history.key_schema
 const MockWebApi = require('./helpers/MockWebApi')
 const DocUpdaterClient = require('./helpers/DocUpdaterClient')
 const DocUpdaterApp = require('./helpers/DocUpdaterApp')
+const { RequestFailedError } = require('@overleaf/fetch-utils')
+
+async function sendUpdateAndWait(projectId, docId, update) {
+  await DocUpdaterClient.sendUpdate(projectId, docId, update)
+
+  // It seems that we need to wait for a little while
+  await setTimeout(200)
+}
 
 describe('Applying updates to a doc', function () {
-  beforeEach(function (done) {
+  beforeEach(async function () {
     sinon.spy(MockWebApi, 'getDocument')
     this.lines = ['one', 'two', 'three']
     this.version = 42
@@ -38,44 +46,27 @@ describe('Applying updates to a doc', function () {
       meta: { source: 'random-publicId' },
     }
     this.result = ['one', 'one and a half', 'two', 'three']
-    DocUpdaterApp.ensureRunning(done)
+    await DocUpdaterApp.ensureRunning()
   })
+
   afterEach(function () {
     sinon.restore()
   })
 
   describe('when the document is not loaded', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       this.startTime = Date.now()
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
       })
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        this.update,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(() => {
-            rclientProjectHistory.get(
-              ProjectHistoryKeys.projectHistoryFirstOpTimestamp({
-                project_id: this.project_id,
-              }),
-              (error, result) => {
-                if (error != null) {
-                  throw error
-                }
-                result = parseInt(result, 10)
-                this.firstOpTimestamp = result
-                done()
-              }
-            )
-          }, 200)
-        }
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.update)
+      const result = await rclientProjectHistory.get(
+        ProjectHistoryKeys.projectHistoryFirstOpTimestamp({
+          project_id: this.project_id,
+        })
       )
+      this.firstOpTimestamp = parseInt(result, 10)
     })
 
     it('should load the document from the web API', function () {
@@ -84,16 +75,9 @@ describe('Applying updates to a doc', function () {
         .should.equal(true)
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should push the applied updates to the project history changes api', function (done) {
@@ -115,69 +99,51 @@ describe('Applying updates to a doc', function () {
       this.firstOpTimestamp.should.be.within(this.startTime, Date.now())
     })
 
-    it('should yield last updated time', function (done) {
-      DocUpdaterClient.getProjectLastUpdatedAt(
-        this.project_id,
-        (error, res, body) => {
-          if (error != null) {
-            throw error
-          }
-          res.statusCode.should.equal(200)
-          body.lastUpdatedAt.should.be.within(this.startTime, Date.now())
-          done()
-        }
+    it('should yield last updated time', async function () {
+      const { lastUpdatedAt } = await DocUpdaterClient.getProjectLastUpdatedAt(
+        this.project_id
       )
+      lastUpdatedAt.should.be.within(this.startTime, Date.now())
     })
 
-    it('should yield no last updated time for another project', function (done) {
-      DocUpdaterClient.getProjectLastUpdatedAt(
-        DocUpdaterClient.randomId(),
-        (error, res, body) => {
-          if (error != null) {
-            throw error
-          }
-          res.statusCode.should.equal(200)
-          body.should.deep.equal({})
-          done()
-        }
+    it('should yield no last updated time for another project', async function () {
+      const body = await DocUpdaterClient.getProjectLastUpdatedAt(
+        DocUpdaterClient.randomId()
       )
+      body.should.deep.equal({})
+    })
+
+    it('should set the project notification timestamp in Redis', async function () {
+      const timestamp = await rclientDU.get(
+        Keys.projectNotificationTimestamp({ project_id: this.project_id })
+      )
+      expect(timestamp).to.exist
+      const timestampValue = parseInt(timestamp, 10)
+      timestampValue.should.be.within(this.startTime, Date.now())
     })
 
     describe('when sending another update', function () {
-      beforeEach(function (done) {
+      beforeEach(async function () {
         this.timeout(10000)
         this.second_update = Object.assign({}, this.update)
         this.second_update.v = this.version + 1
         this.secondStartTime = Date.now()
-        DocUpdaterClient.sendUpdate(
+        await sendUpdateAndWait(
           this.project_id,
           this.doc_id,
-          this.second_update,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
+          this.second_update
         )
       })
 
-      it('should update the doc', function (done) {
-        DocUpdaterClient.getDoc(
-          this.project_id,
-          this.doc_id,
-          (error, res, doc) => {
-            if (error) done(error)
-            doc.lines.should.deep.equal([
-              'one',
-              'one and a half',
-              'one and a half',
-              'two',
-              'three',
-            ])
-            done()
-          }
-        )
+      it('should update the doc', async function () {
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal([
+          'one',
+          'one and a half',
+          'one and a half',
+          'two',
+          'three',
+        ])
       })
 
       it('should not change the first op timestamp', function (done) {
@@ -196,26 +162,25 @@ describe('Applying updates to a doc', function () {
         )
       })
 
-      it('should yield last updated time', function (done) {
-        DocUpdaterClient.getProjectLastUpdatedAt(
-          this.project_id,
-          (error, res, body) => {
-            if (error != null) {
-              throw error
-            }
-            res.statusCode.should.equal(200)
-            body.lastUpdatedAt.should.be.within(
-              this.secondStartTime,
-              Date.now()
-            )
-            done()
-          }
+      it('should yield last updated time', async function () {
+        const { lastUpdatedAt } =
+          await DocUpdaterClient.getProjectLastUpdatedAt(this.project_id)
+        lastUpdatedAt.should.be.within(this.secondStartTime, Date.now())
+      })
+
+      it('should not change the project notification timestamp', async function () {
+        const timestamp = await rclientDU.get(
+          Keys.projectNotificationTimestamp({ project_id: this.project_id })
         )
+        expect(timestamp).to.exist
+        const timestampValue = parseInt(timestamp, 10)
+        // Should still be within the first update time range, not the second
+        timestampValue.should.be.within(this.startTime, this.secondStartTime)
       })
     })
 
     describe('when another client is sending a concurrent update', function () {
-      beforeEach(function (done) {
+      beforeEach(async function () {
         this.timeout(10000)
         this.otherUpdate = {
           doc: this.doc_id,
@@ -224,35 +189,18 @@ describe('Applying updates to a doc', function () {
           meta: { source: 'other-random-publicId' },
         }
         this.secondStartTime = Date.now()
-        DocUpdaterClient.sendUpdate(
-          this.project_id,
-          this.doc_id,
-          this.otherUpdate,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
-        )
+        await sendUpdateAndWait(this.project_id, this.doc_id, this.otherUpdate)
       })
 
-      it('should update the doc', function (done) {
-        DocUpdaterClient.getDoc(
-          this.project_id,
-          this.doc_id,
-          (error, res, doc) => {
-            if (error) done(error)
-            doc.lines.should.deep.equal([
-              'one',
-              'one and a half',
-              'two',
-              'two and a half',
-              'three',
-            ])
-            done()
-          }
-        )
+      it('should update the doc', async function () {
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal([
+          'one',
+          'one and a half',
+          'two',
+          'two and a half',
+          'three',
+        ])
       })
 
       it('should not change the first op timestamp', function (done) {
@@ -271,58 +219,33 @@ describe('Applying updates to a doc', function () {
         )
       })
 
-      it('should yield last updated time', function (done) {
-        DocUpdaterClient.getProjectLastUpdatedAt(
-          this.project_id,
-          (error, res, body) => {
-            if (error != null) {
-              throw error
-            }
-            res.statusCode.should.equal(200)
-            body.lastUpdatedAt.should.be.within(
-              this.secondStartTime,
-              Date.now()
-            )
-            done()
-          }
-        )
+      it('should yield last updated time', async function () {
+        const { lastUpdatedAt } =
+          await DocUpdaterClient.getProjectLastUpdatedAt(this.project_id)
+        lastUpdatedAt.should.be.within(this.secondStartTime, Date.now())
       })
     })
   })
 
   describe('when the document is not loaded (history-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       this.startTime = Date.now()
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
         otMigrationStage: 1,
       })
-      DocUpdaterClient.sendUpdate(
+      await sendUpdateAndWait(
         this.project_id,
         this.doc_id,
-        this.historyOTUpdate,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(() => {
-            rclientProjectHistory.get(
-              ProjectHistoryKeys.projectHistoryFirstOpTimestamp({
-                project_id: this.project_id,
-              }),
-              (error, result) => {
-                if (error != null) {
-                  throw error
-                }
-                result = parseInt(result, 10)
-                this.firstOpTimestamp = result
-                done()
-              }
-            )
-          }, 200)
-        }
+        this.historyOTUpdate
       )
+      const result = await rclientProjectHistory.get(
+        ProjectHistoryKeys.projectHistoryFirstOpTimestamp({
+          project_id: this.project_id,
+        })
+      )
+      this.firstOpTimestamp = parseInt(result, 10)
     })
 
     it('should load the document from the web API', function () {
@@ -331,16 +254,9 @@ describe('Applying updates to a doc', function () {
         .should.equal(true)
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should push the applied updates to the project history changes api', function (done) {
@@ -364,36 +280,31 @@ describe('Applying updates to a doc', function () {
       this.firstOpTimestamp.should.be.within(this.startTime, Date.now())
     })
 
-    it('should yield last updated time', function (done) {
-      DocUpdaterClient.getProjectLastUpdatedAt(
-        this.project_id,
-        (error, res, body) => {
-          if (error != null) {
-            throw error
-          }
-          res.statusCode.should.equal(200)
-          body.lastUpdatedAt.should.be.within(this.startTime, Date.now())
-          done()
-        }
+    it('should yield last updated time', async function () {
+      const { lastUpdatedAt } = await DocUpdaterClient.getProjectLastUpdatedAt(
+        this.project_id
       )
+      lastUpdatedAt.should.be.within(this.startTime, Date.now())
     })
 
-    it('should yield no last updated time for another project', function (done) {
-      DocUpdaterClient.getProjectLastUpdatedAt(
-        DocUpdaterClient.randomId(),
-        (error, res, body) => {
-          if (error != null) {
-            throw error
-          }
-          res.statusCode.should.equal(200)
-          body.should.deep.equal({})
-          done()
-        }
+    it('should yield no last updated time for another project', async function () {
+      const body = await DocUpdaterClient.getProjectLastUpdatedAt(
+        DocUpdaterClient.randomId()
       )
+      body.should.deep.equal({})
+    })
+
+    it('should set the project notification timestamp in Redis', async function () {
+      const timestamp = await rclientDU.get(
+        Keys.projectNotificationTimestamp({ project_id: this.project_id })
+      )
+      expect(timestamp).to.exist
+      const timestampValue = parseInt(timestamp, 10)
+      timestampValue.should.be.within(this.startTime, Date.now())
     })
 
     describe('when sending another update', function () {
-      beforeEach(function (done) {
+      beforeEach(async function () {
         this.timeout(10000)
         this.second_update = Object.assign({}, this.historyOTUpdate)
         this.second_update.op = [
@@ -403,35 +314,22 @@ describe('Applying updates to a doc', function () {
         ]
         this.second_update.v = this.version + 1
         this.secondStartTime = Date.now()
-        DocUpdaterClient.sendUpdate(
+        await sendUpdateAndWait(
           this.project_id,
           this.doc_id,
-          this.second_update,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
+          this.second_update
         )
       })
 
-      it('should update the doc', function (done) {
-        DocUpdaterClient.getDoc(
-          this.project_id,
-          this.doc_id,
-          (error, res, doc) => {
-            if (error) done(error)
-            doc.lines.should.deep.equal([
-              'one',
-              'one and a half',
-              'one and a half',
-              'two',
-              'three',
-            ])
-            done()
-          }
-        )
+      it('should update the doc', async function () {
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal([
+          'one',
+          'one and a half',
+          'one and a half',
+          'two',
+          'three',
+        ])
       })
 
       it('should not change the first op timestamp', function (done) {
@@ -450,26 +348,25 @@ describe('Applying updates to a doc', function () {
         )
       })
 
-      it('should yield last updated time', function (done) {
-        DocUpdaterClient.getProjectLastUpdatedAt(
-          this.project_id,
-          (error, res, body) => {
-            if (error != null) {
-              throw error
-            }
-            res.statusCode.should.equal(200)
-            body.lastUpdatedAt.should.be.within(
-              this.secondStartTime,
-              Date.now()
-            )
-            done()
-          }
+      it('should yield last updated time', async function () {
+        const { lastUpdatedAt } =
+          await DocUpdaterClient.getProjectLastUpdatedAt(this.project_id)
+        lastUpdatedAt.should.be.within(this.secondStartTime, Date.now())
+      })
+
+      it('should not change the project notification timestamp', async function () {
+        const timestamp = await rclientDU.get(
+          Keys.projectNotificationTimestamp({ project_id: this.project_id })
         )
+        expect(timestamp).to.exist
+        const timestampValue = parseInt(timestamp, 10)
+        // Should still be within the first update time range, not the second
+        timestampValue.should.be.within(this.startTime, this.secondStartTime)
       })
     })
 
     describe('when another client is sending a concurrent update', function () {
-      beforeEach(function (done) {
+      beforeEach(async function () {
         this.timeout(10000)
         this.otherUpdate = {
           doc: this.doc_id,
@@ -478,35 +375,18 @@ describe('Applying updates to a doc', function () {
           meta: { source: 'other-random-publicId' },
         }
         this.secondStartTime = Date.now()
-        DocUpdaterClient.sendUpdate(
-          this.project_id,
-          this.doc_id,
-          this.otherUpdate,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
-        )
+        await sendUpdateAndWait(this.project_id, this.doc_id, this.otherUpdate)
       })
 
-      it('should update the doc', function (done) {
-        DocUpdaterClient.getDoc(
-          this.project_id,
-          this.doc_id,
-          (error, res, doc) => {
-            if (error) done(error)
-            doc.lines.should.deep.equal([
-              'one',
-              'one and a half',
-              'two',
-              'two and a half',
-              'three',
-            ])
-            done()
-          }
-        )
+      it('should update the doc', async function () {
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal([
+          'one',
+          'one and a half',
+          'two',
+          'two and a half',
+          'three',
+        ])
       })
 
       it('should not change the first op timestamp', function (done) {
@@ -525,64 +405,32 @@ describe('Applying updates to a doc', function () {
         )
       })
 
-      it('should yield last updated time', function (done) {
-        DocUpdaterClient.getProjectLastUpdatedAt(
-          this.project_id,
-          (error, res, body) => {
-            if (error != null) {
-              throw error
-            }
-            res.statusCode.should.equal(200)
-            body.lastUpdatedAt.should.be.within(
-              this.secondStartTime,
-              Date.now()
-            )
-            done()
-          }
-        )
+      it('should yield last updated time', async function () {
+        const { lastUpdatedAt } =
+          await DocUpdaterClient.getProjectLastUpdatedAt(this.project_id)
+        lastUpdatedAt.should.be.within(this.secondStartTime, Date.now())
       })
     })
   })
 
   describe('when the document is loaded', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
       })
-      DocUpdaterClient.preloadDoc(this.project_id, this.doc_id, error => {
-        if (error != null) {
-          throw error
-        }
-        sinon.resetHistory()
-        DocUpdaterClient.sendUpdate(
-          this.project_id,
-          this.doc_id,
-          this.update,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
-        )
-      })
+      await DocUpdaterClient.preloadDoc(this.project_id, this.doc_id)
+      sinon.resetHistory()
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.update)
     })
 
     it('should not need to call the web api', function () {
       MockWebApi.getDocument.called.should.equal(false)
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should push the applied updates to the project history changes api', function (done) {
@@ -600,40 +448,19 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when the document is loaded and is using project-history only', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
       })
-      DocUpdaterClient.preloadDoc(this.project_id, this.doc_id, error => {
-        if (error != null) {
-          throw error
-        }
-        sinon.resetHistory()
-        DocUpdaterClient.sendUpdate(
-          this.project_id,
-          this.doc_id,
-          this.update,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
-        )
-      })
+      await DocUpdaterClient.preloadDoc(this.project_id, this.doc_id)
+      sinon.resetHistory()
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.update)
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should push the applied updates to the project history changes api', function (done) {
@@ -651,40 +478,23 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when the document is loaded (history-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
         otMigrationStage: 1,
       })
-      DocUpdaterClient.preloadDoc(this.project_id, this.doc_id, error => {
-        if (error != null) {
-          throw error
-        }
-        DocUpdaterClient.sendUpdate(
-          this.project_id,
-          this.doc_id,
-          this.historyOTUpdate,
-          error => {
-            if (error != null) {
-              throw error
-            }
-            setTimeout(done, 200)
-          }
-        )
-      })
-    })
-
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
+      await DocUpdaterClient.preloadDoc(this.project_id, this.doc_id)
+      await sendUpdateAndWait(
         this.project_id,
         this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
+        this.historyOTUpdate
       )
+    })
+
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should push the applied updates to the project history changes api', function (done) {
@@ -704,7 +514,7 @@ describe('Applying updates to a doc', function () {
 
   describe('when the document has been deleted', function () {
     describe('when the ops come in a single linear order', function () {
-      beforeEach(function (done) {
+      beforeEach(async function () {
         const lines = ['', '', '']
         MockWebApi.insertDoc(this.project_id, this.doc_id, {
           lines,
@@ -724,49 +534,31 @@ describe('Applying updates to a doc', function () {
           { doc_id: this.doc_id, v: 10, op: [{ i: 'd', p: 10 }] },
         ]
         this.my_result = ['hello world', '', '']
-        const actions = []
+
         for (const update of this.updates.slice(0, 6)) {
-          actions.push(callback =>
-            DocUpdaterClient.sendUpdate(
-              this.project_id,
-              this.doc_id,
-              update,
-              callback
-            )
+          await DocUpdaterClient.sendUpdate(
+            this.project_id,
+            this.doc_id,
+            update
           )
         }
-        actions.push(callback =>
-          DocUpdaterClient.deleteDoc(this.project_id, this.doc_id, callback)
-        )
+
+        await DocUpdaterClient.deleteDoc(this.project_id, this.doc_id)
+
         for (const update of this.updates.slice(6)) {
-          actions.push(callback =>
-            DocUpdaterClient.sendUpdate(
-              this.project_id,
-              this.doc_id,
-              update,
-              callback
-            )
+          await DocUpdaterClient.sendUpdate(
+            this.project_id,
+            this.doc_id,
+            update
           )
         }
 
-        // process updates
-        actions.push(cb =>
-          DocUpdaterClient.getDoc(this.project_id, this.doc_id, cb)
-        )
-
-        async.series(actions, done)
+        await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
       })
 
-      it('should be able to continue applying updates when the project has been deleted', function (done) {
-        DocUpdaterClient.getDoc(
-          this.project_id,
-          this.doc_id,
-          (error, res, doc) => {
-            if (error) return done(error)
-            doc.lines.should.deep.equal(this.my_result)
-            done()
-          }
-        )
+      it('should be able to continue applying updates when the project has been deleted', async function () {
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal(this.my_result)
       })
 
       it('should store the doc ops in the correct order', function (done) {
@@ -788,7 +580,7 @@ describe('Applying updates to a doc', function () {
     })
 
     describe('when older ops come in after the delete', function () {
-      beforeEach(function (done) {
+      beforeEach(function () {
         const lines = ['', '', '']
         MockWebApi.insertDoc(this.project_id, this.doc_id, {
           lines,
@@ -803,60 +595,35 @@ describe('Applying updates to a doc', function () {
           { doc_id: this.doc_id, v: 0, op: [{ i: 'world', p: 1 }] },
         ]
         this.my_result = ['hello', 'world', '']
-        done()
       })
 
-      it('should be able to continue applying updates when the project has been deleted', function (done) {
-        let update
-        const actions = []
-        for (update of this.updates.slice(0, 5)) {
-          ;(update => {
-            actions.push(callback =>
-              DocUpdaterClient.sendUpdate(
-                this.project_id,
-                this.doc_id,
-                update,
-                callback
-              )
-            )
-          })(update)
-        }
-        actions.push(callback =>
-          DocUpdaterClient.deleteDoc(this.project_id, this.doc_id, callback)
-        )
-        for (update of this.updates.slice(5)) {
-          ;(update => {
-            actions.push(callback =>
-              DocUpdaterClient.sendUpdate(
-                this.project_id,
-                this.doc_id,
-                update,
-                callback
-              )
-            )
-          })(update)
-        }
-
-        async.series(actions, error => {
-          if (error != null) {
-            throw error
-          }
-          DocUpdaterClient.getDoc(
+      it('should be able to continue applying updates when the project has been deleted', async function () {
+        for (const update of this.updates.slice(0, 5)) {
+          await DocUpdaterClient.sendUpdate(
             this.project_id,
             this.doc_id,
-            (error, res, doc) => {
-              if (error) return done(error)
-              doc.lines.should.deep.equal(this.my_result)
-              done()
-            }
+            update
           )
-        })
+        }
+
+        await DocUpdaterClient.deleteDoc(this.project_id, this.doc_id)
+
+        for (const update of this.updates.slice(5)) {
+          await DocUpdaterClient.sendUpdate(
+            this.project_id,
+            this.doc_id,
+            update
+          )
+        }
+
+        const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+        doc.lines.should.deep.equal(this.my_result)
       })
     })
   })
 
   describe('with a broken update', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       this.broken_update = {
         doc: this.doc_id,
         v: this.version,
@@ -871,29 +638,12 @@ describe('Applying updates to a doc', function () {
         (this.messageCallback = sinon.stub())
       )
 
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        this.broken_update,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
-      )
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.broken_update)
     })
 
-    it('should not update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.lines)
-          done()
-        }
-      )
+    it('should not update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.lines)
     })
 
     it('should send a message with an error', function () {
@@ -909,7 +659,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('with a broken update (history-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       this.broken_update = {
         doc: this.doc_id,
         v: this.version,
@@ -926,29 +676,12 @@ describe('Applying updates to a doc', function () {
         (this.messageCallback = sinon.stub())
       )
 
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        this.broken_update,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
-      )
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.broken_update)
     })
 
-    it('should not update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.lines)
-          done()
-        }
-      )
+    it('should not update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.lines)
     })
 
     it('should send a message with an error', function () {
@@ -965,7 +698,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when mixing ot types (sharejs-text-ot -> history-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
@@ -976,29 +709,16 @@ describe('Applying updates to a doc', function () {
         (this.messageCallback = sinon.stub())
       )
 
-      DocUpdaterClient.sendUpdate(
+      await sendUpdateAndWait(
         this.project_id,
         this.doc_id,
-        this.historyOTUpdate,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
+        this.historyOTUpdate
       )
     })
 
-    it('should not update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.lines)
-          done()
-        }
-      )
+    it('should not update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.lines)
     })
 
     it('should send a message with an error', function () {
@@ -1014,7 +734,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when mixing ot types (history-ot -> sharejs-text-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
@@ -1025,29 +745,12 @@ describe('Applying updates to a doc', function () {
         (this.messageCallback = sinon.stub())
       )
 
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        this.update,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
-      )
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.update)
     })
 
-    it('should not update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.lines)
-          done()
-        }
-      )
+    it('should not update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.lines)
     })
 
     it('should send a message with an error', function () {
@@ -1063,7 +766,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when there is no version in Mongo', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
       })
@@ -1073,34 +776,17 @@ describe('Applying updates to a doc', function () {
         op: this.update.op,
         v: 0,
       }
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        update,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
-      )
+      await sendUpdateAndWait(this.project_id, this.doc_id, update)
     })
 
-    it('should update the doc (using version = 0)', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc (using version = 0)', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
   })
 
   describe('when the sending duplicate ops', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
@@ -1111,66 +797,39 @@ describe('Applying updates to a doc', function () {
       )
 
       // One user delete 'one', the next turns it into 'once'. The second becomes a NOP.
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        {
-          doc: this.doc_id,
-          op: [
-            {
-              i: 'one and a half\n',
-              p: 4,
-            },
-          ],
-          v: this.version,
-          meta: {
-            source: 'ikHceq3yfAdQYzBo4-xZ',
+      await sendUpdateAndWait(this.project_id, this.doc_id, {
+        doc: this.doc_id,
+        op: [
+          {
+            i: 'one and a half\n',
+            p: 4,
           },
+        ],
+        v: this.version,
+        meta: {
+          source: 'ikHceq3yfAdQYzBo4-xZ',
         },
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(() => {
-            DocUpdaterClient.sendUpdate(
-              this.project_id,
-              this.doc_id,
-              {
-                doc: this.doc_id,
-                op: [
-                  {
-                    i: 'one and a half\n',
-                    p: 4,
-                  },
-                ],
-                v: this.version,
-                dupIfSource: ['ikHceq3yfAdQYzBo4-xZ'],
-                meta: {
-                  source: 'ikHceq3yfAdQYzBo4-xZ',
-                },
-              },
-              error => {
-                if (error != null) {
-                  throw error
-                }
-                setTimeout(done, 200)
-              }
-            )
-          }, 200)
-        }
-      )
+      })
+
+      await sendUpdateAndWait(this.project_id, this.doc_id, {
+        doc: this.doc_id,
+        op: [
+          {
+            i: 'one and a half\n',
+            p: 4,
+          },
+        ],
+        v: this.version,
+        dupIfSource: ['ikHceq3yfAdQYzBo4-xZ'],
+        meta: {
+          source: 'ikHceq3yfAdQYzBo4-xZ',
+        },
+      })
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should return a message about duplicate ops', function () {
@@ -1183,7 +842,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when sending duplicate ops (history-ot)', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       MockWebApi.insertDoc(this.project_id, this.doc_id, {
         lines: this.lines,
         version: this.version,
@@ -1195,60 +854,33 @@ describe('Applying updates to a doc', function () {
       )
 
       // One user delete 'one', the next turns it into 'once'. The second becomes a NOP.
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        {
-          doc: this.doc_id,
-          op: [{ textOperation: [4, 'one and a half\n', 9] }],
-          v: this.version,
-          meta: {
-            source: 'ikHceq3yfAdQYzBo4-xZ',
-          },
+      await sendUpdateAndWait(this.project_id, this.doc_id, {
+        doc: this.doc_id,
+        op: [{ textOperation: [4, 'one and a half\n', 9] }],
+        v: this.version,
+        meta: {
+          source: 'ikHceq3yfAdQYzBo4-xZ',
         },
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(() => {
-            DocUpdaterClient.sendUpdate(
-              this.project_id,
-              this.doc_id,
-              {
-                doc: this.doc_id,
-                op: [
-                  {
-                    textOperation: [4, 'one and a half\n', 9],
-                  },
-                ],
-                v: this.version,
-                dupIfSource: ['ikHceq3yfAdQYzBo4-xZ'],
-                meta: {
-                  source: 'ikHceq3yfAdQYzBo4-xZ',
-                },
-              },
-              error => {
-                if (error != null) {
-                  throw error
-                }
-                setTimeout(done, 200)
-              }
-            )
-          }, 200)
-        }
-      )
+      })
+
+      await sendUpdateAndWait(this.project_id, this.doc_id, {
+        doc: this.doc_id,
+        op: [
+          {
+            textOperation: [4, 'one and a half\n', 9],
+          },
+        ],
+        v: this.version,
+        dupIfSource: ['ikHceq3yfAdQYzBo4-xZ'],
+        meta: {
+          source: 'ikHceq3yfAdQYzBo4-xZ',
+        },
+      })
     })
 
-    it('should update the doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          doc.lines.should.deep.equal(this.result)
-          done()
-        }
-      )
+    it('should update the doc', async function () {
+      const doc = await DocUpdaterClient.getDoc(this.project_id, this.doc_id)
+      doc.lines.should.deep.equal(this.result)
     })
 
     it('should return a message about duplicate ops', function () {
@@ -1261,7 +893,7 @@ describe('Applying updates to a doc', function () {
   })
 
   describe('when sending updates for a non-existing doc id', function () {
-    beforeEach(function (done) {
+    beforeEach(async function () {
       this.non_existing = {
         doc: this.doc_id,
         v: this.version,
@@ -1272,29 +904,13 @@ describe('Applying updates to a doc', function () {
         (this.messageCallback = sinon.stub())
       )
 
-      DocUpdaterClient.sendUpdate(
-        this.project_id,
-        this.doc_id,
-        this.non_existing,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          setTimeout(done, 200)
-        }
-      )
+      await sendUpdateAndWait(this.project_id, this.doc_id, this.non_existing)
     })
 
-    it('should not update or create a doc', function (done) {
-      DocUpdaterClient.getDoc(
-        this.project_id,
-        this.doc_id,
-        (error, res, doc) => {
-          if (error) return done(error)
-          res.statusCode.should.equal(404)
-          done()
-        }
-      )
+    it('should not update or create a doc', async function () {
+      await expect(DocUpdaterClient.getDoc(this.project_id, this.doc_id))
+        .to.be.rejectedWith(RequestFailedError)
+        .and.eventually.have.nested.property('response.status', 404)
     })
 
     it('should send a message with an error', function () {
@@ -1304,7 +920,7 @@ describe('Applying updates to a doc', function () {
       JSON.parse(message).should.deep.include({
         project_id: this.project_id,
         doc_id: this.doc_id,
-        error: `doc not not found: /project/${this.project_id}/doc/${this.doc_id}`,
+        error: 'doc not found',
       })
     })
   })

@@ -23,12 +23,12 @@ import {
   getSearchQuery,
   SearchCursor,
 } from '@codemirror/search'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
+import OLButton from '@/shared/components/ol/ol-button'
 import MaterialIcon from '@/shared/components/material-icon'
-import OLButtonGroup from '@/features/ui/components/ol/ol-button-group'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLCloseButton from '@/features/ui/components/ol/ol-close-button'
+import OLButtonGroup from '@/shared/components/ol/ol-button-group'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLCloseButton from '@/shared/components/ol/ol-close-button'
 import { useTranslation } from 'react-i18next'
 import classnames from 'classnames'
 import { useUserSettingsContext } from '@/shared/context/user-settings-context'
@@ -37,6 +37,8 @@ import { debounce } from 'lodash'
 import { EditorSelection, EditorState } from '@codemirror/state'
 import { sendSearchEvent } from '@/features/event-tracking/search-events'
 import { FullProjectSearchButton } from './full-project-search-button'
+import { isInvalidRegExp } from '../utils/regexp'
+import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 
 const MATCH_COUNT_DEBOUNCE_WAIT = 100 // the amount of ms to wait before counting matches
 const MAX_MATCH_COUNT = 999 // the maximum number of matches to count
@@ -80,6 +82,8 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
   const formRef = useRef<HTMLFormElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const replaceRef = useRef<HTMLInputElement | null>(null)
+
+  const overallTheme = useActiveOverallTheme()
 
   const handleInputRef = useCallback((node: HTMLInputElement) => {
     inputRef.current = node
@@ -253,8 +257,7 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
       <div className="ol-cm-search-controls">
         <span
           className={classnames('ol-cm-search-input-group', {
-            'ol-cm-search-input-error':
-              query.regexp && isInvalidRegExp(query.search),
+            'ol-cm-search-input-error': query.regexp && isInvalidRegExp(query),
           })}
         >
           <OLFormControl
@@ -418,7 +421,7 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
         <div className="ol-cm-search-form-group ol-cm-search-next-previous">
           <OLButtonGroup className="ol-cm-search-form-button-group">
             <OLButton
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() => findPrevious(view)}
             >
@@ -428,11 +431,7 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
               />
             </OLButton>
 
-            <OLButton
-              variant="secondary"
-              size="sm"
-              onClick={() => findNext(view)}
-            >
+            <OLButton variant="ghost" size="sm" onClick={() => findNext(view)}>
               <MaterialIcon
                 type="keyboard_arrow_down"
                 accessibilityLabel={t('search_next')}
@@ -442,19 +441,21 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
 
           <FullProjectSearchButton query={query} />
 
-          {position !== null && (
-            <div className="ol-cm-search-form-position">
-              {position.current === null ? '?' : position.current} {t('of')}{' '}
-              {position.total}
-              {position.interrupted && '+'}
-            </div>
-          )}
+          <div className="ol-cm-search-form-position">
+            {position !== null && (
+              <>
+                {position.current === null ? '?' : position.current} {t('of')}{' '}
+                {position.total}
+                {position.interrupted && '+'}
+              </>
+            )}
+          </div>
         </div>
 
         {showReplace && (
           <div className="ol-cm-search-form-group ol-cm-search-replace-buttons">
             <OLButton
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 sendSearchEvent('search-replace-click', {
@@ -469,7 +470,7 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
             </OLButton>
 
             <OLButton
-              variant="secondary"
+              variant="ghost"
               size="sm"
               onClick={() => {
                 sendSearchEvent('search-replace-click', {
@@ -488,20 +489,14 @@ const CodeMirrorSearchForm: FC<React.PropsWithChildren> = () => {
 
       <div className="ol-cm-search-form-close">
         <OLTooltip id="search-close" description={<>{t('close')} (Esc)</>}>
-          <OLCloseButton onClick={() => closeSearchPanel(view)} />
+          <OLCloseButton
+            variant={overallTheme === 'dark' ? 'white' : undefined}
+            onClick={() => closeSearchPanel(view)}
+          />
         </OLTooltip>
       </div>
     </form>
   )
-}
-
-function isInvalidRegExp(source: string) {
-  try {
-    RegExp(source)
-    return false
-  } catch {
-    return true
-  }
 }
 
 export default CodeMirrorSearchForm

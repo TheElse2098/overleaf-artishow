@@ -9,8 +9,8 @@ import { getJSON, postJSON } from '../../../../infrastructure/fetch-json'
 import defaultRoles from '../../data/roles'
 import defaultDepartments from '../../data/departments'
 import { University } from '../../../../../../types/university'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
 
 type InstitutionAndRoleProps = {
   userEmailData: UserEmailData
@@ -115,7 +115,7 @@ function InstitutionAndRole({ userEmailData }: InstitutionAndRoleProps) {
           >
             {!affiliation.department && !affiliation.role
               ? t('add_role_and_department')
-              : t('change_email')}
+              : t('change_role_and_department')}
           </OLButton>
         </div>
       ) : (
@@ -125,8 +125,8 @@ function InstitutionAndRole({ userEmailData }: InstitutionAndRoleProps) {
               <DownshiftInput
                 items={[...defaultRoles]}
                 inputValue={role}
-                placeholder={t('role')}
                 label={t('role')}
+                showLabel
                 setValue={setRole}
                 ref={roleRef}
               />
@@ -135,8 +135,8 @@ function InstitutionAndRole({ userEmailData }: InstitutionAndRoleProps) {
               <DownshiftInput
                 items={departments}
                 inputValue={department}
-                placeholder={t('department')}
                 label={t('department')}
+                showLabel
                 setValue={setDepartment}
               />
             </OLFormGroup>

@@ -1,5 +1,5 @@
 import type { FC, MouseEventHandler, ReactNode } from 'react'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import BetaBadgeIcon from '@/shared/components/beta-badge-icon'
 
 type TooltipProps = {
@@ -18,25 +18,21 @@ type LinkProps = {
   onMouseDown?: MouseEventHandler<HTMLAnchorElement>
 }
 
-const defaultHref = '/beta/participate'
-
 const BetaBadge: FC<{
   tooltip?: TooltipProps
   link?: LinkProps
   description?: ReactNode
   phase?: string
-}> = ({
-  tooltip,
-  link = { href: defaultHref },
-  description,
-  phase = 'beta',
-}) => {
+}> = ({ tooltip, link = {}, description, phase = 'beta' }) => {
   const { href, ...linkProps } = link
+
   const linkedBadge = (
     <a
       target="_blank"
       rel="noopener noreferrer"
-      href={href || defaultHref}
+      href={
+        href || (phase === 'labs' ? '/labs/participate' : '/beta/participate')
+      }
       {...linkProps}
     >
       <span className="visually-hidden">{description || tooltip?.text}</span>

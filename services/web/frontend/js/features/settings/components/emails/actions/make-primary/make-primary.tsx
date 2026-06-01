@@ -14,7 +14,7 @@ import { UserEmailData } from '../../../../../../../../types/user-email'
 import { UseAsyncReturnType } from '../../../../../../shared/hooks/use-async'
 import { ssoAvailableForInstitution } from '../../../../utils/sso'
 import ConfirmationModal from './confirmation-modal'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
 
 const getDescription = (
   t: (s: string) => string,
@@ -53,8 +53,7 @@ function MakePrimary({
 }: MakePrimaryProps) {
   const [show, setShow] = useState(false)
   const { t } = useTranslation()
-  const { state, makePrimary, deleteEmail, resetLeaversSurveyExpiration } =
-    useUserEmailsContext()
+  const { state, makePrimary, deleteEmail } = useUserEmailsContext()
 
   const handleShowModal = () => setShow(true)
   const handleHideModal = () => setShow(false)
@@ -76,7 +75,6 @@ function MakePrimary({
         makePrimary(userEmailData.email)
         if (primary && !primary.confirmedAt) {
           deleteEmail(primary.email)
-          resetLeaversSurveyExpiration(primary)
         }
       })
       .catch(() => {})
@@ -88,8 +86,8 @@ function MakePrimary({
 
   const isConfirmDisabled = Boolean(
     !userEmailData.confirmedAt ||
-      state.isLoading ||
-      inReconfirmNotificationPeriod(userEmailData)
+    state.isLoading ||
+    inReconfirmNotificationPeriod(userEmailData)
   )
 
   return (

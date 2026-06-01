@@ -12,34 +12,30 @@ import { openEmail } from './helpers/email'
 
 describe('admin panel', function () {
   function registrationTests() {
-    it('via GUI and opening URL manually', () => {
+    it('via GUI and opening URL manually', function () {
       const user = `${uuid()}@example.com`
-      cy.get('input[name="email"]').type(user + '{enter}')
+      cy.findByLabelText('Emails to register new users').type(user + '{enter}')
 
-      cy.get('td')
-        .contains(/\/user\/activate/)
-        .then($td => {
-          const url = $td.text().trim()
-          activateUser(url)
-        })
+      cy.findByRole('cell', { name: /\/user\/activate/ }).then($td => {
+        const url = $td.text().trim()
+        activateUser(url)
+      })
     })
 
-    it('via GUI and email', () => {
+    it('via GUI and email', function () {
       const user = `${uuid()}@example.com`
-      cy.get('input[name="email"]').type(user + '{enter}')
+      cy.findByLabelText('Emails to register new users').type(user + '{enter}')
 
       let url: string
-      cy.get('td')
-        .contains(/\/user\/activate/)
-        .then($td => {
-          url = $td.text().trim()
-        })
+      cy.findByRole('cell', { name: /\/user\/activate/ }).then($td => {
+        url = $td.text().trim()
+      })
 
       cy.then(() => {
         openEmail(
-          'Activate your Overleaf Community Edition Account',
+          'Activate your E2E test Account',
           (frame, { url }) => {
-            frame.contains('Set password').then(el => {
+            frame.contains('a', 'Set password').then(el => {
               expect(el.attr('href')!).to.equal(url)
             })
           },
@@ -49,7 +45,7 @@ describe('admin panel', function () {
         activateUser(url)
       })
     })
-    it('via script and opening URL manually', () => {
+    it('via script and opening URL manually', function () {
       const user = `${uuid()}@example.com`
       let url: string
       cy.then(async () => {
@@ -59,7 +55,7 @@ describe('admin panel', function () {
         activateUser(url)
       })
     })
-    it('via script and email', () => {
+    it('via script and email', function () {
       const user = `${uuid()}@example.com`
       let url: string
       cy.then(async () => {
@@ -67,9 +63,9 @@ describe('admin panel', function () {
       })
       cy.then(() => {
         openEmail(
-          'Activate your Overleaf Community Edition Account',
+          'Activate your E2E test Account',
           (frame, { url }) => {
-            frame.contains('Set password').then(el => {
+            frame.contains('a', 'Set password').then(el => {
               expect(el.attr('href')!).to.equal(url)
             })
           },
@@ -81,7 +77,7 @@ describe('admin panel', function () {
     })
   }
 
-  describe('in CE', () => {
+  describe('in CE', function () {
     if (isExcludedBySharding('CE_DEFAULT')) return
     startWith({ pro: false, version: 'latest' })
     const admin = 'admin@example.com'
@@ -89,18 +85,18 @@ describe('admin panel', function () {
     ensureUserExists({ email: admin, isAdmin: true })
     ensureUserExists({ email: user })
 
-    describe('create users', () => {
-      beforeEach(() => {
+    describe('create users', function () {
+      beforeEach(function () {
         login(admin)
         cy.visit('/project')
-        cy.get('nav').findByText('Admin').click()
-        cy.get('nav').findByText('Manage Users').click()
+        cy.findByRole('menuitem', { name: 'Admin' }).click()
+        cy.findByRole('menuitem', { name: 'Manage Users' }).click()
       })
       registrationTests()
     })
   })
 
-  describe('in server pro', () => {
+  describe('in server pro', function () {
     const admin = 'admin@example.com'
     const user1 = 'user@example.com'
     const user2 = 'user2@example.com'
@@ -135,21 +131,39 @@ describe('admin panel', function () {
       )
     })
 
-    describe('manage site', () => {
-      beforeEach(() => {
+    describe('admin menu items', function () {
+      beforeEach(function () {
         login(admin)
         cy.visit('/project')
-        cy.get('nav').findByText('Admin').click()
-        cy.get('nav').findByText('Manage Site').click()
       })
 
-      it('publish and clear admin messages', () => {
+      it('displays expected admin menu items', function () {
+        const menuitems = ['Manage Site', 'Manage Users', 'Project URL Lookup']
+        menuitems.forEach(name => {
+          cy.findByRole('menuitem', { name: 'Admin' }).click()
+          cy.findByRole('menu')
+            .findAllByRole('menuitem')
+            .should('have.length', menuitems.length)
+          cy.findByRole('menu').findByRole('menuitem', { name }).click()
+        })
+      })
+    })
+
+    describe('manage site', function () {
+      beforeEach(function () {
+        login(admin)
+        cy.visit('/project')
+        cy.findByRole('menuitem', { name: 'Admin' }).click()
+        cy.findByRole('menuitem', { name: 'Manage Site' }).click()
+      })
+
+      it('publish and clear admin messages', function () {
         const message = 'Admin Message ' + uuid()
 
         cy.log('create system message')
-        cy.get('[role="tab"]').contains('System Messages').click()
-        cy.get('input[name="content"]').type(message)
-        cy.get('button').contains('Post Message').click()
+        cy.findByRole('tab', { name: 'System Messages' }).click()
+        cy.findByLabelText('Message').type(message)
+        cy.findByRole('button', { name: 'Post Message' }).click()
         cy.findByText(message)
 
         login(user1)
@@ -159,10 +173,10 @@ describe('admin panel', function () {
         cy.log('clear system messages')
         login(admin)
         cy.visit('/project')
-        cy.get('nav').findByText('Admin').click()
-        cy.get('nav').findByText('Manage Site').click()
-        cy.get('[role="tab"]').contains('System Messages').click()
-        cy.get('button').contains('Clear all messages').click()
+        cy.findByRole('menuitem', { name: 'Admin' }).click()
+        cy.findByRole('menuitem', { name: 'Manage Site' }).click()
+        cy.findByRole('tab', { name: 'System Messages' }).click()
+        cy.findByRole('button', { name: 'Clear all messages' }).click()
 
         cy.log('verify system messages are no longer displayed')
         login(user1)
@@ -171,56 +185,60 @@ describe('admin panel', function () {
       })
     })
 
-    describe('manage users', () => {
-      beforeEach(() => {
+    describe('manage users', function () {
+      beforeEach(function () {
         login(admin)
         cy.visit('/project')
-        cy.get('nav').findByText('Admin').click()
-        cy.get('nav').findByText('Manage Users').click()
+        cy.findByRole('menuitem', { name: 'Admin' }).click()
+        cy.findByRole('menuitem', { name: 'Manage Users' }).click()
       })
 
-      it('displays expected tabs', () => {
+      it('displays expected tabs', function () {
         const tabs = ['Users', 'License Usage']
-        cy.get('[role="tab"]').each((el, index) => {
-          cy.wrap(el).findByText(tabs[index]).click()
+        cy.findAllByRole('tab').should('have.length', tabs.length)
+        tabs.forEach(tabName => {
+          cy.findByRole('tab', { name: tabName }).click()
         })
-        cy.get('[role="tab"]').should('have.length', tabs.length)
       })
 
-      it('license usage tab', () => {
-        cy.get('a').contains('License Usage').click()
+      it('license usage tab', function () {
+        cy.findByRole('tab', { name: 'License Usage' }).click()
         cy.findByText(
           'An active user is one who has opened a project in this Server Pro instance in the last 12 months.'
         )
       })
 
-      describe('create users', () => {
-        beforeEach(() => {
-          cy.get('a').contains('New User').click()
+      describe('create users', function () {
+        beforeEach(function () {
+          cy.findByRole('link', { name: 'New User' }).click()
         })
         registrationTests()
       })
 
-      it('user list RegExp search', () => {
-        cy.get('input[name="isRegExpSearch"]').click()
-        cy.get('input[name="email"]').type('user[0-9]{enter}')
-        cy.findByText(user2)
-        cy.findByText(user1).should('not.exist')
+      it('user list RegExp search', function () {
+        cy.findByLabelText('RegExp').click()
+        cy.findByPlaceholderText('Search users by email or id…').type(
+          'user[0-9]{enter}'
+        )
+        cy.findByRole('link', { name: user2 })
+        cy.findByRole('link', { name: user1 }).should('not.exist')
       })
     })
 
-    describe('user page', () => {
-      beforeEach(() => {
+    describe('user page', function () {
+      beforeEach(function () {
         login(admin)
         cy.visit('/project')
-        cy.get('nav').findByText('Admin').click()
-        cy.get('nav').findByText('Manage Users').click()
-        cy.get('input[name="email"]').type(user1 + '{enter}')
-        cy.findByText(user1).click()
+        cy.findByRole('menuitem', { name: 'Admin' }).click()
+        cy.findByRole('menuitem', { name: 'Manage Users' }).click()
+        cy.findByPlaceholderText('Search users by email or id…').type(
+          user1 + '{enter}'
+        )
+        cy.findByRole('link', { name: user1 }).click()
         cy.url().should('match', /\/admin\/user\/[a-fA-F0-9]{24}/)
       })
 
-      it('displays expected tabs', () => {
+      it('displays expected tabs', function () {
         const tabs = [
           'User Info',
           'Projects',
@@ -228,115 +246,156 @@ describe('admin panel', function () {
           'Audit Log',
           'Sessions',
         ]
-        cy.get('[role="tab"]').each((el, index) => {
-          cy.wrap(el).findByText(tabs[index]).click()
+        cy.findAllByRole('tab').should('have.length', tabs.length)
+        tabs.forEach(tabName => {
+          cy.findByRole('tab', { name: tabName }).click()
         })
-        cy.get('[role="tab"]').should('have.length', tabs.length)
       })
 
-      describe('user info tab', () => {
-        beforeEach(() => {
-          cy.get('[role="tab"]').contains('User Info').click()
+      describe('user info tab', function () {
+        beforeEach(function () {
+          cy.findByRole('tab', { name: 'User Info' }).click()
         })
 
-        it('displays required sections', () => {
+        it('displays required sections', function () {
           // not exhaustive list, checks the tab content is rendered
-          cy.findByText('Profile')
-          cy.findByText('Editor Settings')
+          cy.findByRole('heading', { name: 'Profile' })
+          cy.findByRole('heading', { name: 'Editor Settings' })
         })
 
-        it('should not display SaaS-only sections', () => {
-          cy.findByText('Referred User Count').should('not.exist')
-          cy.findByText('Split Test Assignments').should('not.exist')
-          cy.findByText('Experimental Features').should('not.exist')
-          cy.findByText('Service Integration').should('not.exist')
-          cy.findByText('SSO Integrations').should('not.exist')
-          cy.findByText('Security').should('not.exist')
+        it('should not display SaaS-only sections', function () {
+          cy.findByLabelText('Referred User Count').should('not.exist')
+          cy.findByRole('heading', { name: /Split Test Assignments/ }).should(
+            'not.exist'
+          )
+          cy.findByRole('heading', { name: 'Experimental Features' }).should(
+            'not.exist'
+          )
+          cy.findByRole('heading', { name: 'Service Integration' }).should(
+            'not.exist'
+          )
+          cy.findByRole('heading', { name: 'SSO Integrations' }).should(
+            'not.exist'
+          )
+          cy.findByRole('heading', { name: 'Security' }).should('not.exist')
         })
       })
 
-      it('transfer project ownership', () => {
+      it('transfer project ownership', function () {
         cy.log("access project admin through owners' project list")
-        cy.get('[role="tab"]').contains('Projects').click()
-        cy.get(`a[href="/admin/project/${testProjectId}"]`).click()
+        cy.findByRole('tablist').within(() => {
+          cy.findByRole('tab', { name: 'Projects' }).click()
+        })
+        cy.findByRole('link', { name: testProjectName })
+          .parent()
+          .parent()
+          .within(() => {
+            cy.findByRole('link', { name: 'Project information' }).click()
+          })
 
-        cy.findByText('Transfer Ownership').click()
-        cy.get('button[type="submit"]').should('be.disabled')
-        cy.get('input[name="user_id"]').type(user2)
-        cy.get('button[type="submit"]').should('not.be.disabled')
-        cy.get('button[type="submit"]').click()
-        cy.findByText('Transfer project to this user?')
-        cy.get('button').contains('Confirm').click()
+        cy.findByRole('button', { name: 'Transfer Ownership' }).click()
+        cy.findByRole('dialog').within(() => {
+          cy.findByRole('heading', { name: 'Transfer Ownership of Project' })
+          cy.findByRole('button', { name: 'Find' }).should('be.disabled')
+          cy.findByRole('button', { name: 'Confirm' }).should('be.disabled')
+          cy.findByPlaceholderText('User ID or Email').type(user2)
+          cy.findByRole('button', { name: 'Find' }).should('not.be.disabled')
+          cy.findByRole('button', { name: 'Find' }).click()
+          cy.findByText('Transfer project to this user?')
+          cy.findByRole('cell', { name: 'ID' })
+          cy.findByRole('cell', { name: 'Name' })
+          cy.findByRole('cell', { name: 'Email' })
+          cy.findByRole('cell', { name: user2 })
+          cy.findByRole('button', { name: 'Confirm' }).should('not.be.disabled')
+          cy.findByRole('button', { name: 'Confirm' }).click()
+        })
 
         cy.log('check the project is displayed in the new owner projects tab')
-        cy.get('input[name="email"]').type(user2 + '{enter}')
-        cy.findByText(user2).click()
-        cy.get('[role="tab"]').contains('Projects').click()
-        cy.get(`a[href="/admin/project/${testProjectId}"]`)
+        cy.findByPlaceholderText('Search users by email or id…').type(
+          user2 + '{enter}'
+        )
+        cy.findByRole('link', { name: user2 }).click()
+        cy.findByRole('tablist').within(() => {
+          cy.findByRole('tab', { name: 'Projects' }).click()
+        })
+        cy.findByRole('link', { name: testProjectName })
+          .parent()
+          .parent()
+          .within(() => {
+            cy.findByRole('link', { name: 'Project information' }).click()
+          })
       })
     })
 
-    describe('project page', () => {
-      beforeEach(() => {
+    describe('project page', function () {
+      beforeEach(function () {
         login(admin)
         cy.visit(`/admin/project/${testProjectId}`)
       })
 
-      it('displays expected tabs', () => {
+      it('displays expected tabs', function () {
         const tabs = ['Project Info', 'Deleted Docs', 'Audit Log']
-        cy.get('[role="tab"]').each((el, index) => {
-          cy.wrap(el).findByText(tabs[index]).click()
+        cy.findAllByRole('tab').should('have.length', tabs.length)
+        tabs.forEach(tabName => {
+          cy.findByRole('tab', { name: tabName }).click()
         })
-        cy.get('[role="tab"]').should('have.length', tabs.length)
       })
     })
 
-    it('restore deleted projects', () => {
+    it('restore deleted projects', function () {
       login(user1)
       cy.visit('/project')
 
       cy.log('select project to delete')
       findProjectRow(deletedProjectName).within(() =>
-        cy.get('input[type="checkbox"]').first().check()
+        cy
+          .findByRole('checkbox', { name: `Select ${deletedProjectName}` })
+          .first()
+          .check()
       )
-
       cy.log('delete project')
       findProjectRow(deletedProjectName).within(() =>
         cy.findByRole('button', { name: 'Trash' }).click()
       )
-      cy.get('button').contains('Confirm').click()
-      cy.findByText(deletedProjectName).should('not.exist')
+      cy.findByRole('button', { name: 'Confirm' }).click()
+      cy.findByRole('link', { name: deletedProjectName }).should('not.exist')
 
       cy.log('navigate to thrashed projects and delete the project')
-      cy.get('.project-list-sidebar-scroll').within(() => {
-        cy.findByText('Trashed projects').click()
+      cy.findByRole('navigation', {
+        name: 'Project categories and tags',
       })
+        .findByRole('button', { name: 'Trashed projects' })
+        .click()
       findProjectRow(deletedProjectName).within(() =>
         cy.findByRole('button', { name: 'Delete' }).click()
       )
-      cy.get('button').contains('Confirm').click()
-      cy.findByText(deletedProjectName).should('not.exist')
+      cy.findByRole('button', { name: 'Confirm' }).click()
+      cy.findByRole('link', { name: deletedProjectName }).should('not.exist')
 
       cy.log('login as an admin and navigate to the deleted project')
       login(admin)
       cy.visit('/admin/user')
-      cy.get('input[name="email"]').type(user1 + '{enter}')
-      cy.get('a').contains(user1).click()
-      cy.findByText('Deleted Projects').click()
-      cy.get('a').contains(deletedProjectName).click()
+      cy.findByPlaceholderText('Search users by email or id…').type(
+        user1 + '{enter}'
+      )
+      cy.findByRole('link', { name: user1 }).click()
+      cy.findByRole('tab', { name: 'Deleted Projects' }).click()
+      cy.findByRole('link', { name: deletedProjectName }).click()
 
       cy.log('undelete the project')
-      cy.findByText('Undelete').click()
-      cy.findByText('Undelete').should('not.exist')
+      cy.findByRole('button', { name: 'Undelete' }).click()
+      cy.findByRole('button', { name: 'Undelete' }).should('not.exist')
       cy.url().should('contain', `/admin/project/${projectToDeleteId}`)
 
       cy.log('login as the user and verify the project is restored')
       login(user1)
       cy.visit('/project')
-      cy.get('.project-list-sidebar-scroll').within(() => {
-        cy.findByText('Trashed projects').click()
+      cy.findByRole('navigation', {
+        name: 'Project categories and tags',
       })
-      cy.findByText(`${deletedProjectName} (Restored)`)
+        .findByRole('button', { name: 'Trashed projects' })
+        .click()
+      cy.findByRole('link', { name: `${deletedProjectName} (Restored)` })
     })
   })
 })

@@ -1,16 +1,8 @@
-const request = require('request')
-const Settings = require('@overleaf/settings')
-after(function (done) {
-  request(
-    {
-      url: `${Settings.apis.clsi.url}/metrics`,
-    },
-    (err, response, body) => {
-      if (err) return done(err)
-      console.error('-- metrics --')
-      console.error(body)
-      console.error('-- metrics --')
-      done()
-    }
-  )
+import { fetchString } from '@overleaf/fetch-utils'
+import Settings from '@overleaf/settings'
+after(async function () {
+  const metrics = await fetchString(`${Settings.apis.clsi.url}/metrics`)
+  console.error('-- metrics --')
+  console.error(metrics)
+  console.error('-- metrics --')
 })

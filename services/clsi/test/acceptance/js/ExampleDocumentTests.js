@@ -1,32 +1,23 @@
-/* eslint-disable
-    no-return-assign,
-    no-unused-vars,
-*/
-// TODO: This file was created by bulk-decaffeinate.
-// Fix any style issues and re-enable lint.
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS103: Rewrite code to no longer use __guard__
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
- */
-const Client = require('./helpers/Client')
-const fetch = require('node-fetch')
-const { pipeline } = require('node:stream')
-const fs = require('node:fs')
-const ChildProcess = require('node:child_process')
-const ClsiApp = require('./helpers/ClsiApp')
-const logger = require('@overleaf/logger')
-const Path = require('node:path')
+import Client from './helpers/Client.js'
+import fetch from 'node-fetch'
+import Stream from 'node:stream'
+import fs from 'node:fs'
+import fsPromises from 'node:fs/promises'
+import ChildProcess from 'node:child_process'
+import { promisify } from 'node:util'
+import ClsiApp from './helpers/ClsiApp.js'
+import Path from 'node:path'
+import process from 'node:process'
+import ResourceWriter from '../../../app/js/ResourceWriter.js'
+import { expect } from 'chai'
+
 const fixturePath = path => {
   if (path.slice(0, 3) === 'tmp') {
     return '/tmp/clsi_acceptance_tests' + path.slice(3)
   }
-  return Path.join(__dirname, '../fixtures/', path)
+  return Path.join(import.meta.dirname, '../fixtures/', path)
 }
-const process = require('node:process')
+const pipeline = promisify(Stream.pipeline)
 console.log(
   process.pid,
   process.ppid,
@@ -37,249 +28,205 @@ console.log(
 
 const MOCHA_LATEX_TIMEOUT = 60 * 1000
 
-const convertToPng = function (pdfPath, pngPath, callback) {
-  if (callback == null) {
-    callback = function () {}
-  }
-  const command = `convert ${fixturePath(pdfPath)} ${fixturePath(pngPath)}`
-  console.log('COMMAND')
-  console.log(command)
-  const convert = ChildProcess.exec(command)
-  const stdout = ''
-  convert.stdout.on('data', chunk => console.log('STDOUT', chunk.toString()))
-  convert.stderr.on('data', chunk => console.log('STDERR', chunk.toString()))
-  return convert.on('exit', () => callback())
-}
-
-const compare = function (originalPath, generatedPath, callback) {
-  if (callback == null) {
-    callback = function () {}
-  }
-  const diffFile = `${fixturePath(generatedPath)}-diff.png`
-  const proc = ChildProcess.exec(
-    `compare -metric mae ${fixturePath(originalPath)} ${fixturePath(
-      generatedPath
-    )} ${diffFile}`
-  )
-  let stderr = ''
-  proc.stderr.on('data', chunk => (stderr += chunk))
-  return proc.on('exit', () => {
-    if (stderr.trim() === '0 (0)') {
-      // remove output diff if test matches expected image
-      fs.unlink(diffFile, err => {
-        if (err) {
-          throw err
-        }
-      })
-      return callback(null, true)
-    } else {
-      console.log('compare result', stderr)
-      return callback(null, false)
-    }
+const convertToPng = function (pdfPath, pngPath) {
+  return new Promise((resolve, reject) => {
+    const command = `convert ${fixturePath(pdfPath)} ${fixturePath(pngPath)}`
+    console.log('COMMAND')
+    console.log(command)
+    const convert = ChildProcess.exec(command)
+    convert.stdout.on('data', chunk => console.log('STDOUT', chunk.toString()))
+    convert.stderr.on('data', chunk => console.log('STDERR', chunk.toString()))
+    convert.on('exit', () => resolve())
+    convert.on('error', error => reject(error))
   })
 }
 
-const checkPdfInfo = function (pdfPath, callback) {
-  if (callback == null) {
-    callback = function () {}
-  }
-  const proc = ChildProcess.exec(`pdfinfo ${fixturePath(pdfPath)}`)
-  let stdout = ''
-  proc.stdout.on('data', chunk => (stdout += chunk))
-  proc.stderr.on('data', chunk => console.log('STDERR', chunk.toString()))
-  return proc.on('exit', () => {
-    if (stdout.match(/Optimized:\s+yes/)) {
-      return callback(null, true)
-    } else {
-      return callback(null, false)
-    }
-  })
-}
-
-const compareMultiplePages = function (projectId, callback) {
-  if (callback == null) {
-    callback = function () {}
-  }
-  function compareNext(pageNo, callback) {
-    const path = `tmp/${projectId}-source-${pageNo}.png`
-    return fs.stat(fixturePath(path), (error, stat) => {
-      if (error != null) {
-        return callback()
-      } else {
-        return compare(
-          `tmp/${projectId}-source-${pageNo}.png`,
-          `tmp/${projectId}-generated-${pageNo}.png`,
-          (error, same) => {
-            if (error != null) {
-              throw error
-            }
-            same.should.equal(true)
-            return compareNext(pageNo + 1, callback)
+const compare = function (originalPath, generatedPath) {
+  return new Promise((resolve, reject) => {
+    const diffFile = `${fixturePath(generatedPath)}-diff.png`
+    const proc = ChildProcess.exec(
+      `compare -metric mae ${fixturePath(originalPath)} ${fixturePath(
+        generatedPath
+      )} ${diffFile}`
+    )
+    let stderr = ''
+    proc.stderr.on('data', chunk => (stderr += chunk))
+    proc.on('exit', () => {
+      if (stderr.trim() === '0 (0)') {
+        // remove output diff if test matches expected image
+        fs.unlink(diffFile, err => {
+          if (err) {
+            reject(err)
           }
-        )
+        })
+        resolve(true)
+      } else {
+        console.log('compare result', stderr)
+        resolve(false)
       }
     })
-  }
-  return compareNext(0, callback)
+  })
 }
 
-const comparePdf = function (projectId, exampleDir, callback) {
-  if (callback == null) {
-    callback = function () {}
+const checkPdfInfo = function (pdfPath) {
+  return new Promise((resolve, reject) => {
+    const proc = ChildProcess.exec(`pdfinfo ${fixturePath(pdfPath)}`)
+    let stdout = ''
+    proc.stdout.on('data', chunk => (stdout += chunk))
+    proc.stderr.on('data', chunk => console.log('STDERR', chunk.toString()))
+    proc.on('exit', () => {
+      if (stdout.match(/Optimized:\s+yes/)) {
+        resolve(true)
+      } else {
+        resolve(false)
+      }
+    })
+    proc.on('error', error => reject(error))
+  })
+}
+
+const compareMultiplePages = async function (projectId) {
+  async function compareNext(pageNo) {
+    const path = `tmp/${projectId}-source-${pageNo}.png`
+    try {
+      await fsPromises.stat(fixturePath(path))
+    } catch (error) {
+      return
+    }
+
+    const same = await compare(
+      `tmp/${projectId}-source-${pageNo}.png`,
+      `tmp/${projectId}-generated-${pageNo}.png`
+    )
+    same.should.equal(true)
+    await compareNext(pageNo + 1)
   }
+  await compareNext(0)
+}
+
+const comparePdf = async function (projectId, exampleDir) {
   console.log('CONVERT')
   console.log(`tmp/${projectId}.pdf`, `tmp/${projectId}-generated.png`)
-  return convertToPng(
-    `tmp/${projectId}.pdf`,
-    `tmp/${projectId}-generated.png`,
-    error => {
-      if (error != null) {
-        throw error
-      }
-      return convertToPng(
-        `examples/${exampleDir}/output.pdf`,
-        `tmp/${projectId}-source.png`,
-        error => {
-          if (error != null) {
-            throw error
-          }
-          return fs.stat(
-            fixturePath(`tmp/${projectId}-source-0.png`),
-            (error, stat) => {
-              if (error != null) {
-                return compare(
-                  `tmp/${projectId}-source.png`,
-                  `tmp/${projectId}-generated.png`,
-                  (error, same) => {
-                    if (error != null) {
-                      throw error
-                    }
-                    same.should.equal(true)
-                    return callback()
-                  }
-                )
-              } else {
-                return compareMultiplePages(projectId, error => {
-                  if (error != null) {
-                    throw error
-                  }
-                  return callback()
-                })
-              }
-            }
-          )
-        }
-      )
-    }
+  await convertToPng(`tmp/${projectId}.pdf`, `tmp/${projectId}-generated.png`)
+  await convertToPng(
+    `examples/${exampleDir}/output.pdf`,
+    `tmp/${projectId}-source.png`
   )
+  try {
+    await fsPromises.stat(fixturePath(`tmp/${projectId}-source-0.png`))
+    await compareMultiplePages(projectId)
+  } catch (error) {
+    const same = await compare(
+      `tmp/${projectId}-source.png`,
+      `tmp/${projectId}-generated.png`
+    )
+    same.should.equal(true)
+  }
 }
 
-const downloadAndComparePdf = function (projectId, exampleDir, url, callback) {
-  fetch(url)
-    .then(res => {
-      if (!res.ok) {
-        return callback(new Error('non success response: ' + res.statusText))
-      }
-
-      const dest = fs.createWriteStream(fixturePath(`tmp/${projectId}.pdf`))
-      pipeline(res.body, dest, err => {
-        if (err) return callback(err)
-
-        checkPdfInfo(`tmp/${projectId}.pdf`, (err, optimised) => {
-          if (err) return callback(err)
-
-          optimised.should.equal(true)
-          comparePdf(projectId, exampleDir, callback)
-        })
-      })
-    })
-    .catch(callback)
+const downloadAndComparePdf = async function (projectId, exampleDir, url) {
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error('non success response: ' + res.statusText)
+  }
+  const dest = fs.createWriteStream(fixturePath(`tmp/${projectId}.pdf`))
+  await pipeline(res.body, dest)
+  const optimised = await checkPdfInfo(`tmp/${projectId}.pdf`)
+  optimised.should.equal(true)
+  await comparePdf(projectId, exampleDir)
 }
 
 describe('Example Documents', function () {
   Client.runFakeFilestoreService(fixturePath('examples'))
 
-  before(function (done) {
-    ClsiApp.ensureRunning(done)
+  before(async function () {
+    await ClsiApp.ensureRunning()
   })
-  before(function (done) {
-    fs.rm(fixturePath('tmp'), { force: true, recursive: true }, done)
+  before(async function () {
+    await fsPromises.rm(fixturePath('tmp'), { force: true, recursive: true })
   })
-  before(function (done) {
-    fs.mkdir(fixturePath('tmp'), done)
+  before(async function () {
+    await fsPromises.mkdir(fixturePath('tmp'))
   })
-  after(function (done) {
-    fs.rm(fixturePath('tmp'), { force: true, recursive: true }, done)
+  after(async function () {
+    await fsPromises.rm(fixturePath('tmp'), { force: true, recursive: true })
   })
 
-  return Array.from(fs.readdirSync(fixturePath('examples'))).map(exampleDir =>
+  return fs.readdirSync(fixturePath('examples')).map(exampleDir =>
     (exampleDir =>
       describe(exampleDir, function () {
         before(function () {
-          return (this.project_id = Client.randomId() + '_' + exampleDir)
-        })
-
-        it('should generate the correct pdf', function (done) {
-          this.timeout(MOCHA_LATEX_TIMEOUT)
-          return Client.compileDirectory(
-            this.project_id,
-            fixturePath('examples'),
-            exampleDir,
-            (error, res, body) => {
-              if (
-                error ||
-                __guard__(
-                  body != null ? body.compile : undefined,
-                  x => x.status
-                ) === 'failure'
-              ) {
-                console.log('DEBUG: error', error, 'body', JSON.stringify(body))
-                return done(new Error('Compile failed'))
-              }
-              const pdf = Client.getOutputFile(body, 'pdf')
-              return downloadAndComparePdf(
-                this.project_id,
-                exampleDir,
-                pdf.url,
-                done
+          this.project_id = Client.randomId()
+          this.outputFiles = []
+          // Allow each test to provide a configuration file
+          const checksJsonPath = fixturePath(
+            Path.join('examples', exampleDir, 'checks.json')
+          )
+          this.checks = {}
+          const stats = fs.statSync(checksJsonPath, { throwIfNoEntry: false })
+          if (stats && stats.isFile()) {
+            const rawChecks = fs.readFileSync(checksJsonPath, 'utf8')
+            try {
+              this.checks = JSON.parse(rawChecks)
+            } catch (err) {
+              throw new Error(
+                `Failed to parse checks.json for example "${exampleDir}" at path "${checksJsonPath}": ${err.message}`
               )
             }
-          )
+          }
         })
 
-        return it('should generate the correct pdf on the second run as well', function (done) {
+        it('should generate the correct pdf and output files', async function () {
           this.timeout(MOCHA_LATEX_TIMEOUT)
-          return Client.compileDirectory(
+          const body = await Client.compileDirectory(
             this.project_id,
             fixturePath('examples'),
-            exampleDir,
-            (error, res, body) => {
-              if (
-                error ||
-                __guard__(
-                  body != null ? body.compile : undefined,
-                  x => x.status
-                ) === 'failure'
-              ) {
-                console.log('DEBUG: error', error, 'body', JSON.stringify(body))
-                return done(new Error('Compile failed'))
-              }
-              const pdf = Client.getOutputFile(body, 'pdf')
-              return downloadAndComparePdf(
-                this.project_id,
-                exampleDir,
-                pdf.url,
-                done
-              )
-            }
+            exampleDir
           )
+
+          if (body?.compile?.status === 'failure') {
+            throw new Error('Compile failed')
+          }
+          const pdf = Client.getOutputFile(body, 'pdf')
+          await downloadAndComparePdf(this.project_id, exampleDir, pdf.url)
+
+          // pass the output files on to subsequent tests
+          this.outputFiles = body.compile.outputFiles
+
+          if (this.checks.mustNotDeleteRegex) {
+            const mustNotDeleteRegex = new RegExp(
+              this.checks.mustNotDeleteRegex
+            )
+            // On subsequent compiles the isExtraneousFile method is used
+            // to remove unwanted files - this check ensures that we don't
+            // remove any files that should be kept (e.g. cache files)
+            const filesToBeRemoved = this.outputFiles.filter(file =>
+              ResourceWriter.isExtraneousFile(file.path)
+            )
+            for (const file of filesToBeRemoved) {
+              expect(
+                file.path,
+                'should not remove any files that must be cached'
+              ).to.not.match(mustNotDeleteRegex)
+            }
+          }
+        })
+
+        it('should generate the correct pdf on the second run as well', async function () {
+          this.timeout(MOCHA_LATEX_TIMEOUT)
+          const body = await Client.compileDirectory(
+            this.project_id,
+            fixturePath('examples'),
+            exampleDir
+          )
+
+          if (body?.compile?.status === 'failure') {
+            throw new Error('Compile failed')
+          }
+
+          const pdf = Client.getOutputFile(body, 'pdf')
+          await downloadAndComparePdf(this.project_id, exampleDir, pdf.url)
         })
       }))(exampleDir)
   )
 })
-
-function __guard__(value, transform) {
-  return typeof value !== 'undefined' && value !== null
-    ? transform(value)
-    : undefined
-}

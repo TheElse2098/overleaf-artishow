@@ -1,7 +1,7 @@
 import { isExcludedBySharding, startWith } from './helpers/config'
 import { createProject } from './helpers/project'
 
-describe('SAML', () => {
+describe('SAML', function () {
   if (isExcludedBySharding('PRO_CUSTOM_1')) return
   const samlURL = Cypress.env('SAML_URL') || 'http://saml'
 
@@ -22,9 +22,9 @@ describe('SAML', () => {
     },
   })
 
-  it('login', () => {
+  it('login', function () {
     cy.visit('/')
-    cy.findByText('Log in with SAML Test Server').click()
+    cy.findByRole('link', { name: 'Log in with SAML Test Server' }).click()
 
     cy.origin(samlURL, () => {
       cy.get('input[name="username"]').type('sally')
@@ -39,7 +39,7 @@ describe('SAML', () => {
   })
 })
 
-describe('LDAP', () => {
+describe('LDAP', function () {
   if (isExcludedBySharding('PRO_CUSTOM_1')) return
   startWith({
     pro: true,
@@ -57,13 +57,13 @@ describe('LDAP', () => {
     },
   })
 
-  it('login', () => {
+  it('login', function () {
     cy.visit('/')
-    cy.findByText('Log in LDAP')
+    cy.findByRole('heading', { name: 'Log in LDAP' })
 
-    cy.get('input[name="login"]').type('fry')
-    cy.get('input[name="password"]').type('fry')
-    cy.get('button[type="submit"]').click()
+    cy.findByLabelText('Username').type('fry')
+    cy.findByLabelText('Password').type('fry')
+    cy.findByRole('button', { name: 'Login' }).click()
 
     cy.log('wait for login to finish')
     cy.url().should('contain', '/project')

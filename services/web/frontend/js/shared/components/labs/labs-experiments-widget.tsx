@@ -1,34 +1,40 @@
 import { ReactNode, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLBadge from '@/features/ui/components/ol/ol-badge'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLBadge from '@/shared/components/ol/ol-badge'
 import { postJSON } from '@/infrastructure/fetch-json'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 import getMeta from '@/utils/meta'
+import Notification from '../notification'
+import { LabsEnableButton } from '@/shared/components/labs/labs-enable-button'
 
-type IntegrationLinkingWidgetProps = {
+export type LabsExperimentWidgetProps = {
   logo: ReactNode
   title: string
-  description: string
+  description: string | ReactNode
+  optedInDescription?: string | ReactNode
   helpPath?: string
   labsEnabled?: boolean
   experimentName: string
   setErrorMessage: (message: string) => void
   optedIn: boolean
   setOptedIn: (optedIn: boolean) => void
+  feedbackLink?: string
 }
 
+/** @knipignore */
 export function LabsExperimentWidget({
   logo,
   title,
   description,
+  optedInDescription,
   helpPath,
   labsEnabled,
   experimentName,
   setErrorMessage,
   optedIn,
   setOptedIn,
-}: IntegrationLinkingWidgetProps) {
+  feedbackLink,
+}: LabsExperimentWidgetProps) {
   const { t } = useTranslation()
 
   const experimentsErrorMessage = t(
@@ -68,78 +74,50 @@ export function LabsExperimentWidget({
           <h3 className="h4">{title}</h3>
           {optedIn && <OLBadge bg="info">{t('enabled')}</OLBadge>}
         </div>
-        <p className="small">
-          {description}{' '}
+        <div className="small">
+          {optedIn && optedInDescription ? optedInDescription : description}{' '}
           {helpPath && (
             <a href={helpPath} target="_blank" rel="noreferrer">
               {t('learn_more')}
             </a>
           )}
-        </p>
+        </div>
       </div>
-      {disabled && (
-        <div className="disabled-explanation">{t('experiment_full')}</div>
-      )}
+      <div>
+        {optedIn && feedbackLink && (
+          <OLButton
+            variant="ghost"
+            href={feedbackLink}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {t('give_feedback')}
+          </OLButton>
+        )}
+      </div>
       <div>
         {labsEnabled && (
-          <ActionButton
+          <LabsEnableButton
             optedIn={optedIn}
-            handleDisable={handleDisable}
-            handleEnable={handleEnable}
             disabled={disabled}
+            handleEnable={handleEnable}
+            handleDisable={handleDisable}
           />
         )}
       </div>
+      {disabled && (
+        <>
+          <div />
+          <Notification
+            type="info"
+            content={t('experiment_full_check_back_soon')}
+          />
+          <div />
+          <div />
+        </>
+      )}
     </div>
   )
-}
-
-type ActionButtonProps = {
-  optedIn?: boolean
-  disabled?: boolean
-  handleEnable: () => void
-  handleDisable: () => void
-}
-
-function ActionButton({
-  optedIn,
-  disabled,
-  handleEnable,
-  handleDisable,
-}: ActionButtonProps) {
-  const { t } = useTranslation()
-
-  if (optedIn) {
-    return (
-      <OLButton variant="secondary" onClick={handleDisable}>
-        {t('turn_off')}
-      </OLButton>
-    )
-  } else if (disabled) {
-    const tooltipableButton = (
-      <div className="d-inline-block">
-        <OLButton variant="primary" disabled>
-          {t('turn_on')}
-        </OLButton>
-      </div>
-    )
-
-    return (
-      <OLTooltip
-        id="experiment-disabled"
-        description={t('this_experiment_isnt_accepting_new_participants')}
-        overlayProps={{ delay: 0 }}
-      >
-        {tooltipableButton}
-      </OLTooltip>
-    )
-  } else {
-    return (
-      <OLButton variant="primary" onClick={handleEnable}>
-        {t('turn_on')}
-      </OLButton>
-    )
-  }
 }
 
 export default LabsExperimentWidget

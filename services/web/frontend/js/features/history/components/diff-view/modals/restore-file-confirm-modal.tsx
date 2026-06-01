@@ -1,12 +1,13 @@
 import { formatTime } from '@/features/utils/format-date'
 import { useMemo } from 'react'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 import { useTranslation } from 'react-i18next'
 
 type RestoreFileConfirmModalProps = {
@@ -28,7 +29,7 @@ export function RestoreFileConfirmModal({
 
   return (
     <OLModal show={show} onHide={onHide}>
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{t('restore_file_confirmation_title')}</OLModalTitle>
       </OLModalHeader>
       <OLModalBody>

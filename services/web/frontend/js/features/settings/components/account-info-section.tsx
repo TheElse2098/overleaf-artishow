@@ -7,32 +7,24 @@ import {
 import getMeta from '../../../utils/meta'
 import useAsync from '../../../shared/hooks/use-async'
 import { useUserContext } from '../../../shared/context/user-context'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLFormText from '@/features/ui/components/ol/ol-form-text'
-import { useFileTreeData } from '@/shared/context/file-tree-data-context'
-import FormText from '@/features/ui/components/bootstrap-5/form/form-text'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLNotification from '@/shared/components/ol/ol-notification'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLFormText from '@/shared/components/ol/ol-form-text'
 
-async function getKey(userId) {
-    console.log(userId)
-    const url = new URL('/ssh-key', window.origin)
-    url.searchParams.append('userId', userId)
-
-    try {
-        const response = await fetch(url)
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const privateKey = await response.text()
-        navigator.clipboard.writeText(privateKey)
-    } catch (error) {
-        console.error('Error:', error)
-    }
+async function getKey(userId: string) {
+  const url = new URL('/ssh-key', window.origin)
+  url.searchParams.append('userId', userId)
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const publicKey = await response.text()
+    navigator.clipboard.writeText(publicKey)
+  } catch (error) {
+    console.error('Error:', error)
+  }
 }
 
 function AccountInfoSection() {
@@ -157,9 +149,9 @@ function AccountInfoSection() {
           </OLFormGroup>
         ) : null}
         <div style={{ marginTop: '10px' }}>
-         <button type="button" onClick={() => getKey(userId)}>
-          Copy SSH key
-         </button>
+          <button type="button" onClick={() => getKey(userId)}>
+            Copy SSH key
+          </button>
         </div>
       </form>
     </>

@@ -4,8 +4,9 @@ import { NodeType, SyntaxNodeRef } from '@lezer/common'
 import { debugConsole } from '@/utils/debugging'
 import { findPreambleExtent } from '@/features/word-count-modal/utils/find-preamble-extent'
 import { Segmenters } from './segmenters'
+import { ProjectSnapshot } from '@/infrastructure/project-snapshot'
 
-const whiteSpaceRe = /^\s$/
+// const whiteSpaceRe = /^\s$/
 
 type Context = 'text' | 'header' | 'abstract' | 'caption' | 'footnote' | 'other'
 
@@ -108,14 +109,24 @@ type TextNode = {
 
 export const countWordsInFile = (
   data: WordCountData,
-  projectSnapshot: { getDocContents(path: string): string | null },
-  docPath: string,
+  projectSnapshot: ProjectSnapshot,
+  relativePath: string,
+  basePath: string,
   segmenters: Segmenters
 ) => {
-  debugConsole.log(`Counting words in ${docPath}`)
+  const docPath = projectSnapshot.locateFile(relativePath, basePath)
+  if (!docPath) {
+    debugConsole.warn(`Couldn't find ${relativePath} from ${basePath}`)
+    return
+  }
 
-  const content = projectSnapshot.getDocContents(docPath) // TODO: try with extensions
-  if (!content) return
+  const content = projectSnapshot.getDocContents(docPath)
+  if (!content) {
+    debugConsole.warn(`No doc content in ${docPath}`)
+    return
+  }
+
+  debugConsole.log(`Counting words in ${docPath}`)
 
   // TODO: language from file extension
   const tree = LaTeXLanguage.parser.parse(content)
@@ -139,16 +150,27 @@ export const countWordsInFile = (
   const headMatcher = NodeType.match<
     (nodeRef: SyntaxNodeRef) => boolean | void
   >({
+    Comment(nodeRef) {
+      handleComment(nodeRef)
+      return false
+    },
     Title(nodeRef) {
       data.headers++
       iterateNode(nodeRef, 'header')
       return false
+    },
+    $Environment(nodeRef) {
+      return handleEnvironment(nodeRef)
     },
   })
 
   const bodyMatcher = NodeType.match<
     (nodeRef: SyntaxNodeRef) => boolean | void
   >({
+    Comment(nodeRef) {
+      handleComment(nodeRef)
+      return false
+    },
     Normal(nodeRef) {
       textNodes.push({
         from: nodeRef.from,
@@ -157,15 +179,24 @@ export const countWordsInFile = (
         context: currentContext,
       })
     },
-    Command(nodeRef) {
-      const child = nodeRef.node.getChild('UnknownCommand')
-      if (!child) return
+    Cite(nodeRef) {
+      // Count as \cite[text]{citation}
+      const optionalArgs = nodeRef.node.getChildren('OptionalArgument')
+      for (const arg of optionalArgs) {
+        // We normally ignore ShortOptionalArg, so we need to iterate it
+        // explicitly
+        const child = arg.getChild('ShortOptionalArg')
+        if (!child) continue
+        iterateNode(child, 'text')
+      }
+      return false
+    },
+    UnknownCommand(nodeRef) {
+      const macro =
+        nodeRef.node.getChild('$CtrlSeq') ?? nodeRef.node.getChild('$CtrlSym')
+      if (!macro) return
 
-      const grandchild =
-        child.getChild('$CtrlSeq') ?? child.getChild('$CtrlSym')
-      if (!grandchild) return
-
-      const commandName = content.substring(grandchild.from + 1, grandchild.to)
+      const commandName = content.substring(macro.from + 1, macro.to)
       if (!commandName) return
 
       switch (commandName) {
@@ -192,27 +223,7 @@ export const countWordsInFile = (
       return false
     },
     $Environment(nodeRef) {
-      const envNameNode = nodeRef.node
-        .getChild('BeginEnv')
-        ?.getChild('EnvNameGroup')
-        ?.getChild('EnvName')
-
-      if (envNameNode) {
-        const envName = content
-          ?.substring(envNameNode.from, envNameNode.to)
-          .replace(/\*$/, '')
-
-        if (envName === 'abstract') {
-          data.headers++
-
-          const contentNode = nodeRef.node.getChild('Content')
-          if (contentNode) {
-            iterateNode(contentNode, 'abstract')
-          }
-
-          return false
-        }
-      }
+      return handleEnvironment(nodeRef)
     },
     BeginEnv() {
       return false // ignore text in \begin arguments
@@ -243,14 +254,11 @@ export const countWordsInFile = (
       iterateNode(nodeRef, 'footnote')
       return false
     },
-    'IncludeArgument InputArgument'(nodeRef) {
-      let path = content.substring(nodeRef.from + 1, nodeRef.to - 1)
-      if (!/\.\w+$/.test(path)) {
-        path += '.tex'
-      }
+    'IncludeArgument InputArgument SubfileArgument'(nodeRef) {
+      const path = content.substring(nodeRef.from + 1, nodeRef.to - 1)
       debugConsole.log(path)
       if (path) {
-        countWordsInFile(data, projectSnapshot, path, segmenters)
+        countWordsInFile(data, projectSnapshot, path, docPath, segmenters)
       }
     },
     'BlankLine LineBreak'(nodeRef) {
@@ -265,17 +273,72 @@ export const countWordsInFile = (
 
   const preambleExtent = findPreambleExtent(tree)
 
+  const state = {
+    skipping: false,
+  }
+
+  const TC_REGEX = /^%+TC:\s*(\w+)\s*/i
+
+  const handleComment = (nodeRef: SyntaxNodeRef) => {
+    const comment = content.slice(nodeRef.from, nodeRef.to)
+
+    // look for TeXcount instructions
+    const match = TC_REGEX.exec(comment)
+    if (match) {
+      switch (match[1].toLowerCase()) {
+        case 'ignore':
+          state.skipping = true
+          break
+        case 'endignore':
+          state.skipping = false
+          break
+        default:
+          break
+      }
+    }
+  }
+
+  const handleEnvironment = (nodeRef: SyntaxNodeRef) => {
+    const envNameNode = nodeRef.node
+      .getChild('BeginEnv')
+      ?.getChild('EnvNameGroup')
+      ?.getChild('EnvName')
+
+    if (envNameNode) {
+      const envName = content
+        ?.substring(envNameNode.from, envNameNode.to)
+        .replace(/\*$/, '')
+
+      if (envName === 'abstract') {
+        data.headers++
+
+        const contentNode = nodeRef.node.getChild('Content')
+        if (contentNode) {
+          iterateNode(contentNode, 'abstract')
+        }
+
+        return false
+      }
+    }
+  }
+
   tree.iterate({
     from: 0,
     to: preambleExtent.to,
-    enter(nodeRef) {
+    enter(nodeRef: SyntaxNodeRef) {
+      if (state.skipping && !nodeRef.type.is('Comment')) {
+        return
+      }
       return headMatcher(nodeRef.type)?.(nodeRef)
     },
   })
 
   tree.iterate({
     from: preambleExtent.to,
-    enter(nodeRef) {
+    enter(nodeRef: SyntaxNodeRef) {
+      if (state.skipping && !nodeRef.type.is('Comment')) {
+        return
+      }
       return bodyMatcher(nodeRef.type)?.(nodeRef)
     },
   })
@@ -301,9 +364,8 @@ export const countWordsInFile = (
   for (const [context, text] of Object.entries(texts)) {
     const counter = counters[context as Context]
 
-    // TODO: replace - and _ with a word character if hyphenated words should be counted as one word?
-
     for (const value of segmenters.word.segment(
+      // replace - and _ with a word character, so that hyphenated words are counted as one word
       text.replace(/\w[-_]\w/g, 'aaa')
     )) {
       if (value.isWordLike) {
@@ -311,13 +373,14 @@ export const countWordsInFile = (
       }
     }
 
-    // TODO: count hyphens as characters?
-
-    for (const value of segmenters.character.segment(text)) {
+    for (const _value of segmenters.character.segment(
+      // replace multiple spaces with a single space
+      text.replace(/\s+/, ' ').trim()
+    )) {
       // TODO: option for whether to include whitespace?
-      if (!whiteSpaceRe.test(value.segment)) {
-        data[counter.character]++
-      }
+      // if (!whiteSpaceRe.test(value.segment)) {
+      data[counter.character]++
+      // }
     }
   }
 }

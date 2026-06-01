@@ -1,8 +1,14 @@
 import { expect } from 'chai'
-import request from 'request'
 import Settings from '@overleaf/settings'
 import RedisWrapper from '@overleaf/redis-wrapper'
-import { db } from '../../../../app/js/mongodb.js'
+import { db, ObjectId } from '../../../../app/js/mongodb.js'
+import {
+  fetchJson,
+  fetchJsonWithResponse,
+  fetchNothing,
+  fetchStringWithResponse,
+  RequestFailedError,
+} from '@overleaf/fetch-utils'
 
 const rclient = RedisWrapper.createClient(Settings.redis.project_history)
 const Keys = Settings.redis.project_history.key_schema
@@ -11,191 +17,135 @@ export function resetDatabase(callback) {
   rclient.flushdb(callback)
 }
 
-export function initializeProject(historyId, callback) {
-  request.post(
+export async function initializeProject(historyId) {
+  const response = await fetchJsonWithResponse(
+    'http://127.0.0.1:3054/project',
     {
-      url: 'http://127.0.0.1:3054/project',
+      method: 'POST',
       json: { historyId },
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(null, body.project)
     }
   )
+  expect(response.response.status).to.equal(200)
+  return response.json.project
 }
 
-export function flushProject(projectId, options, callback) {
-  if (typeof options === 'function') {
-    callback = options
-    options = null
+export async function flushProject(projectId, options = {}) {
+  try {
+    const response = await fetchNothing(
+      `http://127.0.0.1:3054/project/${projectId}/flush`,
+      { method: 'POST' }
+    )
+    if (!options.allowErrors) {
+      expect(response.status).to.equal(204)
+    }
+    return { statusCode: response.status }
+  } catch (error) {
+    if (options.allowErrors && error instanceof RequestFailedError) {
+      return { statusCode: error.response.status }
+    }
+    throw error
   }
-  if (!options) {
-    options = { allowErrors: false }
+}
+
+export async function getSummarizedUpdates(projectId, query) {
+  const url = new URL(`http://127.0.0.1:3054/project/${projectId}/updates`)
+  Object.keys(query).forEach(key => {
+    url.searchParams.set(key, query[key])
+  })
+
+  return await fetchJson(url.toString())
+}
+
+export async function getDiff(projectId, pathname, from, to) {
+  const url = new URL(`http://127.0.0.1:3054/project/${projectId}/diff`)
+  url.searchParams.set('pathname', pathname)
+  url.searchParams.set('from', from)
+  url.searchParams.set('to', to)
+
+  return await fetchJson(url.toString())
+}
+
+export async function getFileTreeDiff(projectId, from, to) {
+  const url = new URL(
+    `http://127.0.0.1:3054/project/${projectId}/filetree/diff`
+  )
+  url.searchParams.set('from', from)
+  url.searchParams.set('to', to)
+
+  try {
+    const { response, json } = await fetchJsonWithResponse(url.toString())
+    return { diff: json, statusCode: response.status }
+  } catch (error) {
+    if (error instanceof RequestFailedError) {
+      return { diff: null, statusCode: error.response.status }
+    }
+    throw error
   }
-  request.post(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/flush`,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      if (!options.allowErrors) {
-        expect(res.statusCode).to.equal(204)
-      }
-      callback(error, res)
-    }
-  )
 }
 
-export function getSummarizedUpdates(projectId, query, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/updates`,
-      qs: query,
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(error, body)
-    }
+export async function getChangesInChunkSince(projectId, since, options = {}) {
+  const url = new URL(
+    `http://127.0.0.1:3054/project/${projectId}/changes-in-chunk`
   )
-}
+  url.searchParams.set('since', since)
 
-export function getDiff(projectId, pathname, from, to, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/diff`,
-      qs: {
-        pathname,
-        from,
-        to,
-      },
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(error, body)
+  try {
+    const { response, json } = await fetchJsonWithResponse(url.toString())
+    return { body: json, statusCode: response.status }
+  } catch (error) {
+    if (options.allowErrors && error instanceof RequestFailedError) {
+      return { body: null, statusCode: error.response.status }
     }
-  )
-}
-
-export function getFileTreeDiff(projectId, from, to, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/filetree/diff`,
-      qs: {
-        from,
-        to,
-      },
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      callback(error, body, res.statusCode)
-    }
-  )
-}
-
-export function getChangesInChunkSince(projectId, since, options, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/changes-in-chunk`,
-      qs: {
-        since,
-      },
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) return callback(error)
-      if (!options.allowErrors) {
-        expect(res.statusCode).to.equal(200)
-      }
-      callback(null, body, res.statusCode)
-    }
-  )
-}
-
-export function getLatestSnapshot(projectId, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/snapshot`,
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(null, body)
-    }
-  )
-}
-
-export function getSnapshot(projectId, pathname, version, options, callback) {
-  if (typeof options === 'function') {
-    callback = options
-    options = null
+    throw error
   }
-  if (!options) {
-    options = { allowErrors: false }
-  }
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/version/${version}/${encodeURIComponent(
-        pathname
-      )}`,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      if (!options.allowErrors) {
-        expect(res.statusCode).to.equal(200)
-      }
-      callback(error, body, res.statusCode)
-    }
-  )
 }
 
-export function pushRawUpdate(projectId, update, callback) {
-  rclient.rpush(
+export async function getLatestSnapshot(projectId) {
+  return await fetchJson(`http://127.0.0.1:3054/project/${projectId}/snapshot`)
+}
+
+export async function getSnapshot(projectId, pathname, version, options = {}) {
+  const url = `http://127.0.0.1:3054/project/${projectId}/version/${version}/${encodeURIComponent(
+    pathname
+  )}`
+
+  try {
+    const { response, body } = await fetchStringWithResponse(url)
+    if (!options.allowErrors) {
+      expect(response.status).to.equal(200)
+    }
+    return { body, statusCode: response.status }
+  } catch (error) {
+    if (options.allowErrors && error instanceof RequestFailedError) {
+      return { body: null, statusCode: error.response.status }
+    }
+    throw error
+  }
+}
+
+export async function pushRawUpdate(projectId, update) {
+  await rclient.rpush(
     Keys.projectHistoryOps({ project_id: projectId }),
-    JSON.stringify(update),
-    callback
+    JSON.stringify(update)
   )
 }
 
-export function setFirstOpTimestamp(projectId, timestamp, callback) {
-  rclient.set(
+export async function setFirstOpTimestamp(projectId, timestamp) {
+  await rclient.set(
     Keys.projectHistoryFirstOpTimestamp({ project_id: projectId }),
-    timestamp,
-    callback
+    timestamp
   )
 }
 
-export function getFirstOpTimestamp(projectId, callback) {
-  rclient.get(
-    Keys.projectHistoryFirstOpTimestamp({ project_id: projectId }),
-    callback
+export async function getFirstOpTimestamp(projectId) {
+  return await rclient.get(
+    Keys.projectHistoryFirstOpTimestamp({ project_id: projectId })
   )
 }
 
-export function clearFirstOpTimestamp(projectId, callback) {
-  rclient.del(
-    Keys.projectHistoryFirstOpTimestamp({ project_id: projectId }),
-    callback
+export async function clearFirstOpTimestamp(projectId) {
+  await rclient.del(
+    Keys.projectHistoryFirstOpTimestamp({ project_id: projectId })
   )
 }
 
@@ -203,152 +153,124 @@ export function getQueueLength(projectId, callback) {
   rclient.llen(Keys.projectHistoryOps({ project_id: projectId }), callback)
 }
 
-export function getQueueCounts(callback) {
-  return request.get(
+export async function resyncHistory(projectId) {
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}/resync`,
     {
-      url: 'http://127.0.0.1:3054/status/queue',
-      json: true,
-    },
-    callback
-  )
-}
-
-export function resyncHistory(projectId, callback) {
-  request.post(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/resync`,
-      json: true,
-      body: { origin: { kind: 'test-origin' } },
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(204)
-      callback(error)
+      method: 'POST',
+      json: { origin: { kind: 'test-origin' } },
     }
   )
+  expect(response.status).to.equal(204)
 }
 
-export function createLabel(
+export async function hardResyncHistory(
+  projectId,
+  { recoverCorruptedFiles } = {}
+) {
+  const params = new URLSearchParams({ force: 'true' })
+  if (recoverCorruptedFiles) {
+    params.set('recoverCorruptedFiles', 'true')
+  }
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}/resync?${params}`,
+    {
+      method: 'POST',
+      json: { origin: { kind: 'test-origin' } },
+    }
+  )
+  expect(response.status).to.equal(204)
+}
+
+export async function createLabel(
   projectId,
   userId,
   version,
   comment,
-  createdAt,
-  callback
+  createdAt
 ) {
-  request.post(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/labels`,
-      json: { comment, version, created_at: createdAt, user_id: userId },
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(null, body)
-    }
-  )
+  return await fetchJson(`http://127.0.0.1:3054/project/${projectId}/labels`, {
+    method: 'POST',
+    json: { comment, version, created_at: createdAt, user_id: userId },
+  })
 }
 
-export function getLabels(projectId, callback) {
-  request.get(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/labels`,
-      json: true,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(null, body)
-    }
-  )
+export async function getLabels(projectId) {
+  return await fetchJson(`http://127.0.0.1:3054/project/${projectId}/labels`)
 }
 
-export function deleteLabelForUser(projectId, userId, labelId, callback) {
-  request.delete(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/user/${userId}/labels/${labelId}`,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(204)
-      callback(null, body)
-    }
+export async function deleteLabelForUser(projectId, userId, labelId) {
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}/user/${userId}/labels/${labelId}`,
+    { method: 'DELETE' }
   )
+  expect(response.status).to.equal(204)
 }
 
-export function deleteLabel(projectId, labelId, callback) {
-  request.delete(
-    {
-      url: `http://127.0.0.1:3054/project/${projectId}/labels/${labelId}`,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(204)
-      callback(null, body)
-    }
+export async function deleteLabel(projectId, labelId) {
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}/labels/${labelId}`,
+    { method: 'DELETE' }
   )
+  expect(response.status).to.equal(204)
 }
 
-export function setFailure(failureEntry, callback) {
-  db.projectHistoryFailures.deleteOne(
-    { project_id: { $exists: true } },
-    (err, result) => {
-      if (err) {
-        return callback(err)
-      }
-      db.projectHistoryFailures.insertOne(failureEntry, callback)
-    }
-  )
+export async function setFailures(failureEntries) {
+  await db.projectHistoryFailures.deleteMany({})
+  return await db.projectHistoryFailures.insertMany(failureEntries)
 }
 
 export function getFailure(projectId, callback) {
   db.projectHistoryFailures.findOne({ project_id: projectId }, callback)
 }
 
-export function transferLabelOwnership(fromUser, toUser, callback) {
-  request.post(
-    {
-      url: `http://127.0.0.1:3054/user/${fromUser}/labels/transfer/${toUser}`,
-    },
-    (error, res, body) => {
-      if (error) {
-        return callback(error)
-      }
-      expect(res.statusCode).to.equal(204)
-      callback(null, body)
-    }
+export async function transferLabelOwnership(fromUser, toUser) {
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/user/${fromUser}/labels/transfer/${toUser}`,
+    { method: 'POST' }
   )
+  expect(response.status).to.equal(204)
 }
 
-export function getDump(projectId, callback) {
-  request.get(
-    `http://127.0.0.1:3054/project/${projectId}/dump`,
-    (err, res, body) => {
-      if (err) {
-        return callback(err)
-      }
-      expect(res.statusCode).to.equal(200)
-      callback(null, JSON.parse(body))
-    }
-  )
+export async function getDump(projectId) {
+  return await fetchJson(`http://127.0.0.1:3054/project/${projectId}/dump`)
 }
 
-export function deleteProject(projectId, callback) {
-  request.delete(`http://127.0.0.1:3054/project/${projectId}`, (err, res) => {
-    if (err) {
-      return callback(err)
-    }
-    expect(res.statusCode).to.equal(204)
-    callback()
+export async function getFailures() {
+  const { failures } = await fetchJson('http://127.0.0.1:3054/status/failures')
+  return failures
+}
+
+export async function getSyncState(projectId) {
+  return await db.projectHistorySyncState.findOne({
+    project_id: new ObjectId(projectId),
   })
+}
+
+export async function getResyncPending(projectId) {
+  return await fetchJson(
+    `http://127.0.0.1:3054/project/${projectId}/resync-pending`
+  )
+}
+
+export async function injectStuckSyncState(projectId, docPaths) {
+  await db.projectHistorySyncState.replaceOne(
+    { project_id: new ObjectId(projectId) },
+    {
+      project_id: new ObjectId(projectId),
+      resyncProjectStructure: false,
+      resyncDocContents: docPaths,
+      stuckClearCount: 0,
+      history: [],
+    },
+    { upsert: true }
+  )
+}
+
+export async function deleteProject(projectId) {
+  const response = await fetchNothing(
+    `http://127.0.0.1:3054/project/${projectId}`,
+    { method: 'DELETE' }
+  )
+  expect(response.status).to.equal(204)
 }

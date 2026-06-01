@@ -13,12 +13,15 @@ import SystemMessages from '../../../shared/components/system-messages'
 import withErrorBoundary from '../../../infrastructure/error-boundary'
 import { GenericErrorBoundaryFallback } from '@/shared/components/generic-error-boundary-fallback'
 import getMeta from '@/utils/meta'
-import DefaultNavbar from '@/features/ui/components/bootstrap-5/navbar/default-navbar'
-import Footer from '@/features/ui/components/bootstrap-5/footer/footer'
+import DefaultNavbar from '@/shared/components/navbar/default-navbar'
+import Footer from '@/shared/components/footer/footer'
 import WelcomePageContent from '@/features/project-list/components/welcome-page-content'
 import { ProjectListDsNav } from '@/features/project-list/components/project-list-ds-nav'
 import { DsNavStyleProvider } from '@/features/project-list/components/use-is-ds-nav'
 import CookieBanner from '@/shared/components/cookie-banner'
+import useThemedPage from '@/shared/hooks/use-themed-page'
+import { UserSettingsProvider } from '@/shared/context/user-settings-context'
+import { TutorialProvider } from '@/shared/context/tutorial-context'
 
 function ProjectListRoot() {
   const { isReady } = useWaitForI18n()
@@ -35,7 +38,11 @@ export function ProjectListRootInner() {
     <ProjectListProvider>
       <ColorPickerProvider>
         <SplitTestProvider>
-          <ProjectListPageContent />
+          <TutorialProvider>
+            <UserSettingsProvider>
+              <ProjectListPageContent />
+            </UserSettingsProvider>
+          </TutorialProvider>
         </SplitTestProvider>
       </ColorPickerProvider>
     </ProjectListProvider>
@@ -50,8 +57,8 @@ function DefaultNavbarAndFooter({ children }: { children: ReactNode }) {
     <>
       <DefaultNavbar {...navbarProps} />
       <main
-        id="main-content"
         className="content content-alt project-list-react"
+        aria-labelledby="main-content"
       >
         {children}
       </main>
@@ -70,6 +77,7 @@ function DefaultPageContentWrapper({ children }: { children: ReactNode }) {
 }
 
 function ProjectListPageContent() {
+  useThemedPage()
   const { totalProjectsCount, isLoading, loadProgress } =
     useProjectListContext()
 

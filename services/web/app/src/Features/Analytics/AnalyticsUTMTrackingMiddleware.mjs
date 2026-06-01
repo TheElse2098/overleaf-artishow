@@ -1,6 +1,6 @@
 import _ from 'lodash'
-import RequestHelper from './RequestHelper.js'
-import AnalyticsManager from './AnalyticsManager.js'
+import RequestHelper from './RequestHelper.mjs'
+import AnalyticsManager from './AnalyticsManager.mjs'
 import querystring from 'node:querystring'
 import { URL } from 'node:url'
 import Settings from '@overleaf/settings'
@@ -17,9 +17,13 @@ function recordUTMTags() {
       if (utmValues) {
         const path = new URL(req.url, Settings.siteUrl).pathname
 
+        const host = req.headers.host
+        const domain = host?.split('.')[0]
+
         AnalyticsManager.recordEventForSession(req.session, 'page-view', {
           path,
           ...utmValues,
+          domain,
         })
 
         const propertyValue = `${utmValues.utm_source || 'N/A'};${

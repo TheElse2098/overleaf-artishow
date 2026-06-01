@@ -1,7 +1,7 @@
 package uk.ac.ic.wlgitbridge.application;
 
+import jakarta.servlet.ServletException;
 import java.io.IOException;
-import javax.servlet.ServletException;
 import uk.ac.ic.wlgitbridge.application.config.Config;
 import uk.ac.ic.wlgitbridge.application.exception.ArgsException;
 import uk.ac.ic.wlgitbridge.application.exception.ConfigFileException;
@@ -83,7 +83,7 @@ public class GitBridgeApp implements Runnable {
   }
 
   private void loadConfigFile() throws ConfigFileException, IOException {
-    Log.info("Loading config file at path: " + configFilePath);
+    Log.debug("Loading config file at path: " + configFilePath);
     config = new Config(configFilePath);
   }
 

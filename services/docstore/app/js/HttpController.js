@@ -1,10 +1,10 @@
-const DocManager = require('./DocManager')
-const logger = require('@overleaf/logger')
-const DocArchive = require('./DocArchiveManager')
-const HealthChecker = require('./HealthChecker')
-const Errors = require('./Errors')
-const Settings = require('@overleaf/settings')
-const { expressify } = require('@overleaf/promise-utils')
+import DocManager from './DocManager.js'
+import logger from '@overleaf/logger'
+import DocArchive from './DocArchiveManager.js'
+import HealthChecker from './HealthChecker.js'
+import Errors from './Errors.js'
+import Settings from '@overleaf/settings'
+import { expressify } from '@overleaf/promise-utils'
 
 async function getDoc(req, res) {
   const { doc_id: docId, project_id: projectId } = req.params
@@ -22,7 +22,14 @@ async function getDoc(req, res) {
 async function peekDoc(req, res) {
   const { doc_id: docId, project_id: projectId } = req.params
   logger.debug({ projectId, docId }, 'peeking doc')
-  const doc = await DocManager.peekDoc(projectId, docId)
+  const doc = await DocManager.peekDoc(projectId, docId, {
+    deleted: true,
+    inS3: true,
+    lines: true,
+    ranges: true,
+    rev: 1,
+    version: true,
+  })
   res.setHeader('x-doc-status', doc.inS3 ? 'archived' : 'active')
   res.json(_buildDocView(doc))
 }
@@ -56,6 +63,30 @@ async function getAllDocs(req, res) {
     }
   }
   res.json(docViews)
+}
+
+async function getAllDocsWithRanges(req, res) {
+  const { project_id: projectId } = req.params
+  logger.debug({ projectId }, 'getting all docs with ranges')
+  const docs = await DocManager.getAllNonDeletedDocs(projectId, {
+    lines: true,
+    rev: true,
+    ranges: true,
+  })
+  const docViews = _buildDocsArrayView(projectId, docs)
+  for (const docView of docViews) {
+    if (!docView.lines) {
+      logger.warn({ projectId, docId: docView._id }, 'missing doc lines')
+      docView.lines = []
+    }
+  }
+  res.json(docViews)
+}
+
+async function getAllDocVersions(req, res) {
+  const { project_id: projectId } = req.params
+  const docs = await DocManager.getAllDocVersions(projectId)
+  res.json(docs)
 }
 
 async function getAllDeletedDocs(req, res) {
@@ -97,7 +128,11 @@ async function getTrackedChangesUserIds(req, res) {
 
 async function projectHasRanges(req, res) {
   const { project_id: projectId } = req.params
-  const projectHasRanges = await DocManager.projectHasRanges(projectId)
+  const useSecondary = req.query.useSecondary === 'true'
+  const projectHasRanges = await DocManager.projectHasRanges(
+    projectId,
+    useSecondary
+  )
   res.json({ projectHasRanges })
 }
 
@@ -236,14 +271,16 @@ async function healthCheck(req, res) {
   res.sendStatus(200)
 }
 
-module.exports = {
+export default {
   getDoc: expressify(getDoc),
   peekDoc: expressify(peekDoc),
   isDocDeleted: expressify(isDocDeleted),
   getRawDoc: expressify(getRawDoc),
   getAllDocs: expressify(getAllDocs),
+  getAllDocsWithRanges: expressify(getAllDocsWithRanges),
   getAllDeletedDocs: expressify(getAllDeletedDocs),
   getAllRanges: expressify(getAllRanges),
+  getAllDocVersions: expressify(getAllDocVersions),
   getTrackedChangesUserIds: expressify(getTrackedChangesUserIds),
   getCommentThreadIds: expressify(getCommentThreadIds),
   projectHasRanges: expressify(projectHasRanges),

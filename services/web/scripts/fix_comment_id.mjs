@@ -1,8 +1,8 @@
 // @ts-check
 
 import minimist from 'minimist'
-import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.js'
-import { db, ObjectId } from '../app/src/infrastructure/mongodb.js'
+import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.mjs'
+import { db, ObjectId } from '../app/src/infrastructure/mongodb.mjs'
 
 const OPTS = parseArgs()
 
@@ -24,6 +24,9 @@ function parseArgs() {
   }
 }
 
+/**
+ * @param {any} projectId
+ */
 async function processProject(projectId) {
   console.log(`Processing project ${projectId}...`)
   const docRanges = await DocstoreManager.promises.getAllRanges(projectId)
@@ -38,6 +41,9 @@ async function processProject(projectId) {
   }
 }
 
+/**
+ * @param {any} doc
+ */
 async function processDoc(doc) {
   let commentsUpdated = 0
   for (const comment of doc.ranges.comments ?? []) {

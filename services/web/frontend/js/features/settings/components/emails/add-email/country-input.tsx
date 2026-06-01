@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { useCombobox } from 'downshift'
 import classnames from 'classnames'
 import countries, { CountryCode } from '../../../data/countries-list'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import { DropdownItem } from '@/features/ui/components/bootstrap-5/dropdown-menu'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import { DropdownItem } from '@/shared/components/dropdown/dropdown-menu'
 
 type CountryInputProps = {
   setValue: React.Dispatch<React.SetStateAction<CountryCode | null>>
@@ -50,9 +50,7 @@ function Downshift({ setValue, inputRef }: CountryInputProps) {
     <div className={classnames('dropdown', 'd-block')}>
       <div>
         {/* eslint-disable-next-line jsx-a11y/label-has-for */}
-        <label {...getLabelProps()} className="visually-hidden">
-          {t('country')}
-        </label>
+        <label {...getLabelProps()}>{t('country')}</label>
         <OLFormControl
           {...getInputProps({
             onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,7 +59,6 @@ function Downshift({ setValue, inputRef }: CountryInputProps) {
             ref: inputRef,
           })}
           append={<i className="caret" aria-hidden />}
-          placeholder={t('country')}
         />
       </div>
       <ul

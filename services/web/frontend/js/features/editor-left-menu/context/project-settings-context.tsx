@@ -6,8 +6,8 @@ import type { ProjectSettings } from '../utils/api'
 import { UserSettings } from '../../../../../types/user-settings'
 
 type ProjectSettingsSetterContextValue = {
-  setCompiler: (compiler: ProjectSettings['compiler']) => void
-  setImageName: (imageName: ProjectSettings['imageName']) => void
+  setCompiler: (compiler: ProjectSettings['compiler']) => Promise<void>
+  setImageName: (imageName: ProjectSettings['imageName']) => Promise<void>
   setRootDocId: (rootDocId: ProjectSettings['rootDocId']) => void
   setSpellCheckLanguage: (
     spellCheckLanguage: ProjectSettings['spellCheckLanguage']
@@ -19,8 +19,13 @@ type ProjectSettingsSetterContextValue = {
   setSyntaxValidation: (
     syntaxValidation: UserSettings['syntaxValidation']
   ) => void
+  setPreviewTabs: (previewTabs: UserSettings['previewTabs']) => void
   setMode: (mode: UserSettings['mode']) => void
   setEditorTheme: (editorTheme: UserSettings['editorTheme']) => void
+  setEditorLightTheme: (
+    editorLightTheme: UserSettings['editorLightTheme']
+  ) => void
+  setEditorDarkTheme: (editorDarkTheme: UserSettings['editorDarkTheme']) => void
   setOverallTheme: (overallTheme: UserSettings['overallTheme']) => void
   setFontSize: (fontSize: UserSettings['fontSize']) => void
   setFontFamily: (fontFamily: UserSettings['fontFamily']) => void
@@ -28,6 +33,13 @@ type ProjectSettingsSetterContextValue = {
   setPdfViewer: (pdfViewer: UserSettings['pdfViewer']) => void
   setMathPreview: (mathPreview: UserSettings['mathPreview']) => void
   setBreadcrumbs: (breadcrumbs: UserSettings['breadcrumbs']) => void
+  setNonBlinkingCursor: (
+    nonBlinkingCursor: UserSettings['nonBlinkingCursor']
+  ) => void
+  setDarkModePdf: (darkModePdf: UserSettings['darkModePdf']) => void
+  setZotero: (zotero: UserSettings['zotero']) => void
+  setMendeley: (mendeley: UserSettings['mendeley']) => void
+  setPapers: (papers: UserSettings['papers']) => void
 }
 
 type ProjectSettingsContextValue = Partial<ProjectSettings> &
@@ -59,8 +71,14 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
     setAutoPairDelimiters,
     syntaxValidation,
     setSyntaxValidation,
+    previewTabs,
+    setPreviewTabs,
     editorTheme,
     setEditorTheme,
+    editorLightTheme,
+    setEditorLightTheme,
+    editorDarkTheme,
+    setEditorDarkTheme,
     overallTheme,
     setOverallTheme,
     mode,
@@ -77,6 +95,16 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
     setMathPreview,
     breadcrumbs,
     setBreadcrumbs,
+    nonBlinkingCursor,
+    setNonBlinkingCursor,
+    darkModePdf,
+    setDarkModePdf,
+    zotero,
+    setZotero,
+    mendeley,
+    setMendeley,
+    papers,
+    setPapers,
   } = useUserWideSettings()
 
   useProjectWideSettingsSocketListener()
@@ -97,8 +125,14 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setAutoPairDelimiters,
       syntaxValidation,
       setSyntaxValidation,
+      previewTabs,
+      setPreviewTabs,
       editorTheme,
       setEditorTheme,
+      editorLightTheme,
+      setEditorLightTheme,
+      editorDarkTheme,
+      setEditorDarkTheme,
       overallTheme,
       setOverallTheme,
       mode,
@@ -115,6 +149,16 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setMathPreview,
       breadcrumbs,
       setBreadcrumbs,
+      nonBlinkingCursor,
+      setNonBlinkingCursor,
+      darkModePdf,
+      setDarkModePdf,
+      zotero,
+      setZotero,
+      mendeley,
+      setMendeley,
+      papers,
+      setPapers,
     }),
     [
       compiler,
@@ -131,8 +175,14 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setAutoPairDelimiters,
       syntaxValidation,
       setSyntaxValidation,
+      previewTabs,
+      setPreviewTabs,
       editorTheme,
       setEditorTheme,
+      editorLightTheme,
+      setEditorLightTheme,
+      editorDarkTheme,
+      setEditorDarkTheme,
       overallTheme,
       setOverallTheme,
       mode,
@@ -149,6 +199,16 @@ export const ProjectSettingsProvider: FC<React.PropsWithChildren> = ({
       setMathPreview,
       breadcrumbs,
       setBreadcrumbs,
+      nonBlinkingCursor,
+      setNonBlinkingCursor,
+      darkModePdf,
+      setDarkModePdf,
+      zotero,
+      setZotero,
+      mendeley,
+      setMendeley,
+      papers,
+      setPapers,
     ]
   )
 

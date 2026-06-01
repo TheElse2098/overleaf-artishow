@@ -289,7 +289,7 @@ describe('<CurrentPlanWidget />', function () {
 
         await screen.findByRole('tooltip', {
           name: new RegExp(
-            `on the ${subscription.plan.name} plan because of your affiliation with ${subscription.subscription.name}`,
+            `on the Commons plan provided by ${subscription.subscription.name}`,
             'i'
           ),
         })
@@ -339,8 +339,6 @@ describe('<CurrentPlanWidget />', function () {
         expect(links[0].getAttribute('href')).to.equal(
           '/learn/how-to/Overleaf_premium_features'
         )
-
-        fireEvent.click(links[0])
 
         window.metaAttributesCache.delete('ol-usersBestSubscription')
       })

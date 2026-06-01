@@ -6,15 +6,15 @@ const outputPath = "/var/lib/overleaf/data/compiles/"
 const uploadsPath = "/var/lib/overleaf/tmp/uploads/"
 const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
-const EditorController = require('../Editor/EditorController')
-const HistoryManager = require('../History/HistoryManager')
-const CompileManager = require('../Compile/CompileManager');
-const ClsiCookieManager = require('../Compile/ClsiCookieManager');
+const EditorController = require('../Editor/EditorController.mjs').default
+const HistoryManager = require('../History/HistoryManager.mjs').default
+const CompileManager = require('../Compile/CompileManager.mjs').default
+const ClsiCookieManager = require('../Compile/ClsiCookieManager.mjs').default
 const Errors = require('../Errors/Errors')
-const HttpErrorHandler = require('../Errors/HttpErrorHandler')
+const HttpErrorHandler = require('../Errors/HttpErrorHandler.mjs').default
 const crypto = require('crypto')
 const sshpk = require('sshpk')
-const { Project } = require('../../models/Project')
+const { Project } = require('../../models/Project.mjs')
 
 const gitOptions = {
   baseDir: dataPath,
@@ -336,20 +336,63 @@ async function getStaged(projectId, userId) {
     }
 }
 
-async function getNotStaged(projectId,userId) {
-  const git = await getGitForProject(projectId, userId);
-    console.log('OK')
-    try {
-        const status = await git.status()
-        const modifiedFiles = status.files.filter(file => file.working_dir !== ' ' && file.index === ' ').map(file => file.path)
-        const untrackedFiles = status.files.filter(file => file.working_dir === '?' && file.index === '?').map(file => file.path)
-        const notStagedFiles = [...modifiedFiles, ...untrackedFiles]
-        console.log(notStagedFiles)
-        return notStagedFiles
-    } catch (error) {
-        console.error("Error fetching not staged files:", error);
-        return []
+async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet) {
+  const result = []
+  async function recurse(dir) {
+    let items
+    try { items = await fs.readdir(dir) } catch (_) { return }
+    for (const item of items) {
+      if (item === '.git') continue
+      const fullPath = path.join(dir, item)
+      let stat
+      try { stat = await fs.stat(fullPath) } catch (_) { continue }
+      const relPath = path.relative(compilesDir, fullPath).replace(/\\/g, '/')
+      if (stat.isDirectory()) {
+        await recurse(fullPath)
+      } else {
+        if (bannedFiles.includes(item)) continue
+        if (trackedSet.has(relPath) || gitStatusSet.has(relPath)) continue
+        const gitFilePath = path.join(gitDir, relPath)
+        if (!await fs.pathExists(gitFilePath)) {
+          result.push(relPath)
+        }
+      }
     }
+  }
+  await recurse(compilesDir)
+  return result
+}
+
+async function getNotStaged(projectId, userId) {
+  const localGit = getGitForProject(projectId, userId)
+  const gitDir = dataPath + projectId + "-" + userId
+  const compilesDir = outputPath + projectId + "-" + userId
+
+  try {
+    const status = await localGit.status()
+    const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.index === ' ').map(f => f.path)
+    const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
+    const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
+
+    // Also find files that exist in compiles/ but not yet in the git working dir
+    // (e.g. images uploaded after the last gitUpdate)
+    let overleafOnlyFiles = []
+    if (await fs.pathExists(compilesDir)) {
+      let trackedSet = new Set()
+      try {
+        const result = await localGit.raw(['ls-files'])
+        trackedSet = new Set(result.split('\n').filter(f => f.trim()))
+      } catch (_) {}
+      overleafOnlyFiles = await scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet)
+    }
+
+    const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
+    console.log('notStaged:', notStagedFiles)
+    return notStagedFiles
+  } catch (error) {
+    console.error("Error fetching not staged files:", error)
+    return []
+  }
 }
 
 // Exécute fn() avec GIT_SSH_COMMAND défini dans process.env

@@ -5,7 +5,7 @@ import withErrorBoundary from '@/infrastructure/error-boundary'
 import useAbortController from '@/shared/hooks/use-abort-controller'
 import LoadingSpinner from '@/shared/components/loading-spinner'
 import Notification from '@/shared/components/notification'
-import IconButton from '@/features/ui/components/bootstrap-5/icon-button'
+import IconButton from '@/shared/components/button/icon-button'
 import {
   Card,
   Row,
@@ -14,12 +14,13 @@ import {
   FormLabel,
   FormControl,
 } from 'react-bootstrap'
-import FormText from '@/features/ui/components/bootstrap-5/form/form-text'
-import Button from '@/features/ui/components/bootstrap-5/button'
+import FormText from '@/shared/components/form/form-text'
+import Button from '@/shared/components/button/button'
 import PoNumber from '@/features/group-management/components/add-seats/po-number'
 import CostSummary from '@/features/group-management/components/add-seats/cost-summary'
 import RequestStatus from '@/features/group-management/components/request-status'
 import useAsync from '@/shared/hooks/use-async'
+import useAsyncWithCancel from '@/shared/hooks/use-async-with-cancel'
 import getMeta from '@/utils/meta'
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
 import { debugConsole } from '@/utils/debugging'
@@ -47,10 +48,12 @@ function AddSeats() {
   const totalLicenses = getMeta('ol-totalLicenses')
   const isProfessional = getMeta('ol-isProfessional')
   const isCollectionMethodManual = getMeta('ol-isCollectionMethodManual')
+  const isRedirectedPaymentError = Boolean(
+    getMeta('ol-subscriptionPaymentErrorCode')
+  )
   const [addSeatsInputError, setAddSeatsInputError] = useState<string>()
   const [poNumberInputError, setPoNumberInputError] = useState<string>()
   const [shouldContactSales, setShouldContactSales] = useState(false)
-  const controller = useAbortController()
   const { signal: addSeatsSignal } = useAbortController()
   const { signal: contactSalesSignal } = useAbortController()
   const {
@@ -60,7 +63,8 @@ function AddSeats() {
     data: costSummaryData,
     reset: resetCostSummaryData,
     error: errorCostSummary,
-  } = useAsync<CostSummaryData, FetchError>()
+    cancelAll: cancelCostSummaryRequest,
+  } = useAsyncWithCancel<CostSummaryData, FetchError>()
   const [isAddingSeats, setIsAddingSeats] = useState(false)
   const [isErrorAddingSeats, setIsErrorAddingSeats] = useState(false)
   const [isSuccessAddingSeats, setIsSuccessAddingSeats] = useState(false)
@@ -85,14 +89,21 @@ function AddSeats() {
 
   const debouncedCostSummaryRequest = useMemo(
     () =>
-      debounce((value: number, signal: AbortSignal) => {
-        const post = postJSON('/user/subscription/group/add-users/preview', {
-          signal,
-          body: { adding: value },
+      debounce((value: number) => {
+        cancelCostSummaryRequest()
+        const post = (signal: AbortSignal) =>
+          postJSON('/user/subscription/group/add-users/preview', {
+            body: { adding: value },
+            signal,
+          })
+
+        runAsyncCostSummary(post).catch(error => {
+          if (error.name !== 'AbortError') {
+            debugConsole.error(error)
+          }
         })
-        runAsyncCostSummary(post).catch(debugConsole.error)
       }, 500),
-    [runAsyncCostSummary]
+    [runAsyncCostSummary, cancelCostSummaryRequest]
   )
 
   const debouncedTrackUserEnterSeatNumberEvent = useMemo(
@@ -168,14 +179,15 @@ function AddSeats() {
         debouncedCostSummaryRequest.cancel()
         shouldContactSales = true
       } else {
-        debouncedCostSummaryRequest(seats, controller.signal)
+        debouncedCostSummaryRequest(seats)
       }
     } else {
       debouncedTrackUserEnterSeatNumberEvent.cancel()
       debouncedCostSummaryRequest.cancel()
+      cancelCostSummaryRequest()
+      resetCostSummaryData()
     }
 
-    resetCostSummaryData()
     setShouldContactSales(shouldContactSales)
   }
 
@@ -263,7 +275,11 @@ function AddSeats() {
     return () => window.removeEventListener('beforeunload', handleUnload)
   }, [])
 
-  if (isErrorAddingSeats || isErrorSendingMailToSales) {
+  if (
+    isRedirectedPaymentError ||
+    isErrorAddingSeats ||
+    isErrorSendingMailToSales
+  ) {
     return (
       <RequestStatus
         variant="danger"
@@ -374,7 +390,6 @@ function AddSeats() {
                       required
                       className="w-25"
                       name="seats"
-                      disabled={isLoadingCostSummary}
                       onChange={handleSeatsChange}
                       isInvalid={Boolean(addSeatsInputError)}
                     />

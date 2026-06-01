@@ -2,7 +2,8 @@ import { useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { startFreeTrial } from '@/main/account-upgrade'
 import * as eventTracking from '../../infrastructure/event-tracking'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
 
 type StartFreeTrialButtonProps = {
   source: string
@@ -11,6 +12,7 @@ type StartFreeTrialButtonProps = {
   children?: React.ReactNode
   handleClick?: React.ComponentProps<typeof OLButton>['onClick']
   segmentation?: eventTracking.Segmentation
+  extraSearchParams?: Record<string, string>
 }
 
 export default function StartFreeTrialButton({
@@ -22,8 +24,10 @@ export default function StartFreeTrialButton({
   source,
   variant,
   segmentation,
+  extraSearchParams,
 }: StartFreeTrialButtonProps) {
   const { t } = useTranslation()
+  const plans2026 = useFeatureFlag('plans-2026-phase-1')
 
   useEffect(() => {
     const eventSegmentation: { [key: string]: unknown } = {
@@ -40,18 +44,32 @@ export default function StartFreeTrialButton({
     (event: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
       event.preventDefault()
 
+      let shouldNavigate = true
+
       if (handleClick) {
         handleClick(event)
+        if (event.isPropagationStopped()) {
+          shouldNavigate = false
+        }
       }
 
-      startFreeTrial(source, variant, segmentation)
+      startFreeTrial(
+        source,
+        variant,
+        segmentation,
+        extraSearchParams,
+        shouldNavigate
+      )
     },
-    [handleClick, source, variant, segmentation]
+    [handleClick, source, variant, segmentation, extraSearchParams]
   )
 
   return (
     <OLButton {...buttonProps} onClick={onClick}>
-      {children || t('start_free_trial')}
+      {children ||
+        (plans2026
+          ? t('start_free_trial_without_exclamation')
+          : t('start_free_trial'))}
     </OLButton>
   )
 }

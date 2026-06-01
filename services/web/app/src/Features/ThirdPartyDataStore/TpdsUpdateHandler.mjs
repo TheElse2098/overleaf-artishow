@@ -1,16 +1,16 @@
 import { callbackify } from 'node:util'
-import UpdateMerger from './UpdateMerger.js'
+import UpdateMerger from './UpdateMerger.mjs'
 import logger from '@overleaf/logger'
-import NotificationsBuilder from '../Notifications/NotificationsBuilder.js'
-import ProjectCreationHandler from '../Project/ProjectCreationHandler.js'
-import ProjectDeleter from '../Project/ProjectDeleter.js'
-import ProjectGetter from '../Project/ProjectGetter.js'
-import ProjectHelper from '../Project/ProjectHelper.js'
-import ProjectRootDocManager from '../Project/ProjectRootDocManager.js'
-import FileTypeManager from '../Uploads/FileTypeManager.js'
-import CooldownManager from '../Cooldown/CooldownManager.js'
+import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
+import ProjectCreationHandler from '../Project/ProjectCreationHandler.mjs'
+import ProjectDeleter from '../Project/ProjectDeleter.mjs'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
+import ProjectHelper from '../Project/ProjectHelper.mjs'
+import ProjectRootDocManager from '../Project/ProjectRootDocManager.mjs'
+import FileTypeManager from '../Uploads/FileTypeManager.mjs'
+import CooldownManager from '../Cooldown/CooldownManager.mjs'
 import Errors from '../Errors/Errors.js'
-import Modules from '../../infrastructure/Modules.js'
+import Modules from '../../infrastructure/Modules.mjs'
 
 async function newUpdate(
   userId,
@@ -25,13 +25,14 @@ async function newUpdate(
     return null
   }
 
-  const projectIsOnCooldown =
-    await CooldownManager.promises.isProjectOnCooldown(project._id)
+  const projectIsOnCooldown = await CooldownManager.isProjectOnCooldown(
+    project._id
+  )
   if (projectIsOnCooldown) {
     throw new Errors.TooManyRequestsError('project on cooldown')
   }
 
-  const shouldIgnore = await FileTypeManager.promises.shouldIgnore(path)
+  const shouldIgnore = FileTypeManager.shouldIgnore(path)
   if (shouldIgnore) {
     return null
   }
@@ -107,7 +108,11 @@ async function findProjectByIdWithRWAccess(userId, projectId) {
   for (const projects of [allProjects.owned, allProjects.readAndWrite]) {
     for (const project of projects) {
       if (project._id.toString() === projectId) {
-        return project
+        if (ProjectHelper.isArchivedOrTrashed(project, userId)) {
+          return null
+        } else {
+          return project
+        }
       }
     }
   }
@@ -169,13 +174,14 @@ async function createFolder(userId, projectId, projectName, path) {
     return null
   }
 
-  const projectIsOnCooldown =
-    await CooldownManager.promises.isProjectOnCooldown(project._id)
+  const projectIsOnCooldown = await CooldownManager.isProjectOnCooldown(
+    project._id
+  )
   if (projectIsOnCooldown) {
     throw new Errors.TooManyRequestsError('project on cooldown')
   }
 
-  const shouldIgnore = await FileTypeManager.promises.shouldIgnore(path)
+  const shouldIgnore = FileTypeManager.shouldIgnore(path)
   if (shouldIgnore) {
     return null
   }

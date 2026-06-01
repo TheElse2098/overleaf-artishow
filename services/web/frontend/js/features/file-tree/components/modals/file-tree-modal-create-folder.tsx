@@ -4,13 +4,17 @@ import { useRefWithAutoFocus } from '../../../../shared/hooks/use-ref-with-auto-
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import { DuplicateFilenameError } from '../../errors'
 import { isCleanFilename } from '../../util/safe-path'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
 
 function FileTreeModalCreateFolder() {
   const { t } = useTranslation()
@@ -82,7 +86,12 @@ function FileTreeModalCreateFolder() {
 
       <OLModalFooter>
         {inFlight ? (
-          <OLButton variant="primary" disabled isLoading={inFlight} />
+          <OLButton
+            variant="primary"
+            disabled
+            isLoading={inFlight}
+            loadingLabel={t('creating')}
+          />
         ) : (
           <>
             <OLButton variant="secondary" onClick={handleHide}>
@@ -116,6 +125,7 @@ function InputName({
   handleCreateFolder: () => void
 }) {
   const { autoFocusedRef } = useRefWithAutoFocus<HTMLInputElement>()
+  const { t } = useTranslation()
 
   function handleFocus(ev: React.FocusEvent<HTMLInputElement>) {
     ev.target.setSelectionRange(0, -1)
@@ -133,15 +143,17 @@ function InputName({
   }
 
   return (
-    <input
-      ref={autoFocusedRef}
-      className="form-control"
-      type="text"
-      value={name}
-      onKeyDown={handleKeyDown}
-      onChange={handleChange}
-      onFocus={handleFocus}
-    />
+    <OLFormGroup controlId="folder-name">
+      <OLFormLabel>{t('folder_name')}</OLFormLabel>
+      <OLFormControl
+        type="text"
+        ref={autoFocusedRef}
+        value={name}
+        onKeyDown={handleKeyDown}
+        onChange={handleChange}
+        onFocus={handleFocus}
+      />
+    </OLFormGroup>
   )
 }
 

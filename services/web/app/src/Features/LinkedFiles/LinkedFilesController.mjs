@@ -10,12 +10,26 @@
  * DS207: Consider shorter variations of null checks
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
-import SessionManager from '../Authentication/SessionManager.js'
+import SessionManager from '../Authentication/SessionManager.mjs'
 import Settings from '@overleaf/settings'
 import _ from 'lodash'
-import AnalyticsManager from '../../../../app/src/Features/Analytics/AnalyticsManager.js'
-import LinkedFilesHandler from './LinkedFilesHandler.js'
+import AnalyticsManager from '../../../../app/src/Features/Analytics/AnalyticsManager.mjs'
+import LinkedFilesHandler from './LinkedFilesHandler.mjs'
+import LinkedFilesErrors from './LinkedFilesErrors.mjs'
 import {
+  OutputFileFetchFailedError,
+  FileTooLargeError,
+} from '../Errors/Errors.js'
+import Modules from '../../infrastructure/Modules.mjs'
+import { plainTextResponse } from '../../infrastructure/Response.mjs'
+import { z, zz, parseReq } from '../../infrastructure/Validation.mjs'
+import EditorRealTimeController from '../Editor/EditorRealTimeController.mjs'
+import { expressify } from '@overleaf/promise-utils'
+import ProjectOutputFileAgent from './ProjectOutputFileAgent.mjs'
+import ProjectFileAgent from './ProjectFileAgent.mjs'
+import UrlAgent from './UrlAgent.mjs'
+
+const {
   CompileFailedError,
   UrlFetchFailedError,
   InvalidUrlError,
@@ -29,26 +43,26 @@ import {
   FeatureNotAvailableError,
   RemoteServiceError,
   FileCannotRefreshError,
-} from './LinkedFilesErrors.js'
-import {
-  OutputFileFetchFailedError,
-  FileTooLargeError,
-  OError,
-} from '../Errors/Errors.js'
-import Modules from '../../infrastructure/Modules.js'
-import { plainTextResponse } from '../../infrastructure/Response.js'
-import ReferencesHandler from '../References/ReferencesHandler.mjs'
-import EditorRealTimeController from '../Editor/EditorRealTimeController.js'
-import { expressify } from '@overleaf/promise-utils'
-import ProjectOutputFileAgent from './ProjectOutputFileAgent.mjs'
-import ProjectFileAgent from './ProjectFileAgent.js'
-import UrlAgent from './UrlAgent.mjs'
+} = LinkedFilesErrors
 
 let LinkedFilesController
 
+const createLinkedFileSchema = z.object({
+  params: z.object({
+    project_id: zz.objectId(),
+  }),
+  body: z.object({
+    name: z.string(),
+    provider: z.string(),
+    data: z.object({}).passthrough(),
+    parent_folder_id: zz.objectId(),
+  }),
+})
+
 async function createLinkedFile(req, res, next) {
-  const { project_id: projectId } = req.params
-  const { name, provider, data, parent_folder_id: parentFolderId } = req.body
+  const { params, body } = parseReq(req, createLinkedFileSchema)
+  const { project_id: projectId } = params
+  const { name, provider, data, parent_folder_id: parentFolderId } = body
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   const Agent = await LinkedFilesController._getAgent(provider)
@@ -84,6 +98,7 @@ async function createLinkedFile(req, res, next) {
 
 async function refreshLinkedFile(req, res, next) {
   const { project_id: projectId, file_id: fileId } = req.params
+  const { clientId } = req.body
   const userId = SessionManager.getLoggedInUserId(req.session)
 
   const { file, parentFolder } = await LinkedFilesHandler.promises.getFileById(
@@ -125,25 +140,16 @@ async function refreshLinkedFile(req, res, next) {
   }
 
   if (req.body.shouldReindexReferences) {
-    let data
-    try {
-      data = await ReferencesHandler.promises.indexAll(projectId)
-    } catch (error) {
-      OError.tag(error, 'failed to index references', {
-        projectId,
-      })
-      return next(error)
-    }
+    // Signal to clients that they should re-index references
     EditorRealTimeController.emitToRoom(
       projectId,
       'references:keys:updated',
-      data.keys,
-      true
+      [],
+      true,
+      clientId
     )
-    res.json({ new_file_id: newFileId })
-  } else {
-    res.json({ new_file_id: newFileId })
   }
+  res.json({ new_file_id: newFileId })
 }
 
 export default LinkedFilesController = {

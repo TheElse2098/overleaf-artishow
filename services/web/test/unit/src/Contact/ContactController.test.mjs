@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest'
 import sinon from 'sinon'
-import MockResponse from '../helpers/MockResponse.js'
+import MockResponse from '../helpers/MockResponse.mjs'
 const modulePath = '../../../../app/src/Features/Contacts/ContactController.mjs'
 
 describe('ContactController', function () {
@@ -33,7 +33,7 @@ describe('ContactController', function () {
     ctx.ContactController = (await import(modulePath)).default
 
     ctx.req = {}
-    ctx.res = new MockResponse()
+    ctx.res = new MockResponse(vi)
   })
 
   describe('getContacts', function () {
@@ -83,7 +83,7 @@ describe('ContactController', function () {
       ctx.res.callback = () => {
         expect(
           ctx.ContactManager.promises.getContactIds
-        ).to.have.been.calledWith(ctx.user_id, { limit: 50 })
+        ).to.have.been.calledWith(ctx.user_id, 50)
       }
       ctx.ContactController.getContacts(ctx.req, ctx.res)
     })
@@ -130,7 +130,7 @@ describe('ContactController', function () {
     it('should return a formatted list of contacts in contact list order, without holding accounts', async function (ctx) {
       await new Promise((resolve, reject) => {
         ctx.res.callback = () => {
-          ctx.res.json.args[0][0].contacts.should.deep.equal([
+          ctx.res.json.mock.calls[0][0].contacts.should.deep.equal([
             {
               id: 'contact-1',
               email: 'joe@example.com',

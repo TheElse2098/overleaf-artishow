@@ -9,13 +9,17 @@ import getMeta from '../../../../utils/meta'
 import { InsertFigureDropdown } from './insert-figure-dropdown'
 import { useTranslation } from 'react-i18next'
 import { MathDropdown } from './math-dropdown'
+import { InsertListDropdown } from './insert-list-dropdown'
 import { TableDropdown } from './table-dropdown'
 import { LegacyTableDropdown } from './table-inserter-dropdown-legacy'
 import { withinFormattingCommand } from '@/features/source-editor/utils/tree-operations/formatting'
-import { isSplitTestEnabled } from '@/utils/splitTestUtils'
 import { isMac } from '@/shared/utils/os'
 import { useProjectContext } from '@/shared/context/project-context'
 import { useEditorPropertiesContext } from '@/features/ide-react/context/editor-properties-context'
+import { usePermissionsContext } from '@/features/ide-react/context/permissions-context'
+import { isCursorOnEmptyLine } from '@/features/source-editor/utils/is-cursor-on-empty-line'
+
+const addCommentFromToolbar = () => commands.addComment('toolbar')
 
 export const ToolbarItems: FC<{
   state: EditorState
@@ -35,12 +39,11 @@ export const ToolbarItems: FC<{
     useEditorPropertiesContext()
   const { writefullInstance } = useEditorContext()
   const { features } = useProjectContext()
+  const permissions = usePermissionsContext()
   const isActive = withinFormattingCommand(state)
 
   const symbolPaletteAvailable = getMeta('ol-symbolPaletteAvailable')
   const showGroup = (group: string) => !overflowed || overflowed.has(group)
-
-  const wfRebrandEnabled = isSplitTestEnabled('overleaf-assist-bundle')
 
   return (
     <>
@@ -83,7 +86,7 @@ export const ToolbarItems: FC<{
             >
               <ToolbarButton
                 id="toolbar-format-bold"
-                label={t('toolbar_format_bold')}
+                label={t('toolbar_bold')}
                 command={commands.toggleBold}
                 active={isActive('\\textbf')}
                 icon="format_bold"
@@ -91,7 +94,7 @@ export const ToolbarItems: FC<{
               />
               <ToolbarButton
                 id="toolbar-format-italic"
-                label={t('toolbar_format_italic')}
+                label={t('toolbar_italic')}
                 command={commands.toggleItalic}
                 active={isActive('\\textit')}
                 icon="format_italic"
@@ -109,7 +112,7 @@ export const ToolbarItems: FC<{
               {symbolPaletteAvailable && (
                 <ToolbarButton
                   id="toolbar-toggle-symbol-palette"
-                  label={t('toolbar_toggle_symbol_palette')}
+                  label={t('toolbar_insert_symbol')}
                   active={showSymbolPalette}
                   command={toggleSymbolPalette}
                   icon="Ω"
@@ -131,12 +134,12 @@ export const ToolbarItems: FC<{
                 command={commands.wrapInHref}
                 icon="add_link"
               />
-              {features.trackChangesVisible && (
+              {features.trackChangesVisible && permissions.comment && (
                 <ToolbarButton
                   id="toolbar-add-comment"
                   label={t('add_comment')}
-                  disabled={state.selection.main.empty}
-                  command={commands.addComment}
+                  disabled={isCursorOnEmptyLine(state)}
+                  command={addCommentFromToolbar}
                   icon="add_comment"
                 />
               )}
@@ -153,11 +156,7 @@ export const ToolbarItems: FC<{
                 icon="book_5"
               />
               <InsertFigureDropdown />
-              {wfRebrandEnabled && writefullInstance ? (
-                <TableDropdown />
-              ) : (
-                <LegacyTableDropdown />
-              )}
+              {writefullInstance ? <TableDropdown /> : <LegacyTableDropdown />}
             </div>
           )}
           {showGroup('group-list') && (
@@ -166,34 +165,26 @@ export const ToolbarItems: FC<{
               data-overflow="group-list"
               aria-label={t('toolbar_list_indentation')}
             >
-              <ToolbarButton
-                id="toolbar-bullet-list"
-                label={t('toolbar_bullet_list')}
-                command={commands.toggleBulletList}
-                icon="format_list_bulleted"
-              />
-              <ToolbarButton
-                id="toolbar-numbered-list"
-                label={t('toolbar_numbered_list')}
-                command={commands.toggleNumberedList}
-                icon="format_list_numbered"
-              />
-              <ToolbarButton
-                id="toolbar-format-indent-decrease"
-                label={t('toolbar_decrease_indent')}
-                command={commands.indentDecrease}
-                icon="format_indent_decrease"
-                shortcut={visual ? (isMac ? '⌘[' : 'Ctrl+[') : undefined}
-                disabled={listDepth < 2}
-              />
-              <ToolbarButton
-                id="toolbar-format-indent-increase"
-                label={t('toolbar_increase_indent')}
-                command={commands.indentIncrease}
-                icon="format_indent_increase"
-                shortcut={visual ? (isMac ? '⌘]' : 'Ctrl+]') : undefined}
-                disabled={listDepth < 1}
-              />
+              <InsertListDropdown />
+              {listDepth >= 1 && (
+                <>
+                  <ToolbarButton
+                    id="toolbar-format-indent-decrease"
+                    label={t('toolbar_decrease_indent')}
+                    command={commands.indentDecrease}
+                    icon="format_indent_decrease"
+                    shortcut={visual ? (isMac ? '⌘[' : 'Ctrl+[') : undefined}
+                    disabled={listDepth < 2}
+                  />
+                  <ToolbarButton
+                    id="toolbar-format-indent-increase"
+                    label={t('toolbar_increase_indent')}
+                    command={commands.indentIncrease}
+                    icon="format_indent_increase"
+                    shortcut={visual ? (isMac ? '⌘]' : 'Ctrl+]') : undefined}
+                  />
+                </>
+              )}
             </div>
           )}
         </>

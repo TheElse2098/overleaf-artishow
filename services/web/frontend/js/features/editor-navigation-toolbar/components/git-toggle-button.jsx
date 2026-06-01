@@ -2,6 +2,7 @@ import PropTypes from 'prop-types'
 import classNames from 'classnames'
 import { useTranslation } from 'react-i18next'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useProjectContext } from '@/shared/context/project-context'
 import { useUserContext } from '../../../shared/context/user-context'
 import MaterialIcon from '../../../shared/components/material-icon'
@@ -93,18 +94,6 @@ function Modal({
               Branches
             </button>
             <button
-              onClick={() => setActiveTab('documentation')}
-              style={{
-                padding: '10px 20px',
-                border: 'none',
-                backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
-                color: activeTab === 'documentation' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Documentation
-            </button>
-            <button
               onClick={() => setActiveTab('token')}
               style={{
                 padding: '10px 20px',
@@ -115,6 +104,18 @@ function Modal({
               }}
             >
               Token
+            </button>
+            <button
+              onClick={() => setActiveTab('documentation')}
+              style={{
+                padding: '10px 20px',
+                border: 'none',
+                backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
+                color: activeTab === 'documentation' ? 'white' : 'black',
+                cursor: 'pointer'
+              }}
+            >
+              Documentation
             </button>
           </div>
 
@@ -164,6 +165,10 @@ function Modal({
 
               <h4>a. <code>git add</code> – Ajouter les fichiers</h4>
               <ul>
+                <h5>Première option</h5>
+                <li>Compiler le projet</li>
+                <li>Ouvrez le menu git et ajoutez vos fichiers aux fichiers staged</li>
+                <h5>Deuxième option</h5>
                 <li>Regardez la colonne de gauche où se trouvent vos fichiers</li>
                 <li>Cliquez sur les <strong>trois points</strong> à droite du nom du fichier choisi</li>
                 <li>Sélectionnez <strong>"Add"</strong></li>
@@ -180,7 +185,6 @@ function Modal({
               <h4>c. <code>git pull</code> – Récupérer les changements du dépôt distant</h4>
               <ul>
                 <li>Cliquez sur le bouton <strong>"Pull"</strong> en haut à gauche (icône en forme de flèche circulaire)</li>
-                <li> ⚠️  Il semble y avoir un bug qui ajoute les fichiers générés par la compil quand on clique sur pull, donc il faut faire un Rollback au commit pullé après un pull (cf section suivante) - Attention à la perte de donnée non encore committée le cas échéant. Cet ajout fait échouer la compilation donc il faut cliquer sur <strong>"Clear cached files"</strong> sur la page (en rouge) après le rollback.</li>
               </ul>
 
               <h4>d. <code>git rollback</code> – Revenir à un ancien commit</h4>
@@ -273,18 +277,21 @@ function GitToggleButton() {
         <MaterialIcon type="comment" fw className={''} />
         <p className="toolbar-label">{'Git menu'}</p>
       </button>
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        notStagedFiles={notStagedFiles}
-        stagedFiles={stagedFiles}
-        commitHistory={commitHistory}
-        branches={branches}
-        selectedBranch={selectedBranch}
-        projectId={projectId}
-        userId={userId}
-        onRefresh={loadGitData}
-      />
+      {createPortal(
+        <Modal
+          isOpen={isModalOpen}
+          onClose={handleCloseModal}
+          notStagedFiles={notStagedFiles}
+          stagedFiles={stagedFiles}
+          commitHistory={commitHistory}
+          branches={branches}
+          selectedBranch={selectedBranch}
+          projectId={projectId}
+          userId={userId}
+          onRefresh={loadGitData}
+        />,
+        document.body
+      )}
     </div>
   )
 }

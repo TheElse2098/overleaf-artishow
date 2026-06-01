@@ -1,9 +1,9 @@
-import EditorHttpController from './EditorHttpController.js'
-import AuthenticationController from '../Authentication/AuthenticationController.js'
-import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.js'
-import { RateLimiter } from '../../infrastructure/RateLimiter.js'
-import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.js'
-import { validate, Joi } from '../../infrastructure/Validation.js'
+import EditorHttpController from './EditorHttpController.mjs'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import AuthorizationMiddleware from '../Authorization/AuthorizationMiddleware.mjs'
+import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
+import RateLimiterMiddleware from '../Security/RateLimiterMiddleware.mjs'
+import AsyncLocalStorage from '../../infrastructure/AsyncLocalStorage.mjs'
 
 const rateLimiters = {
   addDocToProject: new RateLimiter('add-doc-to-project', {
@@ -21,6 +21,7 @@ export default {
   apply(webRouter, privateApiRouter) {
     webRouter.post(
       '/project/:Project_id/doc',
+      AsyncLocalStorage.middleware,
       AuthorizationMiddleware.ensureUserCanWriteProjectContent,
       RateLimiterMiddleware.rateLimit(rateLimiters.addDocToProject, {
         params: ['Project_id'],
@@ -38,6 +39,7 @@ export default {
 
     webRouter.post(
       '/project/:Project_id/:entity_type/:entity_id/rename',
+      AsyncLocalStorage.middleware,
       AuthorizationMiddleware.ensureUserCanWriteProjectContent,
       EditorHttpController.renameEntity
     )
@@ -49,6 +51,7 @@ export default {
 
     webRouter.delete(
       '/project/:Project_id/file/:entity_id',
+      AsyncLocalStorage.middleware,
       AuthorizationMiddleware.ensureUserCanWriteProjectContent,
       EditorHttpController.deleteFile
     )
@@ -73,12 +76,6 @@ export default {
         params: ['Project_id'],
         // keep schema in sync with controller
         getUserId: req => req.body.userId,
-      }),
-      validate({
-        body: Joi.object({
-          userId: Joi.string().required(),
-          anonymousAccessToken: Joi.string().optional(),
-        }),
       }),
       EditorHttpController.joinProject
     )

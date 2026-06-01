@@ -44,18 +44,25 @@ function filterByType(type: 'file' | 'doc' | 'folder') {
 }
 
 export const filterFiles = filterByType('file')
-export const filterDocs = filterByType('doc')
 export const filterFolders = filterByType('folder')
 
-const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'pdf']
+const IMAGE_FILE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'pdf', 'eps', 'svg']
 
-export const hasImageExtension = (filename: string) => {
+export const getFileExtension = (filename: string): string | null => {
   const parts = filename.split('.')
   if (parts.length < 2) {
-    return false
+    return null
   }
-  const extension = parts[parts.length - 1].toLowerCase()
-  return IMAGE_FILE_EXTENSIONS.includes(extension)
+  return parts[parts.length - 1].toLowerCase()
+}
+
+export const hasImageExtension = (filename: string) => {
+  const extension = getFileExtension(filename)
+  return extension !== null && IMAGE_FILE_EXTENSIONS.includes(extension)
+}
+
+export const isSvgFile = (filename: string): boolean => {
+  return getFileExtension(filename) === 'svg'
 }
 
 export function isImageFile(file: File) {

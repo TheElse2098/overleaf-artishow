@@ -1,17 +1,24 @@
 import { useTranslation } from 'react-i18next'
 import { useEditorContext } from '@/shared/context/editor-context'
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { FullSizeLoadingSpinner } from '@/shared/components/loading-spinner'
 import ClickableElementEnhancer from '@/shared/components/clickable-element-enhancer'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import { Spinner } from 'react-bootstrap'
+} from '@/shared/components/ol/ol-modal'
+import OLNotification from '@/shared/components/ol/ol-notification'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLSpinner from '@/shared/components/ol/ol-spinner'
+import MaterialIcon from '@/shared/components/material-icon'
+import ErrorMessage from '@/features/share-project-modal/components/error-message'
+import GiveFeedbackLink from '@/features/share-project-modal/components/give-feedback-link'
+import classNames from 'classnames'
+import { useFeatureFlag } from '@/shared/context/split-test-context'
+import { useShareProjectContext } from '@/features/share-project-modal/components/share-project-modal'
 
 const ReadOnlyTokenLink = lazy(() =>
   import('./link-sharing').then(({ ReadOnlyTokenLink }) => ({
@@ -28,6 +35,7 @@ type ShareProjectModalContentProps = {
   animation: boolean
   inFlight: boolean
   error: string | undefined
+  projectName?: string
 }
 
 export default function ShareProjectModalContent({
@@ -36,27 +44,59 @@ export default function ShareProjectModalContent({
   animation,
   inFlight,
   error,
+  projectName,
 }: ShareProjectModalContentProps) {
   const { t } = useTranslation()
-
-  const { isRestrictedTokenMember } = useEditorContext()
+  const isSharingUpdatesEnabled = useFeatureFlag('sharing-updates')
+  const [isInvitedPeopleScreen, setIsInvitedPeopleScreen] = useState(false)
+  const { successActionMessage } = useShareProjectContext()
+  const { isRestrictedTokenMember, isProjectOwner } = useEditorContext()
 
   return (
     <OLModal show={show} onHide={cancel} animation={animation}>
-      <OLModalHeader closeButton>
-        <OLModalTitle>{t('share_project')}</OLModalTitle>
+      <OLModalHeader>
+        <div className="d-flex flex-grow-1 justify-content-between">
+          {isSharingUpdatesEnabled && isInvitedPeopleScreen ? (
+            <OLButton
+              variant="ghost"
+              onClick={() => setIsInvitedPeopleScreen(false)}
+              leadingIcon="arrow_back_ios_new"
+            >
+              {t('back')}
+            </OLButton>
+          ) : (
+            <OLModalTitle>
+              {isSharingUpdatesEnabled && projectName
+                ? t('share_project_name', { projectName })
+                : t('share_project')}
+            </OLModalTitle>
+          )}
+          {isSharingUpdatesEnabled && isProjectOwner && <GiveFeedbackLink />}
+        </div>
       </OLModalHeader>
 
-      <OLModalBody className="modal-body-share modal-link-share">
-        <div className="container-fluid">
+      <OLModalBody
+        className={classNames('modal-body-share modal-link-share', {
+          'modal-redesign': isSharingUpdatesEnabled,
+        })}
+      >
+        <div
+          className={classNames({
+            'container-fluid': !isSharingUpdatesEnabled,
+          })}
+        >
           <Suspense fallback={<FullSizeLoadingSpinner minHeight="15rem" />}>
             {isRestrictedTokenMember ? (
               <ReadOnlyTokenLink />
             ) : (
-              <ShareModalBody />
+              <ShareModalBody
+                isInvitedPeopleScreen={isInvitedPeopleScreen}
+                setIsInvitedPeopleScreen={setIsInvitedPeopleScreen}
+                error={error}
+              />
             )}
           </Suspense>
-          {error && (
+          {!isSharingUpdatesEnabled && error && (
             <OLNotification
               type="error"
               content={<ErrorMessage error={error} />}
@@ -67,21 +107,36 @@ export default function ShareProjectModalContent({
       </OLModalBody>
 
       <OLModalFooter>
-        <div className="me-auto">
-          {inFlight && (
-            <Spinner
-              animation="border"
-              aria-hidden="true"
-              size="sm"
-              role="status"
-            />
+        <div className="d-flex flex-grow-1 flex-wrap gap-2">
+          {isSharingUpdatesEnabled ? (
+            <>
+              {successActionMessage && (
+                <div className="ms-auto px-3 align-self-center">
+                  <div
+                    className="d-flex gap-3 align-items-center"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <MaterialIcon
+                      unfilled
+                      type="check_circle"
+                      className="text-success"
+                    />
+                    <span>{successActionMessage}</span>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            inFlight && <OLSpinner size="sm" />
           )}
         </div>
 
         <ClickableElementEnhancer
           onClick={cancel}
           as={OLButton}
-          variant="secondary"
+          variant={isSharingUpdatesEnabled ? 'ghost' : 'secondary'}
+          isLoading={isSharingUpdatesEnabled && inFlight}
           disabled={inFlight}
         >
           {t('close')}
@@ -89,33 +144,4 @@ export default function ShareProjectModalContent({
       </OLModalFooter>
     </OLModal>
   )
-}
-
-function ErrorMessage({ error }: Pick<ShareProjectModalContentProps, 'error'>) {
-  const { t } = useTranslation()
-  switch (error) {
-    case 'cannot_invite_non_user':
-      return <>{t('cannot_invite_non_user')}</>
-
-    case 'cannot_verify_user_not_robot':
-      return <>{t('cannot_verify_user_not_robot')}</>
-
-    case 'cannot_invite_self':
-      return <>{t('cannot_invite_self')}</>
-
-    case 'invalid_email':
-      return <>{t('invalid_email')}</>
-
-    case 'too_many_requests':
-      return <>{t('too_many_requests')}</>
-
-    case 'invite_expired':
-      return <>{t('invite_expired')}</>
-
-    case 'invite_resend_limit_hit':
-      return <>{t('invite_resend_limit_hit')}</>
-
-    default:
-      return <>{t('generic_something_went_wrong')}</>
-  }
 }

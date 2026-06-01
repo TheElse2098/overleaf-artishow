@@ -4,14 +4,15 @@ import { SubscriptionDashModalIds } from '../../../../../../../../../../types/su
 import { postJSON } from '../../../../../../../../infrastructure/fetch-json'
 import { useSubscriptionDashboardContext } from '../../../../../../context/subscription-dashboard-context'
 import { useLocation } from '../../../../../../../../shared/hooks/use-location'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
+import OLNotification from '@/shared/components/ol/ol-notification'
 import {
   AI_ADD_ON_CODE,
   ADD_ON_NAME,

@@ -13,7 +13,7 @@ import {
   makeProjectKey,
 } from '../../../../storage/lib/blob_store/index.js'
 import { NotFoundError } from '@overleaf/object-persistor/src/Errors.js'
-import projectKey from '../../../../storage/lib/project_key.js'
+import projectKey from '@overleaf/object-persistor/src/ProjectKey.js'
 import { getBackupStatus } from '../../../../storage/lib/backup_store/index.js'
 import { text, buffer } from 'node:stream/consumers'
 import { createGunzip } from 'node:zlib'
@@ -35,6 +35,7 @@ import {
   chunksBucket,
 } from '../../../../storage/lib/backupPersistor.mjs'
 import { Readable } from 'node:stream'
+import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 
 const projectsCollection = client.db().collection('projects')
 
@@ -583,11 +584,13 @@ describe('backup script', function () {
       // Get all chunks and verify they were backed up
       const listing = await backupPersistor
         ._getClientForBucket(chunksBucket)
-        .listObjectsV2({
-          Bucket: chunksBucket,
-          Prefix: projectKey.format(historyId) + '/',
-        })
-        .promise()
+        .send(
+          new ListObjectsV2Command({
+            Bucket: chunksBucket,
+            Prefix: projectKey.format(historyId) + '/',
+          })
+        )
+
       const chunkKeys = listing.Contents.map(item => item.Key)
       expect(chunkKeys.length).to.equal(6) // Should have multiple chunks
 

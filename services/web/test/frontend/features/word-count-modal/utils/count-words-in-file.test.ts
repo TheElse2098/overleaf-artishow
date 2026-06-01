@@ -4,8 +4,10 @@ import { countWordsInFile } from '@/features/word-count-modal/utils/count-words-
 import { WordCountData } from '@/features/word-count-modal/components/word-count-data'
 import { createSegmenters } from '@/features/word-count-modal/utils/segmenters'
 import { expect } from 'chai'
+import { ProjectSnapshot } from '@/infrastructure/project-snapshot'
+import { Snapshot } from 'overleaf-editor-core'
 
-describe('word count', function () {
+describe('word-count', function () {
   beforeEach(async function () {
     this.data = {
       encode: '',
@@ -30,18 +32,37 @@ describe('word count', function () {
       otherCharacters: 0,
     } satisfies WordCountData
 
-    const content = {
-      'word-count.tex': await readFile(
-        path.join(__dirname, 'word-count.tex'),
-        'utf-8'
-      ),
-    }
-
-    this.projectSnapshot = {
-      getDocContents(path: keyof typeof content) {
-        return content[path]
+    const files = {
+      'word-count.tex': {
+        content: await readFile(
+          path.join(__dirname, 'word-count.tex'),
+          'utf-8'
+        ),
+      },
+      'word-count-with-ignored-sections.tex': {
+        content: await readFile(
+          path.join(__dirname, 'word-count-with-ignored-sections.tex'),
+          'utf-8'
+        ),
+      },
+      'extra-words.tex': {
+        content: await readFile(
+          path.join(__dirname, 'extra-words.tex'),
+          'utf-8'
+        ),
+      },
+      'subfolder/extra-words.tex': {
+        content: await readFile(
+          path.join(__dirname, 'extra-words.tex'),
+          'utf-8'
+        ),
       },
     }
+
+    const projectSnapshot = new ProjectSnapshot('test')
+    // @ts-expect-error ignoring that "snapshot" is private
+    projectSnapshot.snapshot = Snapshot.fromRaw({ files })
+    this.projectSnapshot = projectSnapshot
 
     this.segmenters = createSegmenters('en_US')
   })
@@ -51,6 +72,7 @@ describe('word count', function () {
       this.data,
       this.projectSnapshot,
       'word-count.tex',
+      '/',
       this.segmenters
     )
 
@@ -61,12 +83,37 @@ describe('word count', function () {
       captionWords: 4,
       footnoteCharacters: 8,
       footnoteWords: 2,
-      headCharacters: 296,
-      headWords: 52,
+      headCharacters: 305,
+      headWords: 53,
       otherCharacters: 10,
       otherWords: 2,
-      textCharacters: 193,
-      textWords: 42,
+      textCharacters: 249,
+      textWords: 56,
+    })
+  })
+
+  it('skips ignored sections', function () {
+    countWordsInFile(
+      this.data,
+      this.projectSnapshot,
+      'word-count-with-ignored-sections.tex',
+      '/',
+      this.segmenters
+    )
+
+    expect(this.data).to.deep.include({
+      abstractCharacters: 0,
+      abstractWords: 0,
+      captionCharacters: 0,
+      captionWords: 0,
+      footnoteCharacters: 0,
+      footnoteWords: 0,
+      headCharacters: 0,
+      headWords: 0,
+      otherCharacters: 0,
+      otherWords: 0,
+      textCharacters: 10,
+      textWords: 3,
     })
   })
 })
