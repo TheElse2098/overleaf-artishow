@@ -314,6 +314,7 @@ const _ProjectController = {
   },
 
   async newProject(req, res) {
+    res.setTimeout(5 * 60 * 1000)
     const currentUser = SessionManager.getSessionUser(req.session)
     const {
       first_name: firstName,
@@ -323,13 +324,17 @@ const _ProjectController = {
     } = currentUser
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
-    const { template } = req.body
+    const { template, templateId } = req.body
 
     const project = await (
-        (template === 'example') ? ProjectCreationHandler.promises.createExampleProject(userId, projectName) : (
-        (template === 'git') ? ProjectCreationHandler.promises.createGitProject(userId, projectName, req.body.branch || null, req.body.token || null, req.body.tokenType || null) :
-        ProjectCreationHandler.promises.createBasicProject(userId, projectName)
-    ))
+      (template === 'example' && templateId)
+        ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
+        : (template === 'example')
+          ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
+          : (template === 'git')
+            ? ProjectCreationHandler.promises.createGitProject(userId, projectName)
+            : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
+    )
 
     ProjectAuditLogHandler.addEntryIfManagedInBackground(
       project._id,

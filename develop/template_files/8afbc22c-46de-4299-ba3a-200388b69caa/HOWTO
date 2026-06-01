@@ -1,0 +1,12 @@
+How to use this template
+
+1) Put the logos in the current directory or (suggested option) set an environment variable TEXINPUTS (capital letters) equal to the path of the directory where the logos are stored. This is useful for all the images that have to be shared among several LaTeX documents.
+
+2) Write or import your own slides (beamer) 
+
+3) Compile main.tex with LaTeX -> dvips -> ps2pdf (*)
+(*) it is up to you to run as many LaTeX compilations as needed, as well as for BibTeX if needed
+
+4) You are done!
+
+
