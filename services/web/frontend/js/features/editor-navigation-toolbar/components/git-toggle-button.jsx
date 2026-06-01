@@ -273,7 +273,7 @@ function GitToggleButton() {
 
   return (
     <div className="toolbar-item">
-      <button className={classes} onClick={handleButtonClick}>
+      <button className={classes} onClick={handleButtonClick} style={{ color: 'var(--toolbar-btn-color)' }}>
         <MaterialIcon type="comment" fw className={''} />
         <p className="toolbar-label">{'Git menu'}</p>
       </button>

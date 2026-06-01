@@ -1,7 +1,8 @@
 // import-from-template-modal.tsx
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,

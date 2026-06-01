@@ -12,9 +12,9 @@ type Props = {
 type Notif = { type: string; message: string }
 
 const CONFIRM_MSG =
-  'Le pull va integrer les modifications du depot git distant. ' +
-  'Vos commits locaux seront conserves via un merge. ' +
-  'Les modifications non commitees seront sauvegardees (stash) et restaurees apres le pull.'
+  'Le pull va intégrer les modifications du dépôt git distant. ' +
+  'Vos commits locaux seront conservés via un merge. ' +
+  'Les modifications non commitées seront sauvegardées (stash) et restaurées apres le pull.'
 
 export default function GitPullButton({ projectId, userId }: Props) {
   const [showConfirm, setShowConfirm] = useState(false)
@@ -94,7 +94,7 @@ export default function GitPullButton({ projectId, userId }: Props) {
         onClick={handleClick}
         disabled={isLoading}
         title="Pull"
-        style={{ opacity: isLoading ? 0.6 : 1 }}
+        style={{ opacity: isLoading ? 0.6 : 1, color: 'var(--file-tree-expand-button-color)' }}
       >
         <MaterialIcon type="repeat" fw accessibilityLabel="pull" />
       </button>
