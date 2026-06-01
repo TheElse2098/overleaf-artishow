@@ -369,7 +369,7 @@ async function getNotStaged(projectId, userId) {
   const compilesDir = outputPath + projectId + "-" + userId
 
   try {
-    const status = await localGit.status()
+    const status = await localGit.status(['-uall'])
     const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.index === ' ').map(f => f.path)
     const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
     const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
@@ -1353,8 +1353,13 @@ GitController = {
     if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
     move(projectId, userId)
     try {
-      const status = await git.status()
-      const newFiles = status.not_added
+      try {
+        await compileProject(projectId, userId)
+        console.log("Compilation réussie avant addAll")
+      } catch (compileError) {
+        console.log("Compilation échouée avant addAll, on utilise le dernier état compilé:", compileError.message)
+      }
+      const newFiles = await getNotStaged(projectId, userId)
       await gitUpdate(projectId, userId, newFiles)
       await git.add('.')
       res.sendStatus(200)
