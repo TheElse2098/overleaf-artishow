@@ -4,8 +4,8 @@ import TemplatesManager from './TemplatesManager.mjs'
 import ProjectHelper from '../Project/ProjectHelper.mjs'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
-import { Project } from '../../models/Project.js'
-import { User } from '../../models/User.js'
+import { Project } from '../../models/Project.mjs'
+import { User } from '../../models/User.mjs'
 
 
 const TemplatesController = {
