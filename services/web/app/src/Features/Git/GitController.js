@@ -8,6 +8,7 @@ const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController.mjs').default
 const HistoryManager = require('../History/HistoryManager.mjs').default
+const ProjectEntityHandler = require('../Project/ProjectEntityHandler.mjs').default
 const CompileManager = require('../Compile/CompileManager.mjs').default
 const ClsiCookieManager = require('../Compile/ClsiCookieManager.mjs').default
 const Errors = require('../Errors/Errors')
@@ -864,7 +865,19 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
     }
   }
 
-  // Copier les fichiers depuis compiles/ vers git/
+  // Construire l'index path→hash des fichiers binaires du projet (pour le fallback blob store)
+  let projectFilesIndex = {}
+  try {
+    const allFiles = await ProjectEntityHandler.promises.getAllFiles(projectId)
+    for (const [filePath, fileObj] of Object.entries(allFiles)) {
+      const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+      if (fileObj.hash) projectFilesIndex[normalized] = fileObj.hash
+    }
+  } catch (err) {
+    console.log('Could not build project files index:', err.message)
+  }
+
+  // Copier les fichiers depuis compiles/ vers git/, avec fallback blob store
   for (const file of filesToCopy) {
     const srcFile = path.join(src, file);
     const destFile = path.join(dest, file);
@@ -878,7 +891,26 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
         console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
       }
     } else {
-      console.log(`File not found in compiles, skipping: ${file}`)
+      // Fallback : télécharger depuis le blob store (images non utilisées dans le .tex)
+      const hash = projectFilesIndex[file]
+      if (hash) {
+        try {
+          const { stream } = await HistoryManager.promises.requestBlobWithProjectId(projectId, hash, 'GET')
+          await fs.ensureDir(path.dirname(destFile))
+          await new Promise((resolve, reject) => {
+            const writeStream = fs.createWriteStream(destFile)
+            stream.pipe(writeStream)
+            writeStream.on('finish', resolve)
+            writeStream.on('error', reject)
+            stream.on('error', reject)
+          })
+          console.log(`Downloaded from blob store: ${file}`)
+        } catch (err) {
+          console.error(`Could not download ${file} from blob store:`, err.message)
+        }
+      } else {
+        console.log(`File not found in compiles or blob store, skipping: ${file}`)
+      }
     }
   }
 
