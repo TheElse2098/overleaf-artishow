@@ -297,7 +297,7 @@ async function assertRemoteNotAlreadyLinked(remoteUrl, excludeProjectId = null) 
   if (!remoteUrl) return
   const norm = normalizeRemoteUrl(remoteUrl)
   const projects = await Project.find(
-    { 'git.remoteUrl': { $exists: true, $ne: null } },
+    { 'git.remoteUrl': { $exists: true, $ne: null }, deletedAt: { $exists: false } },
     { _id: 1, name: 1, 'git.remoteUrl': 1 }
   ).lean().exec()
   for (const p of projects) {
