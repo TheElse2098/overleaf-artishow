@@ -277,6 +277,37 @@ function formatConflictMessage(conflictedFiles) {
   return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
 }
 
+// Normalise une URL git (SSH ou HTTPS) pour la comparaison inter-projets
+function normalizeRemoteUrl(url) {
+  if (!url) return null
+  const s = url.trim()
+  const sshMatch = s.match(/^git@([^:]+):(.+?)(?:\.git)?$/)
+  if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`.toLowerCase()
+  try {
+    const u = new URL(s)
+    u.username = ''
+    u.password = ''
+    u.hash = ''
+    return (u.host + u.pathname.replace(/\.git$/, '')).toLowerCase()
+  } catch { return s.toLowerCase() }
+}
+
+// Lève une erreur si un autre projet est déjà lié au même repo
+async function assertRemoteNotAlreadyLinked(remoteUrl, excludeProjectId = null) {
+  if (!remoteUrl) return
+  const norm = normalizeRemoteUrl(remoteUrl)
+  const projects = await Project.find(
+    { 'git.remoteUrl': { $exists: true, $ne: null } },
+    { _id: 1, name: 1, 'git.remoteUrl': 1 }
+  ).lean().exec()
+  for (const p of projects) {
+    if (excludeProjectId && String(p._id) === String(excludeProjectId)) continue
+    if (normalizeRemoteUrl(p.git?.remoteUrl) === norm) {
+      throw new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+    }
+  }
+}
+
 async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType = null) {
   const fields = {
     'git.remoteUrl': remoteUrl || null,
@@ -571,6 +602,8 @@ async function disableBinaryConversion(repoPath) {
 }
 
 async function gitClone(projectId, ownerId, link, branch = null, token = null, tokenType = null){
+  await assertRemoteNotAlreadyLinked(link, projectId)
+
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
@@ -654,10 +687,12 @@ async function getGitInfo(projectId) {
 // Si le dossier n'existe pas encore, il est créé.
 // remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
 async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
+  await assertRemoteNotAlreadyLinked(remoteUrl, projectId)
+
   const repoPath = dataPath + projectId + "-" + ownerId
- 
+
   await fs.ensureDir(repoPath)
- 
+
   const alreadyRepo = await isGitRepo(projectId, ownerId)
   if (alreadyRepo) {
     console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
