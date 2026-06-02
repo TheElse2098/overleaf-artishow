@@ -324,7 +324,7 @@ const _ProjectController = {
     } = currentUser
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
-    const { template, templateId } = req.body
+    const { template, templateId, token, tokenType } = req.body
 
     const project = await (
       (template === 'example' && templateId)
@@ -332,7 +332,7 @@ const _ProjectController = {
         : (template === 'example')
           ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
           : (template === 'git')
-            ? ProjectCreationHandler.promises.createGitProject(userId, projectName)
+            ? ProjectCreationHandler.promises.createGitProject(userId, projectName, null, token || null, tokenType || null)
             : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
     )
 
