@@ -942,6 +942,15 @@ GitController = {
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
 
+
+    // Vérifier en amont si un repo git existe pour ce projet.
+    // Si non, on retourne un signal explicite au lieu de laisser getGitForProject crasher.
+    const repoExists = await isGitRepo(projectId, userId)
+    if (!repoExists) {
+      console.log(`Pas de repo git pour le projet ${projectId}, pull annulé.`)
+      return res.status(200).json({ notInitialized: true })
+    }
+
     console.log("Pulling")
     move(projectId, userId)
     const localGit = getGitForProject(projectId, userId)
