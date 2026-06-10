@@ -406,16 +406,31 @@ async function getNotStaged(projectId, userId) {
     const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
     const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
 
-    // Also find files that exist in compiles/ but not yet in the git working dir
-    // (e.g. images uploaded after the last gitUpdate)
+    // Fichiers suivis par git
+    let trackedSet = new Set()
+    try {
+      const result = await localGit.raw(['ls-files'])
+      trackedSet = new Set(result.split('\n').filter(f => f.trim()))
+    } catch (_) {}
+
+    // Fichiers dans compiles/ non encore dans le working tree git
     let overleafOnlyFiles = []
     if (await fs.pathExists(compilesDir)) {
-      let trackedSet = new Set()
-      try {
-        const result = await localGit.raw(['ls-files'])
-        trackedSet = new Set(result.split('\n').filter(f => f.trim()))
-      } catch (_) {}
       overleafOnlyFiles = await scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet)
+    }
+
+    // Tous les fichiers Overleaf (docs texte + binaires) non suivis par git
+    try {
+      const { docs, files } = await ProjectEntityHandler.promises.getAllEntities(projectId)
+      const alreadyListed = new Set([...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles])
+      for (const { path: filePath } of [...docs, ...files]) {
+        const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+        if (!trackedSet.has(normalized) && !alreadyListed.has(normalized) && !gitStatusSet.has(normalized)) {
+          overleafOnlyFiles.push(normalized)
+        }
+      }
+    } catch (err) {
+      console.log('Could not check Overleaf entities:', err.message)
     }
 
     const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
@@ -917,6 +932,18 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
     console.log('Could not build project files index:', err.message)
   }
 
+  // Construire l'index path→lignes des docs texte (pour le fallback docstore)
+  let projectDocsIndex = {}
+  try {
+    const allDocs = await ProjectEntityHandler.promises.getAllDocs(projectId)
+    for (const [filePath, docObj] of Object.entries(allDocs)) {
+      const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+      if (docObj.lines) projectDocsIndex[normalized] = docObj.lines
+    }
+  } catch (err) {
+    console.log('Could not build project docs index:', err.message)
+  }
+
   // Copier les fichiers depuis compiles/ vers git/, avec fallback blob store
   for (const file of filesToCopy) {
     const srcFile = path.join(src, file);
@@ -949,7 +976,19 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
           console.error(`Could not download ${file} from blob store:`, err.message)
         }
       } else {
-        console.log(`File not found in compiles or blob store, skipping: ${file}`)
+        // Fallback 2 : docstore (fichiers texte non compilés)
+        const lines = projectDocsIndex[file]
+        if (lines) {
+          try {
+            await fs.ensureDir(path.dirname(destFile))
+            await fs.writeFile(destFile, lines.join('\n'), 'utf8')
+            console.log(`Written from docstore: ${file}`)
+          } catch (err) {
+            console.error(`Could not write ${file} from docstore:`, err.message)
+          }
+        } else {
+          console.log(`File not found in compiles, blob store, or docstore, skipping: ${file}`)
+        }
       }
     }
   }
