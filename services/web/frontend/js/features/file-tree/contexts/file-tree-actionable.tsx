@@ -325,11 +325,11 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
         return syncDelete(projectId, found.type, found.entity._id)
           .then(() => {
             // Auto-stage deletion in git (fire-and-forget, errors are silenced)
-            if (filePath) {
-              postJSON('/git-add', {
-                body: { projectId, userId, filePath, deleted: true },
-              }).catch(() => {})
-            }
+            // if (filePath) {
+            //   postJSON('/git-add', {
+            //     body: { projectId, userId, filePath, deleted: true },
+            //   }).catch(() => {})
+            // }
           })
           .catch(error => {
             // throw unless 404

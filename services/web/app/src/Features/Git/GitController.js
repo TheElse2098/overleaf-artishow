@@ -8,6 +8,7 @@ const clsiCachePath = "/var/lib/overleaf/data/cache/"
 const simpleGit = require('simple-git')
 const EditorController = require('../Editor/EditorController.mjs').default
 const HistoryManager = require('../History/HistoryManager.mjs').default
+const ProjectEntityHandler = require('../Project/ProjectEntityHandler.mjs').default
 const CompileManager = require('../Compile/CompileManager.mjs').default
 const ClsiCookieManager = require('../Compile/ClsiCookieManager.mjs').default
 const Errors = require('../Errors/Errors')
@@ -276,6 +277,37 @@ function formatConflictMessage(conflictedFiles) {
   return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
 }
 
+// Normalise une URL git (SSH ou HTTPS) pour la comparaison inter-projets
+function normalizeRemoteUrl(url) {
+  if (!url) return null
+  const s = url.trim()
+  const sshMatch = s.match(/^git@([^:]+):(.+?)(?:\.git)?$/)
+  if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`.toLowerCase()
+  try {
+    const u = new URL(s)
+    u.username = ''
+    u.password = ''
+    u.hash = ''
+    return (u.host + u.pathname.replace(/\.git$/, '')).toLowerCase()
+  } catch { return s.toLowerCase() }
+}
+
+// Lève une erreur si un autre projet est déjà lié au même repo
+async function assertRemoteNotAlreadyLinked(remoteUrl, excludeProjectId = null) {
+  if (!remoteUrl) return
+  const norm = normalizeRemoteUrl(remoteUrl)
+  const projects = await Project.find(
+    { 'git.remoteUrl': { $exists: true, $ne: null }, deletedAt: { $exists: false } },
+    { _id: 1, name: 1, 'git.remoteUrl': 1 }
+  ).lean().exec()
+  for (const p of projects) {
+    if (excludeProjectId && String(p._id) === String(excludeProjectId)) continue
+    if (normalizeRemoteUrl(p.git?.remoteUrl) === norm) {
+      throw new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+    }
+  }
+}
+
 async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType = null) {
   const fields = {
     'git.remoteUrl': remoteUrl || null,
@@ -369,7 +401,7 @@ async function getNotStaged(projectId, userId) {
   const compilesDir = outputPath + projectId + "-" + userId
 
   try {
-    const status = await localGit.status()
+    const status = await localGit.status(['-uall'])
     const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.index === ' ').map(f => f.path)
     const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
     const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
@@ -570,6 +602,8 @@ async function disableBinaryConversion(repoPath) {
 }
 
 async function gitClone(projectId, ownerId, link, branch = null, token = null, tokenType = null){
+  await assertRemoteNotAlreadyLinked(link, projectId)
+
   const repoPath = dataPath + projectId + "-" + ownerId
 
   if (!fs.existsSync(repoPath)) {
@@ -653,10 +687,12 @@ async function getGitInfo(projectId) {
 // Si le dossier n'existe pas encore, il est créé.
 // remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
 async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
+  await assertRemoteNotAlreadyLinked(remoteUrl, projectId)
+
   const repoPath = dataPath + projectId + "-" + ownerId
- 
+
   await fs.ensureDir(repoPath)
- 
+
   const alreadyRepo = await isGitRepo(projectId, ownerId)
   if (alreadyRepo) {
     console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
@@ -864,7 +900,19 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
     }
   }
 
-  // Copier les fichiers depuis compiles/ vers git/
+  // Construire l'index path→hash des fichiers binaires du projet (pour le fallback blob store)
+  let projectFilesIndex = {}
+  try {
+    const allFiles = await ProjectEntityHandler.promises.getAllFiles(projectId)
+    for (const [filePath, fileObj] of Object.entries(allFiles)) {
+      const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+      if (fileObj.hash) projectFilesIndex[normalized] = fileObj.hash
+    }
+  } catch (err) {
+    console.log('Could not build project files index:', err.message)
+  }
+
+  // Copier les fichiers depuis compiles/ vers git/, avec fallback blob store
   for (const file of filesToCopy) {
     const srcFile = path.join(src, file);
     const destFile = path.join(dest, file);
@@ -878,7 +926,26 @@ async function gitUpdate(projectId, ownerId, extraFiles = []) {
         console.error(`Could not copy ${file} to git dir (permission issue?):`, err.message)
       }
     } else {
-      console.log(`File not found in compiles, skipping: ${file}`)
+      // Fallback : télécharger depuis le blob store (images non utilisées dans le .tex)
+      const hash = projectFilesIndex[file]
+      if (hash) {
+        try {
+          const { stream } = await HistoryManager.promises.requestBlobWithProjectId(projectId, hash, 'GET')
+          await fs.ensureDir(path.dirname(destFile))
+          await new Promise((resolve, reject) => {
+            const writeStream = fs.createWriteStream(destFile)
+            stream.pipe(writeStream)
+            writeStream.on('finish', resolve)
+            writeStream.on('error', reject)
+            stream.on('error', reject)
+          })
+          console.log(`Downloaded from blob store: ${file}`)
+        } catch (err) {
+          console.error(`Could not download ${file} from blob store:`, err.message)
+        }
+      } else {
+        console.log(`File not found in compiles or blob store, skipping: ${file}`)
+      }
     }
   }
 
@@ -1353,8 +1420,13 @@ GitController = {
     if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
     move(projectId, userId)
     try {
-      const status = await git.status()
-      const newFiles = status.not_added
+      try {
+        await compileProject(projectId, userId)
+        console.log("Compilation réussie avant addAll")
+      } catch (compileError) {
+        console.log("Compilation échouée avant addAll, on utilise le dernier état compilé:", compileError.message)
+      }
+      const newFiles = await getNotStaged(projectId, userId)
       await gitUpdate(projectId, userId, newFiles)
       await git.add('.')
       res.sendStatus(200)
