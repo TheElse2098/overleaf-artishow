@@ -121,6 +121,7 @@ export const ProjectSchema = new Schema(
         },
       },
       tokenType: { type: String },
+      pendingDeletions: { type: [String], default: undefined },
     },
   },
   { minimize: false }

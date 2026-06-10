@@ -337,6 +337,12 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     GitController.add
   )
 
+  webRouter.post(
+    '/git-mark-deleted',
+    AuthenticationController.requireLogin(),
+    GitController.markDeleted
+  )
+
   webRouter.get(
     '/git-staged',
     AuthenticationController.requireLogin(),

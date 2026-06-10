@@ -402,7 +402,6 @@ async function getNotStaged(projectId, userId) {
 
   try {
     const status = await localGit.status(['-uall'])
-    const deletedFiles = status.files.filter(f => f.working_dir === 'D' && f.index === ' ').map(f => f.path)
     const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.working_dir !== 'D' && f.index === ' ').map(f => f.path)
     const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
     const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
@@ -420,6 +419,11 @@ async function getNotStaged(projectId, userId) {
     }
 
     const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
+
+    // Suppressions en attente enregistrées par markDeleted
+    const project = await Project.findById(projectId, 'git.pendingDeletions').lean().exec()
+    const deletedFiles = project?.git?.pendingDeletions || []
+
     console.log('notStaged:', notStagedFiles, 'deleted:', deletedFiles)
     return { notStaged: notStagedFiles, deleted: deletedFiles }
   } catch (error) {
@@ -1140,6 +1144,23 @@ GitController = {
     }
   },
 
+  async markDeleted(req, res) {
+    const { projectId, filePath } = req.body
+    if (!projectId || !filePath) return res.status(400).json({ error: 'projectId et filePath requis.' })
+    try {
+      const project = await Project.findById(projectId, 'git').lean().exec()
+      if (!project?.git?.linkedAt) return res.sendStatus(200) // projet non lié, rien à faire
+      const existing = project.git.pendingDeletions || []
+      if (!existing.includes(filePath)) {
+        await Project.updateOne({ _id: projectId }, { $push: { 'git.pendingDeletions': filePath } })
+      }
+      res.sendStatus(200)
+    } catch (err) {
+      console.error('markDeleted error:', err.message)
+      res.sendStatus(500)
+    }
+  },
+
   async add(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
@@ -1174,12 +1195,14 @@ GitController = {
       }
     }
 
-    git.add(filePath, (error) => {
+    git.add(filePath, async (error) => {
         if (error) {
           console.error("Could not add the file", error)
           HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
-        }
-        else{
+        } else {
+          if (deleted) {
+            await Project.updateOne({ _id: projectId }, { $pull: { 'git.pendingDeletions': filePath } }).catch(() => {})
+          }
           console.log('File added')
           res.sendStatus(200)
         }
@@ -1438,6 +1461,9 @@ GitController = {
         } catch (_) {}
       }
       await git.add('.')
+      if (deletedFiles.length > 0) {
+        await Project.updateOne({ _id: projectId }, { $set: { 'git.pendingDeletions': [] } }).catch(() => {})
+      }
       res.sendStatus(200)
     } catch (err) {
       HttpErrorHandler.gitMethodError(req, res, err?.git?.message || err?.message || String(err))
