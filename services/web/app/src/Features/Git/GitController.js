@@ -402,7 +402,8 @@ async function getNotStaged(projectId, userId) {
 
   try {
     const status = await localGit.status(['-uall'])
-    const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.index === ' ').map(f => f.path)
+    const deletedFiles = status.files.filter(f => f.working_dir === 'D' && f.index === ' ').map(f => f.path)
+    const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.working_dir !== 'D' && f.index === ' ').map(f => f.path)
     const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
     const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
 
@@ -419,11 +420,11 @@ async function getNotStaged(projectId, userId) {
     }
 
     const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
-    console.log('notStaged:', notStagedFiles)
-    return notStagedFiles
+    console.log('notStaged:', notStagedFiles, 'deleted:', deletedFiles)
+    return { notStaged: notStagedFiles, deleted: deletedFiles }
   } catch (error) {
     console.error("Error fetching not staged files:", error)
-    return []
+    return { notStaged: [], deleted: [] }
   }
 }
 
@@ -1305,8 +1306,8 @@ GitController = {
     move(projectId, userId)
 
     getNotStaged(projectId,userId)
-    .then(notStagedFilesList => {
-      res.json(notStagedFilesList)
+    .then(result => {
+      res.json(result)
     })
     .catch(error => {
       console.error("Error:", error)
@@ -1426,8 +1427,16 @@ GitController = {
       } catch (compileError) {
         console.log("Compilation échouée avant addAll, on utilise le dernier état compilé:", compileError.message)
       }
-      const newFiles = await getNotStaged(projectId, userId)
+      const { notStaged: newFiles, deleted: deletedFiles } = await getNotStaged(projectId, userId)
       await gitUpdate(projectId, userId, newFiles)
+      // Supprimer du working tree les fichiers supprimés dans Overleaf
+      const repoPath = dataPath + projectId + "-" + userId
+      for (const f of deletedFiles) {
+        const fullPath = path.join(repoPath, f)
+        try {
+          if (await fs.pathExists(fullPath)) await fs.remove(fullPath)
+        } catch (_) {}
+      }
       await git.add('.')
       res.sendStatus(200)
     } catch (err) {
