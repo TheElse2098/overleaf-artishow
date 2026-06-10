@@ -357,7 +357,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                       flexShrink: 0,
                     })}
                   >
-                    - Add
+                    + Add
                   </button>
                 </li>
               )
