@@ -2,6 +2,13 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/features/ui/components/ol/ol-button'
+import OLModal, {
+  OLModalBody,
+  OLModalFooter,
+  OLModalHeader,
+  OLModalTitle,
+} from '@/features/ui/components/ol/ol-modal'
+import OLFormControl from '@/features/ui/components/ol/ol-form-control'
 import { postJSON, deleteJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
 import getMeta from '../../../../utils/meta'
@@ -24,19 +31,26 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const { t } = useTranslation()
   const [isCreating, setIsCreating] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
+  const [showNameModal, setShowNameModal] = useState(false)
+  const [projectName, setProjectName] = useState('')
   const location = useLocation()
   const isAdmin = getMeta('ol-user')?.isAdmin
   // The catalogue only shows a user their own Personnel templates, so any
   // visible Personnel card belongs to the viewer and can be removed by them.
   const canRemove = isAdmin || template.category === 'Personnel'
 
+  const openNameModal = () => {
+    setProjectName(template.name)
+    setShowNameModal(true)
+  }
+
   const handleCreateProject = async () => {
     try {
       setIsCreating(true)
-      
+
       const response = await postJSON('/project/new', {
         body: {
-          projectName: `${template.name} Project`,
+          projectName: projectName.trim() || template.name,
           template: 'from_template',
           templateId: template.id,
         },
@@ -104,7 +118,7 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           <OLButton
             variant="primary"
             size="sm"
-            onClick={handleCreateProject}
+            onClick={openNameModal}
             disabled={isCreating || isRemoving}
             className="flex-grow-1"
           >
@@ -122,6 +136,42 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           )}
         </div>
       </div>
+      <OLModal
+        show={showNameModal}
+        onHide={() => setShowNameModal(false)}
+        id={`template-name-modal-${template.id}`}
+      >
+        <OLModalHeader closeButton>
+          <OLModalTitle>New project</OLModalTitle>
+        </OLModalHeader>
+        <OLModalBody>
+          <OLFormControl
+            type="text"
+            placeholder="Project name"
+            value={projectName}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setProjectName(e.target.value)
+            }
+          />
+        </OLModalBody>
+        <OLModalFooter>
+          <OLButton
+            variant="secondary"
+            onClick={() => setShowNameModal(false)}
+            disabled={isCreating}
+          >
+            {t('cancel')}
+          </OLButton>
+          <OLButton
+            variant="primary"
+            onClick={handleCreateProject}
+            disabled={isCreating || projectName.trim() === ''}
+            isLoading={isCreating}
+          >
+            {t('create')}
+          </OLButton>
+        </OLModalFooter>
+      </OLModal>
     </div>
   )
 }
