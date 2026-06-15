@@ -39,7 +39,7 @@ function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
         const response = await getJSON('/project/templates')
         setTemplates(response.templates || [])
       } catch (err) {
-        setError(t('no_templates_found'))
+        setError('Failed to load templates')
         console.error('Error fetching templates:', err)
       } finally {
         setLoading(false)
@@ -47,7 +47,7 @@ function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
     }
 
     fetchTemplates()
-  }, [t])
+  }, [])
 
   return (
     <OLModal
@@ -59,7 +59,7 @@ function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
       size="lg"
     >
       <OLModalHeader closeButton>
-        <OLModalTitle as="h3">{t('import_from_template')}</OLModalTitle>
+        <OLModalTitle as="h3">{'Import from template'}</OLModalTitle>
       </OLModalHeader>
 
       <OLModalBody>

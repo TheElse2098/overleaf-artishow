@@ -135,7 +135,7 @@ function WelcomeMessageCreateNewProjectDropdown({
             }
             tabIndex={-1}
           >
-            {t('import_from_template')}
+            {'Import from template'}
           </DropdownItem>
         </li>
         <li role="none">

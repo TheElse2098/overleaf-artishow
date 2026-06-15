@@ -1,6 +1,5 @@
 //templates-list.tsx
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
 import OLFormControl from '@/features/ui/components/ol/ol-form-control'
 import TemplateCard from './template-card'
 
@@ -18,7 +17,6 @@ type TemplatesListProps = {
 }
 
 function TemplatesList({ templates }: TemplatesListProps) {
-  const { t } = useTranslation()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
 
@@ -41,7 +39,7 @@ function TemplatesList({ templates }: TemplatesListProps) {
           <div className="col-md-8">
             <OLFormControl
               type="text"
-              placeholder={t('search_templates')}
+              placeholder="Search templates"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="form-control"
@@ -55,7 +53,7 @@ function TemplatesList({ templates }: TemplatesListProps) {
             >
               {categories.map(category => (
                 <option key={category} value={category}>
-                  {category === 'all' ? t('all_categories') : category}
+                  {category === 'all' ? 'All categories' : category}
                 </option>
               ))}
             </select>
@@ -66,7 +64,7 @@ function TemplatesList({ templates }: TemplatesListProps) {
       <div className="templates-grid">
         {filteredTemplates.length === 0 ? (
           <div className="text-center py-4">
-            <p className="text-muted">{t('no_templates_found')}</p>
+            <p className="text-muted">{'No templates found'}</p>
           </div>
         ) : (
           <div className="row">

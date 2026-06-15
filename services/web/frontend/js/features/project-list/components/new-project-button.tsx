@@ -205,7 +205,7 @@ function NewProjectButton({
                 })
               }
             >
-              {t('import_from_template')}
+              {'Import from template'}
             </DropdownItem>
           </li>
           <li role="none">

@@ -90,7 +90,7 @@ function TemplateCard({ template }: TemplateCardProps) {
             disabled={isCreating}
             className="w-100"
           >
-            {isCreating ? t('creating') + '...' : t('use_template')}
+            {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
         </div>
       </div>
