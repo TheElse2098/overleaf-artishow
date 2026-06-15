@@ -200,6 +200,18 @@ function NewProjectButton({
             <DropdownItem
               onClick={e =>
                 handleModalMenuClick(e, {
+                  modalVariant: 'import_from_template',
+                  dropdownMenuEvent: 'import-from-template',
+                })
+              }
+            >
+              {t('import_from_template')}
+            </DropdownItem>
+          </li>
+          <li role="none">
+            <DropdownItem
+              onClick={e =>
+                handleModalMenuClick(e, {
                   modalVariant: 'upload_project',
                   dropdownMenuEvent: 'upload-project',
                 })

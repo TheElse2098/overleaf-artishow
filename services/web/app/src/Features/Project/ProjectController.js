@@ -246,8 +246,10 @@ const _ProjectController = {
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
     const { template, templateId } = req.body
+    const fromTemplate =
+      (template === 'example' || template === 'from_template') && templateId
 
-    if (template === 'example' && templateId) {
+    if (fromTemplate) {
       // Creating a project from a template duplicates an existing project by
       // id. Restrict this to projects explicitly published as templates so a
       // user cannot clone an arbitrary (private) project they cannot access.
@@ -261,7 +263,7 @@ const _ProjectController = {
     }
 
     const project = await (
-      (template === 'example' && templateId)
+      fromTemplate
         ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
         : (template === 'example')
           ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)

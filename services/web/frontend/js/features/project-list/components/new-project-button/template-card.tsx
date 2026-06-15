@@ -16,10 +16,9 @@ type Template = {
 
 type TemplateCardProps = {
   template: Template
-  onSelect: () => void
 }
 
-function TemplateCard({ template, onSelect }: TemplateCardProps) {
+function TemplateCard({ template }: TemplateCardProps) {
   const { t } = useTranslation()
   const [isCreating, setIsCreating] = useState(false)
   const location = useLocation()

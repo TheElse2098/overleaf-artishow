@@ -24,10 +24,9 @@ type Template = {
 
 type ImportFromTemplateModalProps = {
   onHide: () => void
-  openProject: (projectId: string) => void
 }
 
-function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModalProps) {
+function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
   const { t } = useTranslation()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -40,7 +39,7 @@ function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModa
         const response = await getJSON('/project/templates')
         setTemplates(response.templates || [])
       } catch (err) {
-        setError('Failed to load templates')
+        setError(t('no_templates_found'))
         console.error('Error fetching templates:', err)
       } finally {
         setLoading(false)
@@ -48,14 +47,7 @@ function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModa
     }
 
     fetchTemplates()
-  }, [])
-
-  const handleTemplateSelect = (templateId: string) => {
-    // Cette fonction sera appelée quand un template est sélectionné
-    // Elle devrait créer un nouveau projet basé sur le template
-    console.log('Template selected:', templateId)
-    // Ici on peut implémenter la logique pour créer le projet
-  }
+  }, [t])
 
   return (
     <OLModal
@@ -69,24 +61,19 @@ function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModa
       <OLModalHeader closeButton>
         <OLModalTitle as="h3">{t('import_from_template')}</OLModalTitle>
       </OLModalHeader>
-      
+
       <OLModalBody>
         {loading && <FullSizeLoadingSpinner />}
-        
+
         {error && (
           <div className="notification-list">
             <Notification type="error" content={error} />
           </div>
         )}
-        
-        {!loading && !error && (
-          <TemplatesList 
-            templates={templates}
-            onTemplateSelect={handleTemplateSelect}
-          />
-        )}
+
+        {!loading && !error && <TemplatesList templates={templates} />}
       </OLModalBody>
-      
+
       <OLModalFooter>
         <OLButton variant="secondary" onClick={onHide}>
           {t('cancel')}

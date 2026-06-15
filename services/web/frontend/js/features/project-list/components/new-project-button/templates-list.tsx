@@ -15,10 +15,9 @@ type Template = {
 
 type TemplatesListProps = {
   templates: Template[]
-  onTemplateSelect: (templateId: string) => void
 }
 
-function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
+function TemplatesList({ templates }: TemplatesListProps) {
   const { t } = useTranslation()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
@@ -73,10 +72,7 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
           <div className="row">
             {filteredTemplates.map(template => (
               <div key={template.id} className="col-lg-4 col-md-6 mb-3">
-                <TemplateCard 
-                  template={template}
-                  onSelect={() => onTemplateSelect(template.id)}
-                />
+                <TemplateCard template={template} />
               </div>
             ))}
           </div>
