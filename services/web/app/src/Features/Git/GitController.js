@@ -16,6 +16,47 @@ const HttpErrorHandler = require('../Errors/HttpErrorHandler.mjs').default
 const crypto = require('crypto')
 const sshpk = require('sshpk')
 const { Project } = require('../../models/Project.mjs')
+const SessionManager = require('../Authentication/SessionManager.mjs').default
+const ProjectGetter = require('../Project/ProjectGetter.mjs').default
+
+// Valide un identifiant Mongo (24 caractères hexadécimaux)
+function isValidObjectId(id) {
+  return typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)
+}
+
+// Middleware : lit projectId depuis le body/query, le valide, et l'expose dans
+// req.params.Project_id pour que les middlewares d'autorisation Overleaf
+// (ensureUserCanReadProject / ensureUserCanWriteProjectContent) puissent l'utiliser.
+function setProjectIdParam(req, res, next) {
+  const projectId = (req.body && req.body.projectId) || (req.query && req.query.projectId)
+  if (!isValidObjectId(projectId)) {
+    return res.status(400).json({ error: 'projectId invalide.' })
+  }
+  req.params = req.params || {}
+  req.params.Project_id = projectId
+  next()
+}
+
+// Middleware : résout le propriétaire du projet côté serveur et l'injecte dans
+// req.body.userId / req.query.userId. Le dossier git est indexé par l'owner
+// (projectId-ownerId) ; on ne fait donc jamais confiance au userId envoyé par le client.
+// À utiliser APRÈS un middleware d'autorisation (qui garantit l'accès au projet).
+async function injectGitOwner(req, res, next) {
+  try {
+    const projectId = req.params.Project_id
+    const project = await ProjectGetter.promises.getProject(projectId, { owner_ref: 1 })
+    if (!project) {
+      return res.status(404).json({ error: 'Projet introuvable.' })
+    }
+    const ownerId = String(project.owner_ref)
+    if (req.body) req.body.userId = ownerId
+    if (req.query) req.query.userId = ownerId
+    req.gitOwnerId = ownerId
+    next()
+  } catch (err) {
+    HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+  }
+}
 
 const gitOptions = {
   baseDir: dataPath,
@@ -1009,7 +1050,14 @@ GitController = {
     if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
     try {
       const info = await getGitInfo(projectId)
-      res.json(info || {})
+      // Ne jamais exposer le token au client : on renvoie uniquement un booléen.
+      res.json({
+        remoteUrl: info?.remoteUrl || null,
+        branch: info?.branch || null,
+        linkedAt: info?.linkedAt || null,
+        tokenType: info?.tokenType || null,
+        hasToken: !!info?.token,
+      })
     } catch (err) {
       HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
@@ -1461,21 +1509,17 @@ GitController = {
     },
 
   getKey(req, res) {
-    function getUserIdFromUrl(url) {
-      const regex = /\/ssh-key\?userId=(?<userId>[^\&]+)/
-      const match = url.match(regex)
-
-      if (match) {
-        return match.groups.userId
-      } else {
-        return null
-      }
-    }
-    const userId = getUserIdFromUrl(req.url)
-    const privateKey = getKey(userId, 'public')
-    privateKey.then((privateKeyValue) => {
-      res.send(privateKeyValue)
-    });
+    // La clé SSH est propre à l'utilisateur : on dérive l'identité de la session,
+    // jamais d'un paramètre fourni par le client (évite l'IDOR et le path traversal).
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    if (!userId) return res.sendStatus(401)
+    getKey(userId, 'public')
+      .then((publicKeyValue) => {
+        res.send(publicKeyValue)
+      })
+      .catch((err) => {
+        HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+      })
   },
 
   async addAll(req, res) {
@@ -1524,4 +1568,4 @@ GitController = {
   },
 }
 
-module.exports = {GitController, gitClone, gitUpdate, gitInit}
+module.exports = {GitController, gitClone, gitUpdate, gitInit, setProjectIdParam, injectGitOwner}
