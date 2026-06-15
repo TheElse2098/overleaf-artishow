@@ -25,6 +25,12 @@ module.exports = {
       TemplatesController.setTemplateStatus
     )
 
+    app.delete(
+      '/project/:projectId/template',
+      AuthenticationController.requireLogin(),
+      TemplatesController.removeTemplate
+    )
+
     app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>

@@ -2,8 +2,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/features/ui/components/ol/ol-button'
-import { postJSON } from '../../../../infrastructure/fetch-json'
+import { postJSON, deleteJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
+import getMeta from '../../../../utils/meta'
 
 type Template = {
   id: string
@@ -16,12 +17,15 @@ type Template = {
 
 type TemplateCardProps = {
   template: Template
+  onRemoved: (id: string) => void
 }
 
-function TemplateCard({ template }: TemplateCardProps) {
+function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const { t } = useTranslation()
   const [isCreating, setIsCreating] = useState(false)
+  const [isRemoving, setIsRemoving] = useState(false)
   const location = useLocation()
+  const isAdmin = getMeta('ol-user')?.isAdmin
 
   const handleCreateProject = async () => {
     try {
@@ -41,6 +45,17 @@ function TemplateCard({ template }: TemplateCardProps) {
     } catch (error) {
       console.error('Error creating project from template:', error)
       setIsCreating(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    try {
+      setIsRemoving(true)
+      await deleteJSON(`/project/${template.id}/template`)
+      onRemoved(template.id)
+    } catch (error) {
+      console.error('Error removing template:', error)
+      setIsRemoving(false)
     }
   }
 
@@ -82,16 +97,26 @@ function TemplateCard({ template }: TemplateCardProps) {
           </div>
         )}
         
-        <div className="mt-auto">
+        <div className="mt-auto d-flex gap-2">
           <OLButton
             variant="primary"
             size="sm"
             onClick={handleCreateProject}
-            disabled={isCreating}
-            className="w-100"
+            disabled={isCreating || isRemoving}
+            className="flex-grow-1"
           >
             {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
+          {isAdmin && (
+            <OLButton
+              variant="danger"
+              size="sm"
+              onClick={handleRemove}
+              disabled={isCreating || isRemoving}
+            >
+              {isRemoving ? '...' : 'Remove'}
+            </OLButton>
+          )}
         </div>
       </div>
     </div>

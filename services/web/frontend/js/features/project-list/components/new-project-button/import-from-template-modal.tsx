@@ -49,6 +49,10 @@ function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
     fetchTemplates()
   }, [])
 
+  const handleTemplateRemoved = (id: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== id))
+  }
+
   return (
     <OLModal
       show
@@ -71,7 +75,12 @@ function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
           </div>
         )}
 
-        {!loading && !error && <TemplatesList templates={templates} />}
+        {!loading && !error && (
+          <TemplatesList
+            templates={templates}
+            onTemplateRemoved={handleTemplateRemoved}
+          />
+        )}
       </OLModalBody>
 
       <OLModalFooter>

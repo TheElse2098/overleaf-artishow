@@ -37,8 +37,14 @@ const TemplatesController = {
   },
 
   async getLocalTemplates(req, res) {
+    // Exclude projects the owner has trashed. Projects that are permanently
+    // deleted are removed from the collection entirely, so they drop out here
+    // automatically.
     const projects = await Project.find(
-      { isTemplate: true },
+      {
+        isTemplate: true,
+        $or: [{ trashed: { $exists: false } }, { trashed: { $size: 0 } }],
+      },
       { name: 1, templateDescription: 1 }
     ).lean()
     const templates = projects.map(p => ({
@@ -47,6 +53,20 @@ const TemplatesController = {
       description: p.templateDescription || '',
     }))
     res.json({ templates })
+  },
+
+  async removeTemplate(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
+    if (!user?.isAdmin) {
+      return res.sendStatus(403)
+    }
+    const { projectId } = req.params
+    await Project.updateOne(
+      { _id: projectId },
+      { isTemplate: false, templateDescription: '' }
+    )
+    res.json({ ok: true })
   },
 
   async setTemplateStatus(req, res) {
@@ -94,4 +114,5 @@ module.exports = {
   ),
   getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
   setTemplateStatus: expressify(TemplatesController.setTemplateStatus),
+  removeTemplate: expressify(TemplatesController.removeTemplate),
 }

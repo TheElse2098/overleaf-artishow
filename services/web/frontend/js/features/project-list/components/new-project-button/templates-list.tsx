@@ -14,9 +14,10 @@ type Template = {
 
 type TemplatesListProps = {
   templates: Template[]
+  onTemplateRemoved: (id: string) => void
 }
 
-function TemplatesList({ templates }: TemplatesListProps) {
+function TemplatesList({ templates, onTemplateRemoved }: TemplatesListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
 
@@ -70,7 +71,10 @@ function TemplatesList({ templates }: TemplatesListProps) {
           <div className="row">
             {filteredTemplates.map(template => (
               <div key={template.id} className="col-lg-4 col-md-6 mb-3">
-                <TemplateCard template={template} />
+                <TemplateCard
+                  template={template}
+                  onRemoved={onTemplateRemoved}
+                />
               </div>
             ))}
           </div>
