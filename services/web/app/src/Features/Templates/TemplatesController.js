@@ -51,6 +51,9 @@ const TemplatesController = {
       id: p._id.toString(),
       name: p.name,
       description: p.templateDescription || '',
+      // Admin-created templates are the "General" catalogue. Future
+      // user-marked templates will use the "Personnel" category.
+      category: 'General',
     }))
     res.json({ templates })
   },
