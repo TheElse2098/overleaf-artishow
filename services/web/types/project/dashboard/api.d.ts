@@ -45,6 +45,7 @@ export type ProjectApi = {
   source: 'owner' | 'invite' | 'token'
   isTemplate: boolean
   templateDescription: string
+  templateCategory: string
 }
 
 export type Project = MergeAndOverride<

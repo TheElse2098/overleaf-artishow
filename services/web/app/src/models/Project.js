@@ -46,6 +46,7 @@ const ProjectSchema = new Schema(
     brandVariationId: { type: String },
     isTemplate: { type: Boolean, default: false },
     templateDescription: { type: String, default: '' },
+    templateCategory: { type: String, default: '' },
     track_changes: { type: Object },
     tokens: {
       readOnly: {

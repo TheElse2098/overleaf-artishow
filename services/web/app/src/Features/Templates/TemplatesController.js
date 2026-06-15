@@ -37,23 +37,30 @@ const TemplatesController = {
   },
 
   async getLocalTemplates(req, res) {
-    // Exclude projects the owner has trashed. Projects that are permanently
-    // deleted are removed from the collection entirely, so they drop out here
-    // automatically.
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    // "General" templates are visible to everyone; "Personnel" templates are
+    // visible only to their owner. Trashed projects are excluded (permanently
+    // deleted projects drop out of the collection automatically).
     const projects = await Project.find(
       {
         isTemplate: true,
-        $or: [{ trashed: { $exists: false } }, { trashed: { $size: 0 } }],
+        $and: [
+          { $or: [{ trashed: { $exists: false } }, { trashed: { $size: 0 } }] },
+          {
+            $or: [
+              { templateCategory: { $ne: 'Personnel' } },
+              { templateCategory: 'Personnel', owner_ref: userId },
+            ],
+          },
+        ],
       },
-      { name: 1, templateDescription: 1 }
+      { name: 1, templateDescription: 1, templateCategory: 1 }
     ).lean()
     const templates = projects.map(p => ({
       id: p._id.toString(),
       name: p.name,
       description: p.templateDescription || '',
-      // Admin-created templates are the "General" catalogue. Future
-      // user-marked templates will use the "Personnel" category.
-      category: 'General',
+      category: p.templateCategory === 'Personnel' ? 'Personnel' : 'General',
     }))
     res.json({ templates })
   },
@@ -61,13 +68,20 @@ const TemplatesController = {
   async removeTemplate(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
-    if (!user?.isAdmin) {
-      return res.sendStatus(403)
-    }
     const { projectId } = req.params
+    // Admins can remove any template; non-admins only their own (Personnel) one.
+    if (!user?.isAdmin) {
+      const project = await Project.findOne(
+        { _id: projectId },
+        { owner_ref: 1 }
+      ).lean()
+      if (!project || project.owner_ref?.toString() !== userId.toString()) {
+        return res.sendStatus(403)
+      }
+    }
     await Project.updateOne(
       { _id: projectId },
-      { isTemplate: false, templateDescription: '' }
+      { isTemplate: false, templateDescription: '', templateCategory: '' }
     )
     res.json({ ok: true })
   },
@@ -75,16 +89,31 @@ const TemplatesController = {
   async setTemplateStatus(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
-    if (!user?.isAdmin) {
-      return res.sendStatus(403)
-    }
     const { projectId } = req.params
-    const { isTemplate, templateDescription } = req.body
+    const { isTemplate, templateDescription, isGeneral } = req.body
+
+    // Non-admins may only (un)mark their own projects.
+    if (!user?.isAdmin) {
+      const project = await Project.findOne(
+        { _id: projectId },
+        { owner_ref: 1 }
+      ).lean()
+      if (!project || project.owner_ref?.toString() !== userId.toString()) {
+        return res.sendStatus(403)
+      }
+    }
+
+    const wantsTemplate = Boolean(isTemplate)
+    // Only admins can publish a shared "General" template; anything else is a
+    // "Personnel" template, visible only to its owner.
+    const category = user?.isAdmin && isGeneral ? 'General' : 'Personnel'
+
     await Project.updateOne(
       { _id: projectId },
       {
-        isTemplate: Boolean(isTemplate),
-        templateDescription: templateDescription || '',
+        isTemplate: wantsTemplate,
+        templateDescription: wantsTemplate ? templateDescription || '' : '',
+        templateCategory: wantsTemplate ? category : '',
       }
     )
     res.json({ ok: true })

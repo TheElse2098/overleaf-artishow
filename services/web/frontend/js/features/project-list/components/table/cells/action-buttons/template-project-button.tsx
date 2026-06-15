@@ -26,9 +26,13 @@ function TemplateProjectButton({
 }: TemplateProjectButtonProps) {
   const { t } = useTranslation()
   const { updateProjectViewData } = useProjectListContext()
+  const isAdmin = getMeta('ol-user')?.isAdmin
   const [showModal, setShowModal] = useState(false)
   const [isTemplate, setIsTemplate] = useState(project.isTemplate)
   const [description, setDescription] = useState(project.templateDescription)
+  const [isGeneral, setIsGeneral] = useState(
+    project.templateCategory === 'General'
+  )
   const [saving, setSaving] = useState(false)
 
   const text = project.isTemplate
@@ -38,25 +42,36 @@ function TemplateProjectButton({
   const handleOpenModal = useCallback(() => {
     setIsTemplate(project.isTemplate)
     setDescription(project.templateDescription)
+    setIsGeneral(project.templateCategory === 'General')
     setShowModal(true)
-  }, [project.isTemplate, project.templateDescription])
+  }, [
+    project.isTemplate,
+    project.templateDescription,
+    project.templateCategory,
+  ])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
       await postJSON(`/project/${project.id}/template`, {
-        body: { isTemplate, templateDescription: description },
+        body: { isTemplate, templateDescription: description, isGeneral },
       })
+      const templateCategory = isTemplate
+        ? isAdmin && isGeneral
+          ? 'General'
+          : 'Personnel'
+        : ''
       updateProjectViewData({
         ...project,
         isTemplate,
         templateDescription: description,
+        templateCategory,
       })
       setShowModal(false)
     } finally {
       setSaving(false)
     }
-  }, [project, isTemplate, description, updateProjectViewData])
+  }, [project, isTemplate, description, isGeneral, isAdmin, updateProjectViewData])
 
   if (project.archived || project.trashed) return null
 
@@ -69,7 +84,7 @@ function TemplateProjectButton({
         id={`template-project-modal-${project.id}`}
       >
         <OLModalHeader closeButton>
-          <OLModalTitle>Template général</OLModalTitle>
+          <OLModalTitle>Template</OLModalTitle>
         </OLModalHeader>
         <OLModalBody>
           <div className="mb-2">
@@ -80,18 +95,36 @@ function TemplateProjectButton({
                 onChange={e => setIsTemplate(e.target.checked)}
                 className="me-2"
               />
-              Marquer ce projet comme template général
+              Marquer ce projet comme template
             </label>
           </div>
           {isTemplate && (
-            <OLFormControl
-              type="text"
-              placeholder="Description du template"
-              value={description}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setDescription(e.target.value)
-              }
-            />
+            <>
+              <OLFormControl
+                type="text"
+                placeholder="Description du template"
+                value={description}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setDescription(e.target.value)
+                }
+              />
+              {isAdmin && (
+                <div className="mt-2">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={isGeneral}
+                      onChange={e => setIsGeneral(e.target.checked)}
+                      className="me-2"
+                    />
+                    Marquer comme template général
+                  </label>
+                </div>
+              )}
+              <div className="mt-2 text-muted small">
+                Catégorie : {isAdmin && isGeneral ? 'General' : 'Personnel'}
+              </div>
+            </>
           )}
         </OLModalBody>
         <OLModalFooter>
@@ -117,9 +150,6 @@ export default memo(TemplateProjectButton)
 const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip({
   project,
 }: { project: Project }) {
-  const isAdmin = getMeta('ol-user')?.isAdmin
-  if (!isAdmin) return null
-
   const text = project.isTemplate ? 'Modifier le template' : 'Marquer comme template'
 
   return (

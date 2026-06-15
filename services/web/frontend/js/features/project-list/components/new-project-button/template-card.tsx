@@ -26,6 +26,9 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const [isRemoving, setIsRemoving] = useState(false)
   const location = useLocation()
   const isAdmin = getMeta('ol-user')?.isAdmin
+  // The catalogue only shows a user their own Personnel templates, so any
+  // visible Personnel card belongs to the viewer and can be removed by them.
+  const canRemove = isAdmin || template.category === 'Personnel'
 
   const handleCreateProject = async () => {
     try {
@@ -107,7 +110,7 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           >
             {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
-          {isAdmin && (
+          {canRemove && (
             <OLButton
               variant="danger"
               size="sm"

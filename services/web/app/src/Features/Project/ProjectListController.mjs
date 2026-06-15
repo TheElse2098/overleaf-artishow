@@ -528,7 +528,7 @@ async function _getProjects(
   ] = await Promise.all([
     ProjectGetter.promises.findAllUsersProjects(
       userId,
-      'name lastUpdated lastUpdatedBy publicAccesLevel archived trashed owner_ref tokens isTemplate templateDescription'
+      'name lastUpdated lastUpdatedBy publicAccesLevel archived trashed owner_ref tokens isTemplate templateDescription templateCategory'
     ),
     TagsHandler.promises.getAllTags(userId),
   ])
@@ -671,6 +671,7 @@ function _formatProjectInfo(project, accessLevel, source, userId) {
     trashed,
     isTemplate: project.isTemplate || false,
     templateDescription: project.templateDescription || '',
+    templateCategory: project.templateCategory || '',
   }
   if (accessLevel === PrivilegeLevels.READ_ONLY && source === Sources.TOKEN) {
     model.owner_ref = null
