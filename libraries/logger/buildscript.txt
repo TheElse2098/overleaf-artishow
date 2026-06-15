@@ -1,10 +1,10 @@
 logger
 --dependencies=None
---docker-repos=us-east1-docker.pkg.dev/overleaf-ops/ol-docker
 --env-add=
 --env-pass-through=
 --esmock-loader=False
 --is-library=True
---node-version=22.17.0
+--node-version=24.14.1
+--package-name=@overleaf/logger
+--pipeline-owner=32
 --public-repo=False
---script-version=4.7.0

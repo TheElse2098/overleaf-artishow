@@ -19,15 +19,18 @@ const families = [
     ],
   },
   {
-    folder: 'font-awesome',
-    url: 'https://fontawesome.com/v4/',
-    archive: 'https://fontawesome.com/v4/assets/font-awesome-4.7.0.zip',
-    fonts: ['font-awesome-4.7.0/fonts/fontawesome-webfont.woff2'],
+    folder: 'inter',
+    url: 'https://github.com/rsms/inter/releases/tag/v4.1',
+    archive:
+      'https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip',
+    fonts: ['web/Inter-Regular.woff2', 'web/Inter-SemiBold.woff2'],
+    license:
+      'https://raw.githubusercontent.com/rsms/inter/refs/heads/master/LICENSE.txt',
   },
   {
     folder: 'lato',
     url: 'https://www.latofonts.com/',
-    archive: 'https://www.latofonts.com/download/lato2oflweb-zip/',
+    archive: 'https://www.latofonts.com/files/Lato2OFLWeb.zip',
     fonts: [
       'Lato2OFLWeb/LatoLatin/fonts/LatoLatin-Bold.woff2',
       'Lato2OFLWeb/LatoLatin/fonts/LatoLatin-BoldItalic.woff2',

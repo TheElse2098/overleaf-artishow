@@ -1,9 +1,10 @@
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
+} from '@/shared/components/ol/ol-modal'
 import {
   FigureModalProvider,
   FigureModalSource,
@@ -17,7 +18,6 @@ import { ChangeSpec } from '@codemirror/state'
 import { snippet } from '@codemirror/autocomplete'
 import {
   FigureData,
-  PastedImageData,
   editFigureData,
   editFigureDataEffect,
 } from '../../extensions/figure-modal'
@@ -25,8 +25,9 @@ import { ensureEmptyLine } from '../../extensions/toolbar/commands'
 import { useTranslation } from 'react-i18next'
 import useEventListener from '../../../../shared/hooks/use-event-listener'
 import { prepareLines } from '../../utils/prepare-lines'
-import { FeedbackBadge } from '@/shared/components/feedback-badge'
 import { FullSizeLoadingSpinner } from '@/shared/components/loading-spinner'
+import { isSvgFile } from '../../utils/file'
+import { PastedImageData } from '../../utils/paste-image'
 
 const FigureModalBody = lazy(() => import('./figure-modal-body'))
 
@@ -143,26 +144,63 @@ const FigureModalContent = () => {
   )
 
   const insert = useCallback(async () => {
-    const figure = view.state.field<FigureData>(editFigureData, false)
-
-    if (!getPath) {
-      throw new Error('Cannot insert figure without a file path')
+    const replaceGraphicsCommand = (
+      figure: FigureData,
+      changes: ChangeSpec[],
+      isSvg: boolean,
+      insertPath: string
+    ) => {
+      // Replace the entire graphics command when switching between SVG and non-SVG
+      const graphicsCommandName = isSvg ? 'includesvg' : 'includegraphics'
+      let widthArgument = ''
+      if (figure.unknownGraphicsArguments) {
+        widthArgument = `[${figure.unknownGraphicsArguments}]`
+      } else if (width) {
+        widthArgument = `[width=${width}\\linewidth]`
+      }
+      changes.push({
+        from: figure.graphicsCommand.from,
+        to: figure.graphicsCommand.to,
+        insert: `\\${graphicsCommandName}${widthArgument}{${insertPath}}`,
+      })
     }
-    let path: string
-    try {
-      path = await getPath()
-    } catch (error) {
-      dispatch({ error: String(error) })
-      return
-    }
-    const labelCommand = includeLabel ? '\\label{fig:enter-label}' : ''
-    const captionCommand = includeCaption ? '\\caption{Enter Caption}' : ''
 
-    if (figure) {
-      // Updating existing figure
+    const updateGraphicsArgs = (
+      figure: FigureData,
+      changes: ChangeSpec[],
+      insertPath?: string
+    ) => {
+      if (!figure.unknownGraphicsArguments && width) {
+        // We understood the arguments, and should update the width
+        if (figure.graphicsCommandArguments !== null) {
+          changes.push({
+            from: figure.graphicsCommandArguments.from,
+            to: figure.graphicsCommandArguments.to,
+            insert: `width=${width}\\linewidth`,
+          })
+        } else {
+          // Insert new args
+          changes.push({
+            from: figure.file.from - 1,
+            insert: `[width=${width}\\linewidth]`,
+          })
+        }
+      }
+      changes.push({
+        from: figure.file.from,
+        to: figure.file.to,
+        insert: insertPath,
+      })
+    }
+
+    const updateCaptionAndLabel = (
+      figure: FigureData,
+      changes: ChangeSpec[]
+    ) => {
+      const labelCommand = includeLabel ? '\\label{fig:placeholder}' : ''
+      const captionCommand = includeCaption ? '\\caption{Enter Caption}' : ''
       const hadCaptionBefore = figure.caption !== null
       const hadLabelBefore = figure.label !== null
-      const changes: ChangeSpec[] = []
       if (!hadCaptionBefore && includeCaption) {
         // We should insert a caption
         changes.push({
@@ -198,28 +236,9 @@ const FigureModalContent = () => {
           insert: '',
         })
       }
-      if (!figure.unknownGraphicsArguments && width) {
-        // We understood the arguments, and should update the width
-        if (figure.graphicsCommandArguments !== null) {
-          changes.push({
-            from: figure.graphicsCommandArguments.from,
-            to: figure.graphicsCommandArguments.to,
-            insert: `width=${width}\\linewidth`,
-          })
-        } else {
-          // Insert new args
-          changes.push({
-            from: figure.file.from - 1,
-            insert: `[width=${width}\\linewidth]`,
-          })
-        }
-      }
-      changes.push({ from: figure.file.from, to: figure.file.to, insert: path })
-      view.dispatch({
-        changes: view.state.changes(changes),
-        effects: editFigureDataEffect.of(null),
-      })
-    } else {
+    }
+
+    const insertNewFigure = (insertPath: string, isSvg: boolean) => {
       const { pos, suffix } = ensureEmptyLine(
         view.state,
         view.state.selection.main
@@ -228,12 +247,13 @@ const FigureModalContent = () => {
       const widthArgument =
         width !== undefined ? `[width=${width}\\linewidth]` : ''
       const caption = includeCaption ? `\n\t\\caption{\${Enter Caption}}` : ''
-      const label = includeLabel ? `\n\t\\label{\${fig:enter-label}}` : ''
+      const label = includeLabel ? `\n\t\\label{\${fig:placeholder}}` : ''
+      const graphicsCommand = isSvg ? 'includesvg' : 'includegraphics'
 
       snippet(
         `\\begin{figure}
 \t\\centering
-\t\\includegraphics${widthArgument}{${path}}${caption}${label}
+\t\\${graphicsCommand}${widthArgument}{${insertPath}}${caption}${label}
 \\end{figure}${suffix}\${}`
       )(
         { state: view.state, dispatch: view.dispatch },
@@ -242,6 +262,52 @@ const FigureModalContent = () => {
         pos
       )
     }
+
+    const figure = view.state.field<FigureData>(editFigureData, false)
+
+    if (!getPath) {
+      throw new Error('Cannot insert figure without a file path')
+    }
+    let path: string
+    try {
+      path = await getPath()
+    } catch (error) {
+      dispatch({ error: String(error) })
+      return
+    }
+
+    const isSvg = isSvgFile(path)
+    // For SVG files, strip the .svg extension as \includesvg expects it without
+    const insertPath = isSvg ? path.replace(/\.svg$/i, '') : path
+
+    if (figure) {
+      // Updating existing figure
+      const changes: ChangeSpec[] = []
+
+      // Update caption and label as needed
+      updateCaptionAndLabel(figure, changes)
+
+      // Check if we're switching to/from SVG, which requires changing the command
+      const wasSvgBefore = isSvgFile(figure.file.path)
+      const needsCommandChange = isSvg !== wasSvgBefore
+
+      if (needsCommandChange) {
+        // Replace the entire graphics command when switching between SVG and non-SVG
+        replaceGraphicsCommand(figure, changes, isSvg, insertPath)
+      } else {
+        // No command change needed, do surgical edits
+        updateGraphicsArgs(figure, changes, insertPath)
+      }
+
+      view.dispatch({
+        changes: view.state.changes(changes),
+        effects: editFigureDataEffect.of(null),
+      })
+    } else {
+      // Inserting new figure
+      insertNewFigure(insertPath, isSvg)
+    }
+
     hide()
   }, [getPath, view, hide, includeCaption, includeLabel, width, dispatch])
 
@@ -273,19 +339,19 @@ const FigureModalContent = () => {
     return null
   }
   return (
-    <OLModal onHide={hide} className="figure-modal" show>
-      <OLModalHeader closeButton>
+    <OLModal
+      onHide={hide}
+      className="figure-modal"
+      show
+      returnFocusOnDeactivate={false}
+    >
+      <OLModalHeader>
         <OLModalTitle>
           {helpShown
             ? t('help')
             : sourcePickerShown
               ? t('replace_figure')
               : getTitle(source)}{' '}
-          <FeedbackBadge
-            id="figure-modal-feedback"
-            url="https://forms.gle/PfEtwceYBNQ32DF4A"
-            text="Please click to give feedback about editing figures."
-          />
         </OLModalTitle>
       </OLModalHeader>
 

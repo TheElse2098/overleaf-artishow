@@ -3,18 +3,16 @@
  * The naive approach is waiting a fixed a mount of time (3s) just before clicking the button.
  * This helper takes into account that other UI interactions take time. We can deduce that latency from the fixed delay (3s minus other latency). This can bring down the effective waiting time to 0s.
  */
-export function throttledRecompile() {
-  const { queueReset, recompile } = prepareWaitForNextCompileSlot()
-  queueReset()
-  return recompile
-}
 
 export function stopCompile(options: { delay?: number } = {}) {
   const { delay = 0 } = options
   cy.wait(delay)
   cy.log('Stop compile')
   cy.findByRole('button', { name: 'Toggle compile options menu' }).click()
-  cy.findByRole('menuitem', { name: 'Stop compilation' }).click()
+  cy.findByRole('menuitem', { name: 'Stop compilation' })
+    .should('not.have.class', 'disabled')
+    .and('not.have.attr', 'aria-disabled', 'true')
+    .click()
 }
 
 export function prepareWaitForNextCompileSlot() {
@@ -24,25 +22,51 @@ export function prepareWaitForNextCompileSlot() {
       lastCompile = Date.now()
     })
   }
-  function waitForCompileRateLimitCoolOff(triggerCompile: () => void) {
+  function waitForCompileRateLimitCoolOff() {
     cy.then(() => {
       cy.log('Wait for recompile rate-limit to cool off')
       const msSinceLastCompile = Date.now() - lastCompile
       cy.wait(Math.max(0, 1_000 - msSinceLastCompile))
       queueReset()
+    })
+  }
+  function waitForCompile(triggerCompile: () => void) {
+    waitForCompileRateLimitCoolOff()
+    cy.then(() => {
+      let compilingVisible: () => void
+      const waitForCompilingVisible = new Promise<void>(resolve => {
+        compilingVisible = resolve
+      })
+      cy.intercept(
+        {
+          method: 'POST',
+          pathname: /\/project\/[a-fA-F0-9]{24}\/compile$/,
+          times: 1,
+        },
+        async req => {
+          await waitForCompilingVisible
+          req.continue()
+        }
+      ).as('recompile')
       triggerCompile()
       cy.log('Wait for compile to finish')
-      cy.findByText('Recompile').should('be.visible')
+      cy.findByRole('button', { name: 'Compiling…' }).then(() =>
+        compilingVisible()
+      )
+      cy.wait('@recompile')
+      cy.findByRole('button', { name: 'Compiling…' }).should('not.exist')
+      cy.findByRole('button', { name: 'Recompile' }).should('be.visible')
     })
   }
   function recompile() {
-    waitForCompileRateLimitCoolOff(() => {
-      cy.findByText('Recompile').click()
+    waitForCompile(() => {
+      cy.findByRole('button', { name: 'Recompile' }).click()
     })
   }
   return {
     queueReset,
     waitForCompileRateLimitCoolOff,
+    waitForCompile,
     recompile,
   }
 }

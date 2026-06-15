@@ -9,6 +9,7 @@ import { mockScope } from '../source-editor/helpers/mock-scope'
 import { TestContainer } from '../source-editor/helpers/test-container'
 import { docId } from '../source-editor/helpers/mock-doc'
 import { mockProject } from '../source-editor/helpers/mock-project'
+import { UserId } from '@ol-types/user'
 
 const userData = {
   avatar_text: 'User',
@@ -273,9 +274,7 @@ describe('<ReviewPanel />', function () {
 
   describe('toggler', function () {
     it('should close panel when pressing close button', function () {
-      cy.get('@review-panel').within(() => {
-        cy.findByLabelText('Close').click({ scrollBehavior: false })
-      })
+      cy.findByLabelText('Close').click({ scrollBehavior: false })
       // We should collapse to the mini state
       cy.get('.review-panel-mini').should('exist')
     })
@@ -539,6 +538,35 @@ describe('<ReviewPanel />', function () {
     })
   })
 
+  describe('add comment tooltip visibility', function () {
+    beforeEach(function () {
+      cy.findByText('contentLine 12').type(
+        '{home}{shift}' + '{rightArrow}'.repeat(6),
+        { scrollBehavior: false }
+      )
+      cy.get('.review-tooltip-menu').should('exist')
+    })
+
+    it('hides the tooltip when clicking a toolbar button', function () {
+      cy.findByRole('button', { name: 'Undo' }).click({ scrollBehavior: false })
+      cy.get('.review-tooltip-menu').should('not.exist')
+    })
+
+    it('hides the tooltip when clicking outside the editor', function () {
+      cy.get('@review-panel').click({ scrollBehavior: false })
+      cy.get('.review-tooltip-menu').should('not.exist')
+    })
+
+    it('keeps the add comment button functional when clicked', function () {
+      cy.get('.review-tooltip-add-comment-button').click({
+        scrollBehavior: false,
+      })
+      cy.get('@review-panel').within(() => {
+        cy.get('.review-panel-add-comment-textarea').should('exist')
+      })
+    })
+  })
+
   describe('bulk actions entry', function () {
     beforeEach(function () {
       // Select a deletion and an insertion
@@ -590,6 +618,26 @@ describe('<ReviewPanel />', function () {
           'deleted-op-id',
         ])
       })
+    })
+
+    it('keeps the tooltip visible when cancelling the accept confirmation modal', function () {
+      cy.get('@accept-selected-changes').click({ scrollBehavior: false })
+      cy.findByRole('dialog').within(() => {
+        cy.findByRole('button', { name: 'Cancel' }).click({
+          scrollBehavior: false,
+        })
+      })
+      cy.get('.review-tooltip-menu').should('exist')
+    })
+
+    it('keeps the tooltip visible when cancelling the reject confirmation modal', function () {
+      cy.get('@reject-selected-changes').click({ scrollBehavior: false })
+      cy.findByRole('dialog').within(() => {
+        cy.findByRole('button', { name: 'Cancel' }).click({
+          scrollBehavior: false,
+        })
+      })
+      cy.get('.review-tooltip-menu').should('exist')
     })
   })
 
@@ -850,7 +898,7 @@ describe('<ReviewPanel /> for free users', function () {
   it('renders modal', function () {
     mountEditor()
     cy.findByRole('dialog').within(() => {
-      cy.findByText('Upgrade to Review').should('exist')
+      cy.findByText('Upgrade to review').should('exist')
     })
   })
 
@@ -874,7 +922,7 @@ describe('<ReviewPanel /> for free users', function () {
   it.skip('opens subscription page after clicking on `try it for free`', function () {})
 
   it('shows `ask project owner to upgrade` message', function () {
-    mountEditor('other-user-id')
+    mountEditor('other-user-id' as UserId)
     cy.findByRole('dialog').within(() => {
       cy.findByText(
         'Please ask the project owner to upgrade to use track changes'

@@ -24,6 +24,7 @@ export type ExposedSettings = {
   ieeeBrandId: number
   isOverleaf: boolean
   maxEntitiesPerProject: number
+  mixpanelLabsToken?: string
   projectUploadTimeout: number
   propensityId?: string
   maxUploadSize: number
@@ -50,4 +51,6 @@ export type ExposedSettings = {
   labsEnabled: boolean
   wikiEnabled?: boolean
   templatesEnabled?: boolean
+  linkedInInsightsPartnerId?: string
+  enablePandocConversions: boolean
 }

@@ -45,6 +45,7 @@ export const enterNode = (
       from: envNameNode.from,
       to: envNameNode.to,
       line: state.doc.lineAt(envNameNode.from).number,
+      toLine: state.doc.lineAt(envNameNode.to).number,
       type: 'usage',
       raw: state.sliceDoc(node.from, node.to),
     }
@@ -74,6 +75,7 @@ export const enterNode = (
       from: envNameNode.from,
       to: envNameNode.to,
       line: state.doc.lineAt(envNameNode.from).number,
+      toLine: state.doc.lineAt(envNameNode.to).number,
       type: 'definition',
       raw: state.sliceDoc(node.from, node.to),
     }
@@ -227,7 +229,8 @@ export function parseFigureData(
         to: node.to,
       }
     }
-    if (node.type.is('IncludeGraphics')) {
+    if (node.type.is('IncludeGraphics') || node.type.is('IncludeSvg')) {
+      const isIncludeSvg = node.type.is('IncludeSvg')
       if (file) {
         // Multiple figure
         error = true
@@ -237,18 +240,24 @@ export function parseFigureData(
         from: node.from,
         to: node.to,
       }
+      const argumentNodeName = isIncludeSvg
+        ? 'IncludeSvgArgument'
+        : 'IncludeGraphicsArgument'
       const content = node.node
-        .getChild('IncludeGraphicsArgument')
+        .getChild(argumentNodeName)
         ?.getChild('FilePathArgument')
         ?.getChild('LiteralArgContent')
       if (!content) {
         error = true
         return false
       }
+      // \includesvg stores path without .svg extension, but we add it for consistency
       file = {
         from: content.from,
         to: content.to,
-        path: state.sliceDoc(content.from, content.to),
+        path:
+          state.sliceDoc(content.from, content.to) +
+          (isIncludeSvg ? '.svg' : ''),
       }
       const optionalArgs = node.node
         .getChild('OptionalArgument')
@@ -296,12 +305,4 @@ export function parseFigureData(
     graphicsCommand,
     graphicsCommandArguments,
   })
-}
-
-export const getBeginEnvSuffix = (state: EditorState, node: SyntaxNode) => {
-  const argumentNode = node
-    .getChild('OptionalArgument')
-    ?.getChild('ShortOptionalArg')
-
-  return argumentNode && state.sliceDoc(argumentNode.from, argumentNode.to)
 }

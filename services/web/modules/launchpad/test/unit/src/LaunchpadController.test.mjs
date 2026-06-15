@@ -1,7 +1,7 @@
-import { expect, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as path from 'node:path'
 import sinon from 'sinon'
-import MockResponse from '../../../../../test/unit/src/helpers/MockResponse.js'
+import MockResponse from '../../../../../test/unit/src/helpers/MockResponse.mjs'
 
 const modulePath = path.join(
   import.meta.dirname,
@@ -9,10 +9,6 @@ const modulePath = path.join(
 )
 
 describe('LaunchpadController', function () {
-  // esmock doesn't work well with CommonJS dependencies, global imports for
-  // @overleaf/settings aren't working until that module is migrated to ESM. In the
-  // meantime, the workaround is to set and restore settings values
-
   beforeEach(async function (ctx) {
     ctx.user = {
       _id: '323123',
@@ -29,12 +25,8 @@ describe('LaunchpadController', function () {
 
     vi.doMock('@overleaf/settings', () => ({ default: ctx.Settings }))
 
-    vi.doMock('@overleaf/metrics', () => ({
-      default: (ctx.Metrics = {}),
-    }))
-
     vi.doMock(
-      '../../../../../app/src/Features/User/UserRegistrationHandler.js',
+      '../../../../../app/src/Features/User/UserRegistrationHandler.mjs',
       () => ({
         default: (ctx.UserRegistrationHandler = {
           promises: {},
@@ -42,36 +34,36 @@ describe('LaunchpadController', function () {
       })
     )
 
-    vi.doMock('../../../../../app/src/Features/Email/EmailHandler.js', () => ({
+    vi.doMock('../../../../../app/src/Features/Email/EmailHandler.mjs', () => ({
       default: (ctx.EmailHandler = { promises: {} }),
     }))
 
-    vi.doMock('../../../../../app/src/Features/User/UserGetter.js', () => ({
+    vi.doMock('../../../../../app/src/Features/User/UserGetter.mjs', () => ({
       default: (ctx.UserGetter = {
         promises: {},
       }),
     }))
 
-    vi.doMock('../../../../../app/src/models/User.js', () => ({
+    vi.doMock('../../../../../app/src/models/User.mjs', () => ({
       User: ctx.User,
     }))
 
     vi.doMock(
-      '../../../../../app/src/Features/Authentication/AuthenticationController.js',
+      '../../../../../app/src/Features/Authentication/AuthenticationController.mjs',
       () => ({
         default: (ctx.AuthenticationController = {}),
       })
     )
 
     vi.doMock(
-      '../../../../../app/src/Features/Authentication/AuthenticationManager.js',
+      '../../../../../app/src/Features/Authentication/AuthenticationManager.mjs',
       () => ({
         default: (ctx.AuthenticationManager = {}),
       })
     )
 
     vi.doMock(
-      '../../../../../app/src/Features/Authentication/SessionManager.js',
+      '../../../../../app/src/Features/Authentication/SessionManager.mjs',
       () => ({
         default: (ctx.SessionManager = {
           getSessionUser: sinon.stub(),
@@ -89,7 +81,7 @@ describe('LaunchpadController', function () {
       session: {},
     }
 
-    ctx.res = new MockResponse()
+    ctx.res = new MockResponse(vi)
     ctx.res.locals = {
       translate(key) {
         return key
@@ -127,8 +119,8 @@ describe('LaunchpadController', function () {
             import.meta.dirname,
             '../../../app/views/launchpad'
           )
-          ctx.res.render.callCount.should.equal(1)
-          expect(ctx.res.render).to.have.been.calledWith(viewPath, {
+          expect(ctx.res.render).toHaveBeenCalledTimes(1)
+          expect(ctx.res.render).toHaveBeenCalledWith(viewPath, {
             adminUserExists: false,
             authMethod: 'local',
           })
@@ -149,11 +141,11 @@ describe('LaunchpadController', function () {
           ctx.AuthenticationController.setRedirectInSession.callCount.should.equal(
             1
           )
-          ctx.res.redirect.calledWith('/login').should.equal(true)
+          expect(ctx.res.redirect).toHaveBeenCalledWith('/login')
         })
 
         it('should not render the launchpad page', function (ctx) {
-          ctx.res.render.callCount.should.equal(0)
+          expect(ctx.res.render).not.toHaveBeenCalled()
         })
       })
     })
@@ -185,8 +177,8 @@ describe('LaunchpadController', function () {
             import.meta.dirname,
             '../../../app/views/launchpad'
           )
-          ctx.res.render.callCount.should.equal(1)
-          expect(ctx.res.render).to.have.been.calledWith(viewPath, {
+          expect(ctx.res.render).toHaveBeenCalledTimes(1)
+          expect(ctx.res.render).toHaveBeenCalledWith(viewPath, {
             wsUrl: undefined,
             adminUserExists: true,
             authMethod: 'local',
@@ -207,8 +199,8 @@ describe('LaunchpadController', function () {
         })
 
         it('should redirect to restricted page', function (ctx) {
-          ctx.res.redirect.callCount.should.equal(1)
-          ctx.res.redirect.calledWith('/restricted').should.equal(true)
+          expect(ctx.res.redirect).toHaveBeenCalledTimes(1)
+          expect(ctx.res.redirect).toHaveBeenCalledWith('/restricted')
         })
       })
     })
@@ -258,7 +250,7 @@ describe('LaunchpadController', function () {
 
     it('should produce a 200 response', async function (ctx) {
       await ctx.LaunchpadController.sendTestEmail(ctx.req, ctx.res, ctx.next)
-      ctx.res.json.calledWith({ message: 'email_sent' }).should.equal(true)
+      expect(ctx.res.json).toHaveBeenCalledWith({ message: 'email_sent' })
     })
 
     it('should not call next with an error', function (ctx) {
@@ -300,12 +292,10 @@ describe('LaunchpadController', function () {
 
       it('should produce a 400 response', function (ctx) {
         ctx.LaunchpadController.sendTestEmail(ctx.req, ctx.res, ctx.next)
-        ctx.res.status.calledWith(400).should.equal(true)
-        ctx.res.json
-          .calledWith({
-            message: 'no email address supplied',
-          })
-          .should.equal(true)
+        expect(ctx.res.status).toHaveBeenCalledWith(400)
+        expect(ctx.res.json).toHaveBeenCalledWith({
+          message: 'no email address supplied',
+        })
       })
     })
   })
@@ -341,8 +331,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send back a json response', function (ctx) {
-        ctx.res.json.callCount.should.equal(1)
-        expect(ctx.res.json).to.have.been.calledWith({ redir: '/launchpad' })
+        expect(ctx.res.json).toHaveBeenCalledTimes(1)
+        expect(ctx.res.json).toHaveBeenCalledWith({ redir: '/launchpad' })
       })
 
       it('should have checked for existing admins', function (ctx) {
@@ -394,8 +384,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 400 response', function (ctx) {
-        ctx.res.sendStatus.callCount.should.equal(1)
-        ctx.res.sendStatus.calledWith(400).should.equal(true)
+        expect(ctx.res.sendStatus).toHaveBeenCalledTimes(1)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(400)
       })
 
       it('should not check for existing admins', function (ctx) {
@@ -427,8 +417,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 400 response', function (ctx) {
-        ctx.res.sendStatus.callCount.should.equal(1)
-        ctx.res.sendStatus.calledWith(400).should.equal(true)
+        expect(ctx.res.sendStatus).toHaveBeenCalledTimes(1)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(400)
       })
 
       it('should not check for existing admins', function (ctx) {
@@ -464,9 +454,9 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 400 response', function (ctx) {
-        ctx.res.status.callCount.should.equal(1)
-        ctx.res.status.calledWith(400).should.equal(true)
-        ctx.res.json.calledWith({
+        expect(ctx.res.status).toHaveBeenCalledTimes(1)
+        expect(ctx.res.status).toHaveBeenCalledWith(400)
+        expect(ctx.res.json).toHaveBeenCalledWith({
           message: { type: 'error', text: 'bad email' },
         })
       })
@@ -500,9 +490,9 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 400 response', function (ctx) {
-        ctx.res.status.callCount.should.equal(1)
-        ctx.res.status.calledWith(400).should.equal(true)
-        ctx.res.json.calledWith({
+        expect(ctx.res.status).toHaveBeenCalledTimes(1)
+        expect(ctx.res.status).toHaveBeenCalledWith(400)
+        expect(ctx.res.json).toHaveBeenCalledWith({
           message: { type: 'error', text: 'bad password' },
         })
       })
@@ -534,8 +524,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 403 response', function (ctx) {
-        ctx.res.status.callCount.should.equal(1)
-        ctx.res.status.calledWith(403).should.equal(true)
+        expect(ctx.res.status).toHaveBeenCalledTimes(1)
+        expect(ctx.res.status).toHaveBeenCalledWith(403)
       })
 
       it('should not call registerNewUser', function (ctx) {
@@ -690,8 +680,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send back a json response', function (ctx) {
-        ctx.res.json.callCount.should.equal(1)
-        expect(ctx.res.json).to.have.been.calledWith({ redir: '/launchpad' })
+        expect(ctx.res.json).toHaveBeenCalledTimes(1)
+        expect(ctx.res.json).toHaveBeenCalledWith({ redir: '/launchpad' })
       })
 
       it('should have checked for existing admins', function (ctx) {
@@ -757,8 +747,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send back a json response', function (ctx) {
-        ctx.res.json.callCount.should.equal(1)
-        expect(ctx.res.json.lastCall.args[0].email).to.equal(ctx.email)
+        expect(ctx.res.json).toHaveBeenCalledTimes(1)
+        expect(ctx.res.json.mock.lastCall[0].email).to.equal(ctx.email)
       })
 
       it('should have checked for existing admins', function (ctx) {
@@ -769,14 +759,16 @@ describe('LaunchpadController', function () {
         ctx.UserRegistrationHandler.promises.registerNewUser.callCount.should.equal(
           1
         )
-        ctx.UserRegistrationHandler.promises.registerNewUser
-          .calledWith({
-            email: ctx.email,
-            password: 'password_here',
-            first_name: ctx.email,
-            last_name: '',
-          })
-          .should.equal(true)
+        const call =
+          ctx.UserRegistrationHandler.promises.registerNewUser.firstCall
+        expect(call.args[0]).to.include({
+          email: ctx.email,
+          first_name: ctx.email,
+          last_name: '',
+        })
+        expect(call.args[0].password).to.be.a('string')
+        expect(call.args[0].password).to.not.equal('password_here')
+        expect(call.args[0].password.length).to.be.at.least(16)
       })
 
       it('should have updated the user to make them an admin', function (ctx) {
@@ -824,8 +816,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 403 response', function (ctx) {
-        ctx.res.sendStatus.callCount.should.equal(1)
-        ctx.res.sendStatus.calledWith(403).should.equal(true)
+        expect(ctx.res.sendStatus).toHaveBeenCalledTimes(1)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(403)
       })
 
       it('should not check for existing admins', function (ctx) {
@@ -859,8 +851,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 400 response', function (ctx) {
-        ctx.res.sendStatus.callCount.should.equal(1)
-        ctx.res.sendStatus.calledWith(400).should.equal(true)
+        expect(ctx.res.sendStatus).toHaveBeenCalledTimes(1)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(400)
       })
 
       it('should not check for existing admins', function (ctx) {
@@ -894,8 +886,8 @@ describe('LaunchpadController', function () {
       })
 
       it('should send a 403 response', function (ctx) {
-        ctx.res.sendStatus.callCount.should.equal(1)
-        ctx.res.sendStatus.calledWith(403).should.equal(true)
+        expect(ctx.res.sendStatus).toHaveBeenCalledTimes(1)
+        expect(ctx.res.sendStatus).toHaveBeenCalledWith(403)
       })
 
       it('should not call registerNewUser', function (ctx) {
@@ -974,14 +966,16 @@ describe('LaunchpadController', function () {
         ctx.UserRegistrationHandler.promises.registerNewUser.callCount.should.equal(
           1
         )
-        ctx.UserRegistrationHandler.promises.registerNewUser
-          .calledWith({
-            email: ctx.email,
-            password: 'password_here',
-            first_name: ctx.email,
-            last_name: '',
-          })
-          .should.equal(true)
+        const call =
+          ctx.UserRegistrationHandler.promises.registerNewUser.firstCall
+        expect(call.args[0]).to.include({
+          email: ctx.email,
+          first_name: ctx.email,
+          last_name: '',
+        })
+        expect(call.args[0].password).to.be.a('string')
+        expect(call.args[0].password).to.not.equal('password_here')
+        expect(call.args[0].password.length).to.be.at.least(16)
       })
 
       it('should not call update', function (ctx) {
@@ -1025,14 +1019,16 @@ describe('LaunchpadController', function () {
         ctx.UserRegistrationHandler.promises.registerNewUser.callCount.should.equal(
           1
         )
-        ctx.UserRegistrationHandler.promises.registerNewUser
-          .calledWith({
-            email: ctx.email,
-            password: 'password_here',
-            first_name: ctx.email,
-            last_name: '',
-          })
-          .should.equal(true)
+        const call =
+          ctx.UserRegistrationHandler.promises.registerNewUser.firstCall
+        expect(call.args[0]).to.include({
+          email: ctx.email,
+          first_name: ctx.email,
+          last_name: '',
+        })
+        expect(call.args[0].password).to.be.a('string')
+        expect(call.args[0].password).to.not.equal('password_here')
+        expect(call.args[0].password.length).to.be.at.least(16)
       })
     })
   })

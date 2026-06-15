@@ -1,12 +1,13 @@
 import { useTranslation } from 'react-i18next'
 import { memo } from 'react'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLButton from '@/shared/components/ol/ol-button'
 
 export type GenericMessageModalOwnProps = {
   title: string
@@ -25,7 +26,7 @@ function GenericMessageModal({
 
   return (
     <OLModal {...modalProps}>
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{title}</OLModalTitle>
       </OLModalHeader>
 

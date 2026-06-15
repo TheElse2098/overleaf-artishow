@@ -1,7 +1,7 @@
 import { Trans } from 'react-i18next'
 import { Institution } from '../../../../../../types/institution'
 import { useSubscriptionDashboardContext } from '../../context/subscription-dashboard-context'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLNotification from '@/shared/components/ol/ol-notification'
 
 function InstitutionMemberships() {
   const { institutionMemberships } = useSubscriptionDashboardContext()
@@ -32,7 +32,7 @@ function InstitutionMemberships() {
           <Trans
             i18nKey="you_are_on_x_plan_as_a_confirmed_member_of_institution_y"
             values={{
-              planName: 'Professional',
+              planName: 'Commons',
               institutionName: institution.name || '',
             }}
             shouldUnescape

@@ -25,7 +25,7 @@ import {
   buildRuleDeltas,
   handleLogFiles,
   handleOutputFiles,
-} from '../../features/pdf-preview/util/output-files'
+} from '@/features/pdf-preview/util/output-files'
 import { useProjectContext } from './project-context'
 import { useEditorContext } from './editor-context'
 import { buildFileList } from '../../features/pdf-preview/util/file-list'
@@ -34,6 +34,7 @@ import { useUserContext } from './user-context'
 import { useFileTreeData } from '@/shared/context/file-tree-data-context'
 import { useDetachContext } from '@/shared/context/detach-context'
 import { useFileTreePathContext } from '@/features/file-tree/contexts/file-tree-path'
+import { useRootDoc } from '@/shared/hooks/use-root-doc'
 import { useUserSettingsContext } from '@/shared/context/user-settings-context'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useEditorManagerContext } from '@/features/ide-react/context/editor-manager-context'
@@ -44,12 +45,21 @@ import {
   PdfScrollPosition,
   usePdfScrollPosition,
 } from '@/shared/hooks/use-pdf-scroll-position'
-import { LogEntry, PdfFileDataList } from '@/features/pdf-preview/util/types'
-import { isSplitTestEnabled } from '@/utils/splitTestUtils'
+import {
+  DeliveryLatencies,
+  HighlightData,
+  LogEntry,
+  PdfFileDataList,
+} from '@/features/pdf-preview/util/types'
 import { captureException } from '@/infrastructure/error-reporter'
 import OError from '@overleaf/o-error'
 import getMeta from '@/utils/meta'
 import type { Annotation } from '../../../../types/annotation'
+import { useProjectSettingsContext } from '@/features/editor-left-menu/context/project-settings-context'
+import {
+  ActiveOverallTheme,
+  useActiveOverallTheme,
+} from '../hooks/use-active-overall-theme'
 
 type PdfFile = Record<string, any>
 
@@ -65,7 +75,7 @@ export type CompileContext = {
   fileList?: PdfFileDataList
   hasChanges: boolean
   hasShortCompileTimeout: boolean
-  highlights?: Record<string, any>[]
+  highlights?: HighlightData[]
   isProjectOwner: boolean
   logEntries?: {
     all: LogEntry[]
@@ -76,7 +86,7 @@ export type CompileContext = {
   logEntryAnnotations?: Record<string, Annotation[]>
   outputFilesArchive?: string
   pdfDownloadUrl?: string
-  pdfFile?: PdfFile
+  pdfFile?: PdfFile | null
   pdfUrl?: string
   pdfViewer?: string
   position?: PdfScrollPosition
@@ -111,12 +121,15 @@ export type CompileContext = {
   setAnimateCompileDropdownArrow: (value: boolean) => void
   recompileFromScratch: () => void
   setCompiling: (value: boolean) => void
-  startCompile: (options?: any) => void
+  startCompile: (options?: any) => Promise<void>
   stopCompile: () => void
   setChangedAt: (value: any) => void
   clearCache: () => void
   syncToEntry: (value: any, keepCurrentView?: boolean) => void
   recordAction: (action: string) => void
+  darkModePdf: boolean | undefined
+  setDarkModePdf: (value: boolean) => void
+  activeOverallTheme: ActiveOverallTheme
 }
 
 export const LocalCompileContext = createContext<CompileContext | undefined>(
@@ -136,10 +149,11 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
 
   const { pdfPreviewOpen } = useLayoutContext()
 
-  const { features, alphaProgram, labsProgram } = useUserContext()
+  const { features, alphaProgram } = useUserContext()
 
   const { fileTreeData } = useFileTreeData()
   const { findEntityByPath } = useFileTreePathContext()
+  const getRootDocInfo = useRootDoc()
 
   // whether a compile is in progress
   const [compiling, setCompiling] = useState(false)
@@ -161,8 +175,13 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   const { userSettings } = useUserSettingsContext()
   const { pdfViewer, syntaxValidation } = userSettings
 
+  // The active setting for dark mode PDF
+  const { darkModePdf, setDarkModePdf } = useProjectSettingsContext()
+
+  const activeOverallTheme = useActiveOverallTheme()
+
   // low level details for metrics
-  const [pdfFile, setPdfFile] = useState<PdfFile | undefined>()
+  const [pdfFile, setPdfFile] = useState<PdfFile | null | undefined>()
 
   // the project is considered to be "uncompiled" if a doc has changed, or finished saving, since the last compile started.
   const [uncompiled, setUncompiled] = useState(false)
@@ -186,14 +205,15 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   const [firstRenderDone, setFirstRenderDone] = useState(() => () => {})
 
   // latencies of compile/pdf download/rendering
-  const [deliveryLatencies, setDeliveryLatencies] = useState({})
+  const [deliveryLatencies, setDeliveryLatencies] = useState<DeliveryLatencies>(
+    {}
+  )
 
   // whether the project has been compiled yet
   const [compiledOnce, setCompiledOnce] = useState(false)
   // fetch initial compile response from cache
   const [initialCompileFromCache, setInitialCompileFromCache] = useState(
-    getMeta('ol-projectOwnerHasPremiumOnPageLoad') &&
-      isSplitTestEnabled('populate-clsi-cache') &&
+    getMeta('ol-canUseClsiCache') &&
       // Avoid fetching the initial compile from cache in PDF detach tab
       role !== 'detached'
   )
@@ -289,7 +309,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   }, [compiling])
 
   const _buildLogEntryAnnotations = useCallback(
-    (entries: any) =>
+    (entries: LogEntry[]) =>
       buildLogEntryAnnotations(entries, fileTreeData, lastCompileRootDocId),
     [fileTreeData, lastCompileRootDocId]
   )
@@ -314,18 +334,14 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
       compilingRef,
       signal,
       openDocs,
+      getRootDocInfo,
     })
   })
 
-  // keep currentDoc in sync with the compiler
+  // keep the root doc lookup in sync with the compiler
   useEffect(() => {
-    compiler.currentDoc = currentDocument
-  }, [compiler, currentDocument])
-
-  // keep the project rootDocId in sync with the compiler
-  useEffect(() => {
-    compiler.projectRootDocId = rootDocId
-  }, [compiler, rootDocId])
+    compiler.getRootDocInfo = getRootDocInfo
+  }, [compiler, getRootDocInfo])
 
   // keep draft setting in sync with the compiler
   useEffect(() => {
@@ -349,7 +365,9 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   useEffect(() => {
     if (initialCompileFromCache && !pendingInitialCompileFromCache) {
       setPendingInitialCompileFromCache(true)
-      getJSON(`/project/${projectId}/output/cached/output.overleaf.json`)
+      getJSON(`/project/${projectId}/output/cached/output.overleaf.json`, {
+        signal: AbortSignal.timeout(5_000),
+      })
         .then((data: any) => {
           // Hand data over to next effect, it will wait for project/doc loading.
           setDataFromCache(data)
@@ -375,11 +393,8 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
       dataFromCache.rootDocId = findEntityByPath(
         dataFromCache.options?.rootResourcePath || ''
       )?.entity?._id
-      const rootDocOverride = compiler.getRootDocOverrideId() || rootDocId
       settingsUpToDate =
-        rootDocOverride === dataFromCache.rootDocId &&
-        dataFromCache.options.imageName === imageName &&
-        dataFromCache.options.compiler === compilerName &&
+        getRootDocInfo().rootDocId === dataFromCache.rootDocId &&
         dataFromCache.options.draft === draft &&
         // Allow stopOnFirstError to be enabled in the compile from cache and disabled locally.
         // Compiles that passed with stopOnFirstError=true will also pass with stopOnFirstError=false. The inverse does not hold, and we need to recompile.
@@ -406,9 +421,8 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
     joinedOnce,
     currentDocument,
     compiledOnce,
-    rootDocId,
     findEntityByPath,
-    compiler,
+    getRootDocInfo,
     compilerName,
     imageName,
     stopOnFirstError,
@@ -458,7 +472,7 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   // these are refs rather than state so they don't trigger the effect to run
   const previousRuleCountsRef = useRef<{
     ruleCounts: Record<string, number>
-    rootDocId: string
+    rootDocId: string | null | undefined
   } | null>(null)
   const recordedActionsRef = useRef<Record<string, boolean>>({})
   const recordAction = useCallback((action: string) => {
@@ -525,12 +539,12 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
                 )
               }
 
-              if (hasCompileLogsEvents || labsProgram) {
+              if (hasCompileLogsEvents) {
                 const ruleCounts = buildRuleCounts(
                   result.logEntries.all
                 ) as Record<string, number>
 
-                const rootDocId = data.rootDocId || compiler.projectRootDocId
+                const rootDocId = data.rootDocId
 
                 const previousRuleCounts = previousRuleCountsRef.current
                 previousRuleCountsRef.current = { ruleCounts, rootDocId }
@@ -622,7 +636,6 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
     joinedOnce,
     data,
     alphaProgram,
-    labsProgram,
     features,
     hasCompileLogsEvents,
     hasPremiumCompile,
@@ -633,7 +646,6 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
     setLogEntries,
     setLogEntryAnnotations,
     setPdfFile,
-    compiler,
   ])
 
   // switch to logs if there's an error
@@ -681,14 +693,14 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
   const startCompile = useCallback(
     (options: any) => {
       setCompiledOnce(true)
-      compiler.compile(options)
+      return compiler.compile(options)
     },
     [compiler, setCompiledOnce]
   )
 
   // stop a compile manually
   const stopCompile = useCallback(() => {
-    compiler.stopCompile()
+    return compiler.stopCompile()
   }, [compiler])
 
   // clear the compile cache
@@ -787,6 +799,9 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
       cleanupCompileResult,
       syncToEntry,
       recordAction,
+      darkModePdf,
+      setDarkModePdf,
+      activeOverallTheme,
     }),
     [
       animateCompileDropdownArrow,
@@ -839,6 +854,9 @@ export const LocalCompileProvider: FC<React.PropsWithChildren> = ({
       toggleLogs,
       syncToEntry,
       recordAction,
+      darkModePdf,
+      setDarkModePdf,
+      activeOverallTheme,
     ]
   )
 

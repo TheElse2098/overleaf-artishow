@@ -2,8 +2,8 @@ import getMeta from '@/utils/meta'
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
 import { useTranslation, Trans } from 'react-i18next'
 import { Card, Row, Col } from 'react-bootstrap'
-import IconButton from '@/features/ui/components/bootstrap-5/icon-button'
-import Button from '@/features/ui/components/bootstrap-5/button'
+import IconButton from '@/shared/components/button/icon-button'
+import Button from '@/shared/components/button/button'
 import UpgradeSubscriptionPlanDetails from './upgrade-subscription-plan-details'
 import RequestStatus from '../request-status'
 import UpgradeSummary, {
@@ -18,6 +18,9 @@ function UpgradeSubscription() {
   const { t } = useTranslation()
   const groupName = getMeta('ol-groupName')
   const preview = getMeta('ol-subscriptionChangePreview') as SubscriptionChange
+  const isRedirectedPaymentError = Boolean(
+    getMeta('ol-subscriptionPaymentErrorCode')
+  )
   const [isError, setIsError] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
@@ -56,7 +59,7 @@ function UpgradeSubscription() {
     )
   }
 
-  if (isError) {
+  if (isRedirectedPaymentError || isError) {
     return (
       <RequestStatus
         variant="danger"

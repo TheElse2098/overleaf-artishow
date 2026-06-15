@@ -7,9 +7,8 @@ import {
   IdeView,
   useLayoutContext,
 } from '../../../../frontend/js/shared/context/layout-context'
-import { FC, PropsWithChildren, useEffect } from 'react'
+import { FC, PropsWithChildren, ReactElement, useEffect } from 'react'
 import { useLocalCompileContext } from '@/shared/context/local-compile-context'
-import { ProjectCompiler } from '../../../../types/project-settings'
 
 const storeAndFireEvent = (win: typeof window, key: string, value: unknown) => {
   localStorage.setItem(key, value)
@@ -27,6 +26,16 @@ const Layout: FC<{ layout: IdeLayout; view?: IdeView }> = ({
   }, [changeLayout, layout, view])
 
   return null
+}
+
+const PdfViewer = ({ children }: { children: ReactElement }) => {
+  return (
+    // TODO: ide-redesign-cleanup: Remove the .ide-redesign-main wrapper when
+    // the styles are no longer nested in that.
+    <div className="ide-redesign-main">
+      <div className="pdf-viewer">{children}</div>
+    </div>
+  )
 }
 
 describe('<PdfPreview/>', function () {
@@ -48,12 +57,8 @@ describe('<PdfPreview/>', function () {
       'ol-compilesUserContentDomain',
       'https://compiles-user.dev-overleaf.com'
     )
-    window.metaAttributesCache.set('ol-splitTestVariants', {
-      'populate-clsi-cache': 'enabled',
-    })
-    window.metaAttributesCache.set('ol-projectOwnerHasPremiumOnPageLoad', true)
+    window.metaAttributesCache.set('ol-canUseClsiCache', true)
     window.metaAttributesCache.set('ol-compileSettings', {
-      reducedWarningThreshold: 'default',
       compileTimeout: 240,
     })
     cy.interceptEvents()
@@ -67,9 +72,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -91,9 +96,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -115,9 +120,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -166,9 +171,9 @@ describe('<PdfPreview/>', function () {
         const scope = mockScope()
         cy.mount(
           <EditorProviders scope={scope} projectId={projectId}>
-            <div className="pdf-viewer">
+            <PdfViewer>
               <PdfPreview />
-            </div>
+            </PdfViewer>
           </EditorProviders>
         )
 
@@ -204,20 +209,6 @@ describe('<PdfPreview/>', function () {
         cached: true,
         setup: () => {},
         props: {},
-      },
-      'ignores the compile from cache when imageName changed': {
-        cached: false,
-        setup: () => {},
-        props: {
-          imageName: 'texlive-full:2025.1',
-        },
-      },
-      'ignores the compile from cache when compiler changed': {
-        cached: false,
-        setup: () => {},
-        props: {
-          compiler: 'lualatex' as ProjectCompiler,
-        },
       },
       'ignores the compile from cache when draft mode changed': {
         cached: false,
@@ -276,9 +267,9 @@ describe('<PdfPreview/>', function () {
 
         cy.mount(
           <EditorProviders scope={scope} projectId={projectId} {...props}>
-            <div className="pdf-viewer">
+            <PdfViewer>
               <PdfPreview />
-            </div>
+            </PdfViewer>
           </EditorProviders>
         )
 
@@ -296,9 +287,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -318,9 +309,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -342,9 +333,9 @@ describe('<PdfPreview/>', function () {
 
         cy.mount(
           <EditorProviders scope={scope}>
-            <div className="pdf-viewer">
+            <PdfViewer>
               <PdfPreview />
-            </div>
+            </PdfViewer>
           </EditorProviders>
         )
 
@@ -376,9 +367,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -399,9 +390,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -433,9 +424,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -474,9 +465,9 @@ describe('<PdfPreview/>', function () {
     cy.mount(
       <EditorProviders scope={scope} userSettings={userSettings}>
         <WithLintingErrors>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </WithLintingErrors>
       </EditorProviders>
     )
@@ -502,7 +493,9 @@ describe('<PdfPreview/>', function () {
     // NOTE: difficult to assert that a request hasn't been sent
     cy.findByRole('button', { name: 'Recompile' })
 
-    cy.findByText('Code check failed')
+    cy.findByText(
+      'Your code has errors that need to be fixed before the auto-compile can run'
+    )
   })
 
   it('does not run a compile on doc change if the PDF preview is not open', function () {
@@ -513,9 +506,9 @@ describe('<PdfPreview/>', function () {
     cy.mount(
       <EditorProviders scope={scope}>
         <Layout layout="flat" view="editor" />
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -574,9 +567,9 @@ describe('<PdfPreview/>', function () {
 
         cy.mount(
           <EditorProviders scope={scope}>
-            <div className="pdf-viewer">
+            <PdfViewer>
               <PdfPreview />
-            </div>
+            </PdfViewer>
           </EditorProviders>
         )
 
@@ -585,6 +578,39 @@ describe('<PdfPreview/>', function () {
         cy.findByText(message)
       })
     }
+
+    it('displays error messages expanded by default', function () {
+      cy.intercept('POST', '/project/*/compile*', {
+        body: {
+          status: 'failure',
+          clsiServerId: 'foo',
+          compileGroup: 'priority',
+        },
+      }).as('compile')
+
+      const scope = mockScope()
+
+      cy.mount(
+        <EditorProviders scope={scope}>
+          <PdfViewer>
+            <PdfPreview />
+          </PdfViewer>
+        </EditorProviders>
+      )
+
+      cy.findByRole('button', { name: 'Recompile' }).click()
+      cy.wait('@compile')
+
+      // The error message should be visible (expanded by default)
+      cy.findByText('No PDF')
+      cy.findByText(/This compile didn’t produce a PDF/)
+      // The collapse button should be available (meaning it's expanded)
+      cy.findByLabelText(
+        'An error which prevented this project from compiling'
+      ).within(() => {
+        cy.findByRole('button', { name: 'Collapse' })
+      })
+    })
   })
 
   it('displays expandable raw logs', function () {
@@ -594,9 +620,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -604,10 +630,11 @@ describe('<PdfPreview/>', function () {
     cy.waitForCompile({ pdf: true })
 
     cy.findByRole('button', { name: 'View logs' }).click()
-    cy.findByRole('button', { name: 'View PDF' })
-
-    cy.findByRole('button', { name: 'Expand' }).click()
-    cy.findByRole('button', { name: 'Collapse' }).click()
+    cy.findByRole('button', { name: 'Back to PDF' })
+    cy.findByLabelText('Raw logs from the LaTeX compiler').within(() => {
+      cy.findByRole('button', { name: 'Expand' }).click()
+      cy.findByRole('button', { name: 'Collapse' }).click()
+    })
   })
 
   it('displays error messages if there were validation problems', function () {
@@ -642,9 +669,9 @@ describe('<PdfPreview/>', function () {
 
     cy.mount(
       <EditorProviders scope={scope}>
-        <div className="pdf-viewer">
+        <PdfViewer>
           <PdfPreview />
-        </div>
+        </PdfViewer>
       </EditorProviders>
     )
 
@@ -664,9 +691,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -709,9 +736,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -772,9 +799,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -800,9 +827,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -830,9 +857,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 
@@ -863,9 +890,9 @@ describe('<PdfPreview/>', function () {
 
       cy.mount(
         <EditorProviders scope={scope}>
-          <div className="pdf-viewer">
+          <PdfViewer>
             <PdfPreview />
-          </div>
+          </PdfViewer>
         </EditorProviders>
       )
 

@@ -4,10 +4,24 @@ import { isEqual } from 'lodash'
 import { FigureData } from '../../figure-modal'
 import { debugConsole } from '@/utils/debugging'
 import { PreviewPath } from '../../../../../../../types/preview-path'
+import type { PDFDocumentProxy } from 'pdfjs-dist/types/src/display/api'
+import { PdfDestroyLock } from '../utils/pdf-destroy-lock'
+
+// Module level to synchronize across all GraphicsWidgets
+const pdfDestroyLock = new PdfDestroyLock()
+
+function schedulePdfDestroy(pdf: PDFDocumentProxy) {
+  pdfDestroyLock.schedule(() =>
+    pdf.destroy().catch(() => {
+      debugConsole.warn('Failed to destroy PDFjs instance')
+    })
+  )
+}
 
 export class GraphicsWidget extends WidgetType {
   destroyed = false
   height = 300 // for estimatedHeight, updated when the image is loaded
+  pdfInstance: PDFDocumentProxy | null = null
 
   constructor(
     public filePath: string,
@@ -54,6 +68,10 @@ export class GraphicsWidget extends WidgetType {
     ) {
       return true
     }
+    if (this.pdfInstance) {
+      schedulePdfDestroy(this.pdfInstance)
+      this.pdfInstance = null
+    }
     this.renderGraphic(element, view)
     view.requestMeasure()
     return true
@@ -72,6 +90,10 @@ export class GraphicsWidget extends WidgetType {
 
   destroy() {
     this.destroyed = true
+    if (this.pdfInstance) {
+      schedulePdfDestroy(this.pdfInstance)
+      this.pdfInstance = null
+    }
   }
 
   coordsAt(element: HTMLElement) {
@@ -100,12 +122,22 @@ export class GraphicsWidget extends WidgetType {
 
     switch (preview.extension) {
       case 'pdf':
+      case 'PDF':
         {
           const canvas = document.createElement('canvas')
           canvas.classList.add('ol-cm-graphics')
-          this.renderPDF(view, canvas, preview.url).catch(debugConsole.error)
+          this.renderPDF(view, canvas, preview.url).catch(err => {
+            if (!this.destroyed) {
+              debugConsole.error('Failed to render PDF graphics widget', err)
+            }
+          })
           element.append(canvas)
         }
+        break
+
+      case 'svg':
+      case 'SVG':
+        element.append(this.createSvgImage(view, preview.url))
         break
 
       default:
@@ -122,6 +154,7 @@ export class GraphicsWidget extends WidgetType {
   }
 
   createImage(view: EditorView, url: string) {
+    const wrapper = document.createElement('div')
     const image = document.createElement('img')
     image.classList.add('ol-cm-graphics')
     image.classList.add('ol-cm-graphics-loading')
@@ -135,24 +168,130 @@ export class GraphicsWidget extends WidgetType {
       this.height = image.height // for estimatedHeight
       view.requestMeasure()
     })
+    image.addEventListener('error', () => {
+      const errorElement = this.createErrorElement(view)
+      wrapper.replaceChildren(errorElement)
+      this.height = wrapper.clientHeight
+      view.requestMeasure()
+    })
 
-    return image
+    wrapper.appendChild(image)
+    return wrapper
+  }
+
+  /**
+   * Creates an image element for SVG files by fetching the content and
+   * creating a Blob URL with the correct MIME type. This is necessary because
+   * the server serves blobs as application/octet-stream, which browsers won't
+   * render as SVG.
+   */
+  createSvgImage(view: EditorView, url: string) {
+    const wrapper = document.createElement('div')
+    const image = document.createElement('img')
+    image.classList.add('ol-cm-graphics')
+    image.classList.add('ol-cm-graphics-loading')
+    const width = this.getFigureWidth()
+    image.style.width = width
+    image.style.maxWidth = width
+
+    // Fetch SVG and create a Blob URL with correct MIME type
+    fetch(url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch SVG: ${response.status}`)
+        }
+        return response.text()
+      })
+      .then(svgText => {
+        if (this.destroyed) {
+          return
+        }
+
+        const blob = new Blob([svgText], { type: 'image/svg+xml' })
+        const objectUrl = URL.createObjectURL(blob)
+
+        const showError = () => {
+          URL.revokeObjectURL(objectUrl)
+          const errorElement = this.createErrorElement(view)
+          wrapper.replaceChildren(errorElement)
+          this.height = wrapper.clientHeight
+          view.requestMeasure()
+        }
+
+        image.addEventListener(
+          'load',
+          () => {
+            URL.revokeObjectURL(objectUrl)
+            image.classList.remove('ol-cm-graphics-loading')
+            this.height = image.height
+            view.requestMeasure()
+          },
+          { once: true }
+        )
+
+        image.addEventListener('error', showError, { once: true })
+
+        image.src = objectUrl
+      })
+      .catch(() => {
+        if (this.destroyed) {
+          return
+        }
+
+        const errorElement = this.createErrorElement(view)
+        wrapper.replaceChildren(errorElement)
+        this.height = wrapper.clientHeight
+        view.requestMeasure()
+      })
+
+    wrapper.appendChild(image)
+    return wrapper
+  }
+
+  createErrorElement(view: EditorView): HTMLElement {
+    const wrapper = document.createElement('div')
+    wrapper.classList.add('ol-cm-graphics-loading-error')
+    const title = document.createElement('span')
+    title.classList.add('ol-cm-graphics-loading-error-title')
+    title.textContent = view.state.phrase(
+      'the_visual_editor_cant_preview_this_type_of_image_file'
+    )
+    const subtitle = document.createElement('span')
+    subtitle.classList.add('ol-cm-graphics-loading-error-subtitle')
+    subtitle.textContent = view.state.phrase(
+      'click_recompile_and_check_your_pdf_to_see_how_its_looking'
+    )
+    wrapper.appendChild(title)
+    wrapper.appendChild(subtitle)
+    return wrapper
   }
 
   async renderPDF(view: EditorView, canvas: HTMLCanvasElement, url: string) {
-    const { loadPdfDocumentFromUrl } = await import(
-      '@/features/pdf-preview/util/pdf-js'
-    )
+    const { loadPdfDocumentFromUrl } =
+      await import('@/features/pdf-preview/util/pdf-js')
 
     // bail out if loading PDF.js took too long
     if (this.destroyed) {
       return
     }
 
+    await pdfDestroyLock.waitForPending()
+    if (this.destroyed) {
+      return
+    }
+
     const pdf = await loadPdfDocumentFromUrl(url).promise
-    const page = await pdf.getPage(1)
+    this.pdfInstance = pdf
 
     // bail out if loading the PDF took too long
+    if (this.destroyed) {
+      schedulePdfDestroy(pdf)
+      this.pdfInstance = null
+      return
+    }
+
+    const page = await pdf.getPage(1)
+
     if (this.destroyed) {
       return
     }

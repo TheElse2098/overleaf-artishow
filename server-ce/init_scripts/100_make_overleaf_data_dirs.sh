@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # saml certs
@@ -6,19 +6,17 @@ mkdir -p /var/lib/overleaf/certs
 chown www-data:www-data /var/lib/overleaf/certs
 
 mkdir -p /var/lib/overleaf/data
+chown www-data:www-data /var/lib/overleaf
 chown www-data:www-data /var/lib/overleaf/data
-
-mkdir -p /var/lib/overleaf/data/user_files
-chown www-data:www-data /var/lib/overleaf/data/user_files
 
 mkdir -p /var/lib/overleaf/data/compiles
 chown -R www-data:www-data /var/lib/overleaf/data/compiles
 
 mkdir -p /var/lib/overleaf/data/output
-chown www-data:www-data /var/lib/overleaf/data/output
+chown -R www-data:www-data /var/lib/overleaf/data/output
 
 mkdir -p /var/lib/overleaf/data/cache
-chown www-data:www-data /var/lib/overleaf/data/cache
+chown -R www-data:www-data /var/lib/overleaf/data/cache
 
 mkdir -p /var/lib/overleaf/data/template_files
 chown www-data:www-data /var/lib/overleaf/data/template_files

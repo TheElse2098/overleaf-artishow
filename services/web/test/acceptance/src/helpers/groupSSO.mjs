@@ -2,14 +2,14 @@ import fs from 'node:fs'
 import Path from 'node:path'
 import UserModule from './User.mjs'
 import SubscriptionHelper from './Subscription.mjs'
-import { SSOConfig } from '../../../../app/src/models/SSOConfig.js'
+import { SSOConfig } from '../../../../app/src/models/SSOConfig.mjs'
 import UserHelper from './UserHelper.mjs'
 import SAMLHelper from './SAMLHelper.mjs'
 import Settings from '@overleaf/settings'
-import { getProviderId } from '../../../../app/src/Features/Subscription/GroupUtils.js'
-import UserGetter from '../../../../app/src/Features/User/UserGetter.js'
+import GroupUtils from '../../../../app/src/Features/Subscription/GroupUtils.mjs'
+import UserGetter from '../../../../app/src/Features/User/UserGetter.mjs'
 import { fileURLToPath } from 'node:url'
-import { Subscription as SubscriptionModel } from '../../../../app/src/models/Subscription.js'
+import { Subscription as SubscriptionModel } from '../../../../app/src/models/Subscription.mjs'
 
 const { promises: User } = UserModule
 const { promises: Subscription } = SubscriptionHelper
@@ -42,7 +42,7 @@ export async function createGroupSSO(
   const nonSSOMember = nonSSOMemberHelper.user
 
   const groupAdminUser = new User()
-  const memberUser = new User()
+  const memberUser = new User({ confirmedAt: new Date() })
 
   await groupAdminUser.ensureUserExists()
   await memberUser.ensureUserExists()
@@ -71,11 +71,12 @@ export async function createGroupSSO(
     },
     ssoConfig: ssoConfig._id,
     membersLimit: 10,
+    teamName: 'Test Team',
   })
   await subscription.ensureExists()
   const subscriptionId = subscription._id.toString()
   const enrollmentUrl = getEnrollmentUrl(subscriptionId)
-  const internalProviderId = getProviderId(subscriptionId)
+  const internalProviderId = GroupUtils.getProviderId(subscriptionId)
 
   if (SSOConfigValidated) {
     await linkGroupMember(
@@ -101,6 +102,7 @@ export async function createGroupSSO(
     nonSSOMember,
     userHelper,
     enrollmentUrl,
+    certificates: baseSsoConfig.certificates,
   }
 }
 
@@ -121,7 +123,7 @@ export async function linkGroupMember(
     .exec()
   const userIdAttribute = subscription?.ssoConfig?.userIdAttribute
 
-  const internalProviderId = getProviderId(groupId)
+  const internalProviderId = GroupUtils.getProviderId(groupId)
   const enrollmentUrl = getEnrollmentUrl(groupId)
   const userHelper = await UserHelper.loginUser(
     {
@@ -188,7 +190,7 @@ export async function linkGroupMember(
 }
 
 export async function checkUserHasSSOLinked(userId, groupId) {
-  const internalProviderId = getProviderId(groupId)
+  const internalProviderId = GroupUtils.getProviderId(groupId)
   const user = await UserGetter.promises.getUser(
     { _id: userId },
     { samlIdentifiers: 1, enrollment: 1 }

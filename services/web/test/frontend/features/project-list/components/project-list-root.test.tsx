@@ -875,7 +875,7 @@ describe('<ProjectListRoot />', function () {
             const modals = await screen.findAllByRole('dialog')
             const modal = modals[0]
 
-            expect(sendMBSpy).to.have.been.calledThrice
+            expect(sendMBSpy).to.have.been.calledTwice
             expect(sendMBSpy).to.have.been.calledWith('loads_v2_dash')
             expect(sendMBSpy).to.have.been.calledWith(
               'project-list-page-interaction',
@@ -894,7 +894,9 @@ describe('<ProjectListRoot />', function () {
             expect(confirmButton.disabled).to.be.true
 
             // no name
-            const input = screen.getByLabelText('New Name') as HTMLButtonElement
+            const input = screen.getByLabelText(
+              /New name/i
+            ) as HTMLButtonElement
             fireEvent.change(input, {
               target: { value: '' },
             })
@@ -928,7 +930,7 @@ describe('<ProjectListRoot />', function () {
             // a valid name
             const newProjectName = 'A new project name'
             const input = (await within(modal).findByLabelText(
-              'New Name'
+              /New name/i
             )) as HTMLButtonElement
             const oldName = input.value
             fireEvent.change(input, {
@@ -1014,7 +1016,7 @@ describe('<ProjectListRoot />', function () {
               )
             ).to.be.true
 
-            expect(sendMBSpy).to.have.been.calledThrice
+            expect(sendMBSpy).to.have.been.calledTwice
             expect(sendMBSpy).to.have.been.calledWith('loads_v2_dash')
             expect(sendMBSpy).to.have.been.calledWith(
               'project-list-page-interaction',
@@ -1179,7 +1181,7 @@ describe('<ProjectListRoot />', function () {
 
         await fetchMock.callHistory.flush(true)
 
-        expect(sendMBSpy).to.have.been.calledThrice
+        expect(sendMBSpy).to.have.been.calledTwice
         expect(sendMBSpy).to.have.been.calledWith('loads_v2_dash')
         expect(sendMBSpy).to.have.been.calledWith(
           'project-list-page-interaction',

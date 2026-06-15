@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.backend.json",
-  "include": [
-    "**/*.js",
-    "**/*.cjs"
-  ]
+  "compilerOptions": {
+    "noImplicitAny": true
+  },
+  "include": ["**/*.js", "**/*.cjs", "**/*.ts"]
 }

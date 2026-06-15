@@ -71,7 +71,6 @@ function GeneralTemplatesSection() {
 export default function SidebarFilters() {
   const { t } = useTranslation()
   const isAdmin = getMeta('ol-user')?.isAdmin
-
   return (
     <ul className="list-unstyled project-list-filters">
       <SidebarFilter filter="all" text={t('all_projects')} />

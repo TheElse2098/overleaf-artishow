@@ -1,5 +1,5 @@
 // @ts-check
-import { db, ObjectId } from '../app/src/infrastructure/mongodb.js'
+import { db, ObjectId } from '../app/src/infrastructure/mongodb.mjs'
 import { batchedUpdate } from '@overleaf/mongo-utils/batchedUpdate.js'
 import { scriptRunner } from './lib/ScriptRunner.mjs'
 
@@ -49,7 +49,7 @@ async function main(trackProgress) {
       for (const project of projects) {
         projectsProcessed += 1
         if (projectsProcessed % 100000 === 0) {
-          console.log(projectsProcessed, 'projects processed')
+          console.warn(projectsProcessed, 'projects processed')
         }
         const projectId = project._id.toString()
         for (const { reason, path, _id } of processProject(project)) {

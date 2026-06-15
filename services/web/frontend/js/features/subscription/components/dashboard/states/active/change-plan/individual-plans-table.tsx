@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plan } from '../../../../../../../../../types/subscription/plan'
 import MaterialIcon from '@/shared/components/material-icon'
 import { useSubscriptionDashboardContext } from '../../../../../context/subscription-dashboard-context'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 
 function ChangeToPlanButton({ planCode }: { planCode: string }) {
   const { t } = useTranslation()
@@ -38,22 +38,24 @@ function KeepCurrentPlanButton() {
 function ChangePlanButton({ plan }: { plan: Plan }) {
   const { t } = useTranslation()
   const { personalSubscription } = useSubscriptionDashboardContext()
+  const currentPlanCode = personalSubscription?.planCode?.split('_')[0]
+  const pendingPlanCode =
+    personalSubscription?.pendingPlan?.planCode?.split('_')[0]
   const isCurrentPlanForUser =
-    personalSubscription?.planCode &&
-    plan.planCode === personalSubscription.planCode.split('_')[0]
+    currentPlanCode && plan.planCode === currentPlanCode
 
-  if (isCurrentPlanForUser && personalSubscription.pendingPlan) {
-    return <KeepCurrentPlanButton />
-  } else if (isCurrentPlanForUser && !personalSubscription.pendingPlan) {
+  if (isCurrentPlanForUser) {
+    if (pendingPlanCode && pendingPlanCode !== currentPlanCode) {
+      return <KeepCurrentPlanButton />
+    }
+
     return (
       <b className="d-inline-flex align-items-center">
         <MaterialIcon type="check" />
         &nbsp;{t('your_plan')}
       </b>
     )
-  } else if (
-    personalSubscription?.pendingPlan?.planCode?.split('_')[0] === plan.planCode
-  ) {
+  } else if (pendingPlanCode === plan.planCode) {
     return (
       <b className="d-inline-flex align-items-center">
         <MaterialIcon type="check" />
@@ -102,7 +104,11 @@ export function IndividualPlansTable({ plans }: { plans: Array<Plan> }) {
     () =>
       plans?.filter(
         plan =>
-          !['paid-personal', 'paid-personal-annual'].includes(plan.planCode)
+          ![
+            'paid-personal',
+            'paid-personal-annual',
+            'institutional_commons',
+          ].includes(plan.planCode)
       ),
     [plans]
   )

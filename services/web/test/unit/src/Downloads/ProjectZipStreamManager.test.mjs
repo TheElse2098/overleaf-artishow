@@ -10,7 +10,7 @@ import { vi } from 'vitest'
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 import sinon from 'sinon'
-import { EventEmitter } from 'events'
+import { EventEmitter } from 'node:events'
 const modulePath =
   '../../../../app/src/Features/Downloads/ProjectZipStreamManager.mjs'
 
@@ -43,9 +43,14 @@ describe('ProjectZipStreamManager', function () {
       })
     )
 
-    vi.doMock('../../../../app/src/Features/History/HistoryManager.js', () => ({
-      default: (ctx.HistoryManager = {}),
-    }))
+    vi.doMock(
+      '../../../../app/src/Features/History/HistoryManager.mjs',
+      () => ({
+        default: (ctx.HistoryManager = {
+          flushProject: sinon.stub().yields(null),
+        }),
+      })
+    )
 
     vi.doMock('../../../../app/src/Features/Project/ProjectGetter', () => ({
       default: (ctx.ProjectGetter = {}),
@@ -57,15 +62,6 @@ describe('ProjectZipStreamManager', function () {
         default: (ctx.FileStoreHandler = {}),
       })
     )
-
-    vi.doMock('../../../../app/src/infrastructure/Features', () => ({
-      default: (ctx.Features = {
-        hasFeature: sinon
-          .stub()
-          .withArgs('project-history-blobs')
-          .returns(true),
-      }),
-    }))
 
     ctx.ProjectZipStreamManager = (await import(modulePath)).default
   })
@@ -87,6 +83,8 @@ describe('ProjectZipStreamManager', function () {
 
           ctx.ProjectZipStreamManager.createZipStreamForProject = (
             projectId,
+            zipFromHistory,
+            historyId,
             callback
           ) => {
             callback(null, ctx.zip_streams[projectId])
@@ -98,12 +96,16 @@ describe('ProjectZipStreamManager', function () {
           sinon.spy(ctx.ProjectZipStreamManager, 'createZipStreamForProject')
 
           ctx.ProjectGetter.getProject = (projectId, fields, callback) => {
-            return callback(null, { name: ctx.project_names[projectId] })
+            return callback(null, {
+              name: ctx.project_names[projectId],
+              overleaf: { history: { id: 123 } },
+            })
           }
           sinon.spy(ctx.ProjectGetter, 'getProject')
 
           ctx.ProjectZipStreamManager.createZipStreamForMultipleProjects(
             ctx.project_ids,
+            false,
             (...args) => {
               return ctx.callback(...Array.from(args || []))
             }
@@ -137,7 +139,7 @@ describe('ProjectZipStreamManager', function () {
       it('should get the names of each project', function (ctx) {
         return Array.from(ctx.project_ids).map(projectId =>
           ctx.ProjectGetter.getProject
-            .calledWith(projectId, { name: true })
+            .calledWith(projectId, { name: true, 'overleaf.history.id': true })
             .should.equal(true)
         )
       })
@@ -166,6 +168,8 @@ describe('ProjectZipStreamManager', function () {
 
           ctx.ProjectZipStreamManager.createZipStreamForProject = (
             projectId,
+            zipFromHistory,
+            historyId,
             callback
           ) => {
             callback(null, ctx.zip_streams[projectId])
@@ -177,12 +181,16 @@ describe('ProjectZipStreamManager', function () {
 
           ctx.ProjectGetter.getProject = (projectId, fields, callback) => {
             const name = ctx.project_names[projectId]
-            callback(null, name ? { name } : undefined)
+            callback(
+              null,
+              name ? { name, overleaf: { history: { id: 123 } } } : undefined
+            )
           }
           sinon.spy(ctx.ProjectGetter, 'getProject')
 
           ctx.ProjectZipStreamManager.createZipStreamForMultipleProjects(
             ctx.project_ids,
+            false,
             ctx.callback
           )
 
@@ -206,7 +214,7 @@ describe('ProjectZipStreamManager', function () {
       it('should get the names of each project', function (ctx) {
         ctx.project_ids.map(projectId =>
           ctx.ProjectGetter.getProject
-            .calledWith(projectId, { name: true })
+            .calledWith(projectId, { name: true, 'overleaf.history.id': true })
             .should.equal(true)
         )
       })
@@ -243,6 +251,8 @@ describe('ProjectZipStreamManager', function () {
         ctx.archive.finalize = sinon.stub()
         return ctx.ProjectZipStreamManager.createZipStreamForProject(
           ctx.project_id,
+          false,
+          123,
           ctx.callback
         )
       })
@@ -291,6 +301,8 @@ describe('ProjectZipStreamManager', function () {
         ctx.archive.finalize = sinon.stub()
         ctx.ProjectZipStreamManager.createZipStreamForProject(
           ctx.project_id,
+          false,
+          123,
           ctx.callback
         )
       })
@@ -323,6 +335,8 @@ describe('ProjectZipStreamManager', function () {
         ctx.archive.finalize = sinon.stub()
         return ctx.ProjectZipStreamManager.createZipStreamForProject(
           ctx.project_id,
+          false,
+          123,
           ctx.callback
         )
       })
@@ -411,93 +425,55 @@ describe('ProjectZipStreamManager', function () {
         },
       }
       ctx.streams = {
-        'file-id-1': new EventEmitter(),
-        'file-id-2': new EventEmitter(),
+        abc: new EventEmitter(),
+        def: new EventEmitter(),
       }
       ctx.ProjectEntityHandler.getAllFiles = sinon
         .stub()
         .callsArgWith(1, null, ctx.files)
+      ctx.HistoryManager.requestBlobWithProjectId = (
+        projectId,
+        hash,
+        callback
+      ) => {
+        return callback(null, { stream: ctx.streams[hash] })
+      }
+      sinon.spy(ctx.HistoryManager, 'requestBlobWithProjectId')
+      ctx.ProjectZipStreamManager.addAllFilesToArchive(
+        ctx.project_id,
+        ctx.archive,
+        ctx.callback
+      )
+      for (const hash in ctx.streams) {
+        const stream = ctx.streams[hash]
+        stream.emit('end')
+      }
     })
-    describe('with project-history-blobs feature enabled', function () {
-      beforeEach(function (ctx) {
-        ctx.HistoryManager.requestBlobWithFallback = (
-          projectId,
-          hash,
-          fileId,
-          callback
-        ) => {
-          return callback(null, { stream: ctx.streams[fileId] })
-        }
-        sinon.spy(ctx.HistoryManager, 'requestBlobWithFallback')
-        ctx.ProjectZipStreamManager.addAllFilesToArchive(
-          ctx.project_id,
-          ctx.archive,
-          ctx.callback
-        )
-        for (const path in ctx.streams) {
-          const stream = ctx.streams[path]
-          stream.emit('end')
-        }
-      })
 
-      it('should get the files for the project', function (ctx) {
-        return ctx.ProjectEntityHandler.getAllFiles
-          .calledWith(ctx.project_id)
+    it('should get the files for the project', function (ctx) {
+      return ctx.ProjectEntityHandler.getAllFiles
+        .calledWith(ctx.project_id)
+        .should.equal(true)
+    })
+
+    it('should get a stream for each file', function (ctx) {
+      for (const path in ctx.files) {
+        const file = ctx.files[path]
+
+        ctx.HistoryManager.requestBlobWithProjectId
+          .calledWith(ctx.project_id, file.hash)
           .should.equal(true)
-      })
-
-      it('should get a stream for each file', function (ctx) {
-        for (const path in ctx.files) {
-          const file = ctx.files[path]
-
-          ctx.HistoryManager.requestBlobWithFallback
-            .calledWith(ctx.project_id, file.hash, file._id)
-            .should.equal(true)
-        }
-      })
-
-      it('should add each file to the archive', function (ctx) {
-        for (let path in ctx.files) {
-          const file = ctx.files[path]
-          path = path.slice(1) // remove "/"
-          ctx.archive.append
-            .calledWith(ctx.streams[file._id], { name: path })
-            .should.equal(true)
-        }
-      })
+      }
     })
 
-    describe('with project-history-blobs feature disabled', function () {
-      beforeEach(function (ctx) {
-        ctx.FileStoreHandler.getFileStream = (
-          projectId,
-          fileId,
-          query,
-          callback
-        ) => callback(null, ctx.streams[fileId])
-
-        sinon.spy(ctx.FileStoreHandler, 'getFileStream')
-        ctx.Features.hasFeature.withArgs('project-history-blobs').returns(false)
-        ctx.ProjectZipStreamManager.addAllFilesToArchive(
-          ctx.project_id,
-          ctx.archive,
-          ctx.callback
-        )
-        for (const path in ctx.streams) {
-          const stream = ctx.streams[path]
-          stream.emit('end')
-        }
-      })
-
-      it('should get a stream for each file', function (ctx) {
-        for (const path in ctx.files) {
-          const file = ctx.files[path]
-
-          ctx.FileStoreHandler.getFileStream
-            .calledWith(ctx.project_id, file._id)
-            .should.equal(true)
-        }
-      })
+    it('should add each file to the archive', function (ctx) {
+      for (let path in ctx.files) {
+        const file = ctx.files[path]
+        path = path.slice(1) // remove "/"
+        ctx.archive.append.should.have.been.calledWith(ctx.streams[file.hash], {
+          name: path,
+        })
+      }
     })
   })
 })

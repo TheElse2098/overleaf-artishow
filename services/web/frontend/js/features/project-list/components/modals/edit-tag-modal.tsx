@@ -9,17 +9,19 @@ import { editTag } from '../../util/api'
 import { getTagColor, MAX_TAG_LENGTH } from '../../util/tag'
 import { ColorPicker } from '../color-picker/color-picker'
 import { debugConsole } from '@/utils/debugging'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLForm from '@/features/ui/components/ol/ol-form'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
-import OLButton from '@/features/ui/components/ol/ol-button'
+} from '@/shared/components/ol/ol-modal'
+import OLForm from '@/shared/components/ol/ol-form'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLButton from '@/shared/components/ol/ol-button'
 import Notification from '@/shared/components/notification'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
 
 type EditTagModalProps = {
   id: string
@@ -87,18 +89,18 @@ export function EditTagModal({ id, tag, onEdit, onClose }: EditTagModalProps) {
 
   return (
     <OLModal show animation onHide={onClose} id={id} backdrop="static">
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{t('edit_tag')}</OLModalTitle>
       </OLModalHeader>
 
       <OLModalBody>
         <OLForm onSubmit={handleSubmit}>
-          <OLFormGroup>
-            <input
+          <OLFormGroup controlId="edit-tag-modal">
+            <OLFormLabel>{t('edit_tag_name')}</OLFormLabel>
+            <OLFormControl
               ref={autoFocusedRef}
               className="form-control"
               type="text"
-              placeholder="Tag Name"
               name="new-tag-name"
               value={newTagName === undefined ? (tag.name ?? '') : newTagName}
               required
@@ -138,6 +140,7 @@ export function EditTagModal({ id, tag, onEdit, onClose }: EditTagModalProps) {
             !!validationError
           }
           isLoading={isLoading}
+          loadingLabel={t('saving')}
         >
           {t('save')}
         </OLButton>

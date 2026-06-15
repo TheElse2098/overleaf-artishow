@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import OLButton, { OLButtonProps } from '@/features/ui/components/ol/ol-button'
+import OLButton, { OLButtonProps } from '@/shared/components/ol/ol-button'
 
 const isValidEmail = (email: string) => {
   return Boolean(email)
@@ -22,6 +22,7 @@ function AddNewEmailBtn({
       variant="primary"
       disabled={(disabled && !isLoading) || !isValidEmail(email)}
       isLoading={isLoading}
+      loadingLabel={t('adding')}
       {...props}
     >
       {t('add_new_email')}

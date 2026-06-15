@@ -24,6 +24,7 @@
 
 const config = require('config')
 const OError = require('@overleaf/o-error')
+const metrics = require('@overleaf/metrics')
 const { Chunk, History, Snapshot } = require('overleaf-editor-core')
 
 const assert = require('../assert')
@@ -37,6 +38,7 @@ const {
   ChunkVersionConflictError,
   VersionOutOfBoundsError,
 } = require('./errors')
+const { promiseMapWithLimit } = require('@overleaf/promise-utils')
 
 /**
  * @import { Change } from 'overleaf-editor-core'
@@ -75,6 +77,71 @@ async function initializeProject(projectId, snapshot) {
   const chunk = new Chunk(history, 0)
   await create(projectId, chunk)
   return projectId
+}
+
+/**
+ * Clone the project data.
+ * @param {string} sourceProjectId
+ * @param {string} targetProjectId
+ * @param {(string) => void} onProgress
+ * @param {AbortSignal} signal
+ */
+async function cloneProject(
+  sourceProjectId,
+  targetProjectId,
+  onProgress,
+  signal
+) {
+  assert.projectId(targetProjectId, 'bad target projectId')
+  assert.projectId(sourceProjectId, 'bad source projectId')
+
+  onProgress('existing history: checking')
+  const backend = getBackend(targetProjectId)
+  const chunkRecord = await backend.getLatestChunk(targetProjectId)
+  if (!chunkRecord) {
+    onProgress('existing history: not found, aborting')
+    throw new OError('target project is not initialized yet')
+  }
+  if (chunkRecord?.endVersion > 0) {
+    onProgress('existing history: found changes, aborting')
+    throw new AlreadyInitialized(targetProjectId)
+  }
+
+  onProgress('existing history: deleting empty chunk')
+  await backend.deleteChunk(targetProjectId, chunkRecord.id)
+  onProgress('existing history: deleted empty chunk')
+
+  async function cloneBlobs() {
+    onProgress('cloning blobs metadata: pending')
+    const blobStore = new BlobStore(targetProjectId)
+    await blobStore.clone(sourceProjectId, onProgress, signal)
+    onProgress('cloning blobs metadata: done')
+  }
+
+  async function cloneChunks() {
+    onProgress('cloning chunks metadata: pending')
+    const chunkIds = await backend.clone(sourceProjectId, targetProjectId)
+    onProgress(`chunks-metadata-imported: ${chunkIds.size}`)
+    let done = 0
+    await promiseMapWithLimit(
+      50,
+      Array.from(chunkIds.entries()),
+      async ([sourceChunkId, targetChunkId]) => {
+        if (signal.aborted) return
+        await historyStore.cloneChunk(
+          sourceProjectId,
+          sourceChunkId,
+          targetProjectId,
+          targetChunkId
+        )
+        done++
+        onProgress(`chunks-copied: ${done}`)
+      }
+    )
+    onProgress('cloning chunks metadata: done')
+  }
+
+  await Promise.all([cloneBlobs(), cloneChunks()])
 }
 
 /**
@@ -227,6 +294,56 @@ async function loadAtTimestamp(projectId, timestamp, opts = {}) {
 
   await lazyLoadHistoryFiles(history, batchBlobStore)
   return new Chunk(history, startVersion)
+}
+
+/** Get the changes since a given version (since), including non-persisted changes.
+ * Note that if there are multiple chunks since the given version, the changes from
+ * the first chunk will be returned with a hasMore flag to indicate that there are
+ * more changes available.   The 'since' version is exclusive.
+ * @param {string} projectId
+ * @param {number} since - version to get changes since (exclusive)
+ * @return {Promise<{changes: Change[], hasMore: boolean}>} - object with array of changes and boolean indicating if there are more changes available
+ */
+async function getChangesSinceVersion(projectId, since) {
+  assert.projectId(projectId, 'bad projectId')
+  assert.integer(since, 'bad since version')
+
+  // First try to get changes directly from Redis buffer
+  const result = await redisBackend.getChangesSinceVersion(projectId, since)
+  if (result.status === 'ok') {
+    // Successfully got changes from Redis, no more changes available beyond what Redis has
+    metrics.inc('chunk_store.get_changes_since_version', 1, {
+      source: 'redis',
+      hasMore: 'false',
+      status: result.status,
+    })
+    return { changes: result.changes || [], hasMore: false }
+  }
+
+  // If status is 'not_found' or 'out_of_bounds', fall through to chunk-based approach
+  const chunk = await loadAtVersion(projectId, since, {
+    preferNewer: true,
+  })
+
+  // Validate that 'since' is within the bounds of the chunk
+  if (since < chunk.getStartVersion()) {
+    throw new VersionOutOfBoundsError('Chunk does not include since version', {
+      projectId,
+      since,
+    })
+  }
+  // Extract the changes after 'since' from the chunk
+  const changes = chunk.getChanges().slice(since - chunk.getStartVersion())
+
+  // Check if there are more changes beyond the current chunk
+  const latestChunkMetadata = await getLatestChunkMetadata(projectId)
+  const hasMore = latestChunkMetadata.endVersion > chunk.getEndVersion()
+  metrics.inc('chunk_store.get_changes_since_version', 1, {
+    source: 'gcs',
+    hasMore: hasMore ? 'true' : 'false',
+    status: result.status,
+  })
+  return { changes, hasMore }
 }
 
 /**
@@ -568,6 +685,7 @@ class AlreadyInitialized extends OError {
 module.exports = {
   getBackend,
   initializeProject,
+  cloneProject,
   loadLatest,
   getLatestChunkMetadata,
   loadAtVersion,
@@ -581,6 +699,7 @@ module.exports = {
   getProjectChunkIds,
   getProjectChunks,
   getProjectChunksFromVersion,
+  getChangesSinceVersion,
   deleteProjectChunks,
   deleteOldChunks,
   AlreadyInitialized,

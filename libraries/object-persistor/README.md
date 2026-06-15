@@ -46,9 +46,9 @@ Uploads a stream to the backend.
 - `key`: The key for the uploaded object
 - `readStream`: The data stream to upload
 - `opts` (optional):
-    - `sourceMd5`: The md5 hash of the source data, if known. The uploaded data will be compared against this and the operation will fail if it does not match. If omitted, the md5 is calculated as the data is uploaded instead, and verified against the backend.
-    - `contentType`: The content type to write in the object metadata
-    - `contentEncoding`: The content encoding to write in the object metadata
+  - `sourceMd5`: The md5 hash of the source data, if known. The uploaded data will be compared against this and the operation will fail if it does not match. If omitted, the md5 is calculated as the data is uploaded instead, and verified against the backend. This is not supported in `S3Persistor` as it performs [its own integrity protections](https://aws.amazon.com/blogs/aws/introducing-default-data-integrity-protections-for-new-objects-in-amazon-s3/). Setting `sourceMd5` with `S3Persistor` will result in an error being thrown.
+  - `contentType`: The content type to write in the object metadata
+  - `contentEncoding`: The content encoding to write in the object metadata
 
 ##### Notes
 
@@ -264,8 +264,10 @@ For the `FS` persistor, the `bucketName` should be the full path to the folder o
 - `s3.key` (required): The AWS access key ID
 - `s3.secret` (required): The AWS secret access key
 - `s3.partSize`: The part size for S3 uploads. Defaults to 100 megabytes.
-- `s3.httpOptions`: HTTP options passed directly to the [S3 constructor](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#constructor-property).
-- `s3.maxRetries`: The number of times the S3 client will retry in case of an error
+- `s3.httpOptions`: HTTP Options passed to the [`NodeHttpHandler` constructor](https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/Package/-smithy-node-http-handler/Class/NodeHttpHandler/)
+  - For backwards compatibility reasons, the `timeout` property that was passed to the [S3 constructor](https://docs.aws.amazon.com/AWSJavaScriptSDK/latest/AWS/S3.html#constructor-property) before migrating to AWS SDK v3 is now passed to the `NodeHttpHandler` constructor as `connectionTimeout`.
+- `s3.maxRetries` (legacy): The number of times the S3 client will retry in case of an error
+- `s3.maxAttempts`: The number of times the S3 client will attempt to perform the operation in case there are errors. Default value is 3.
 - `s3.endpoint`: For testing - overrides the S3 endpoint to use a different service (e.g. a fake S3 server)
 - `s3.pathStyle`: For testing - use old path-style URLs, for services that do not support subdomain-based access
 
@@ -279,12 +281,6 @@ For the `FS` persistor, the `bucketName` should be the full path to the folder o
   }
 }
 ```
-
-#### Notes
-
-In order for server-side MD5 generation to work, uploads must be below the `partSize`. Otherwise a multipart upload will be used, and the S3 `eTag` which is used to retrieve the MD5 will not be the MD5 hash of the uploaded object. In these cases, we download the data and calculate the MD5 manually.
-
-For verification during upload, we use S3's checksum mechanism to verify the integrity of the uploaded data, but when explicitly retrieving the md5 hash this will download the entire object if its size is above the part size.
 
 ### GCS-specific parameters
 
@@ -308,7 +304,7 @@ In order to prevent accidental deletion from outside this mechanism, an event-ba
 Contributions should pass lint, formatting and unit test checks. To run these, use
 
 ```
-npm run test
+yarn run test
 ```
 
 There are no acceptance tests in this module, but https://github.com/overleaf/filestore/ contains a comprehensive set of acceptance tests that use this module. These should also pass, with the changes.

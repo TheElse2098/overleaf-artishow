@@ -1,14 +1,14 @@
 // template-card.tsx
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 import OLModal, {
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
+} from '@/shared/components/ol/ol-modal'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
 import { postJSON, deleteJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
 import getMeta from '../../../../utils/meta'

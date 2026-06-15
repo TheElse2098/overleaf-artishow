@@ -10,6 +10,7 @@ module.exports = {
     'plugin:@typescript-eslint/recommended',
     'standard',
     'prettier',
+    'plugin:storybook/recommended',
   ],
   plugins: ['@overleaf'],
   env: {
@@ -29,6 +30,7 @@ module.exports = {
     'import/no-extraneous-dependencies': 'error',
 
     '@overleaf/prefer-kebab-url': 'error',
+    '@overleaf/require-cio-snake-case-properties': 'error',
 
     // disable some TypeScript rules
     '@typescript-eslint/no-var-requires': 'off',
@@ -71,7 +73,7 @@ module.exports = {
       files: ['**/test/**/*.*'],
       excludedFiles: [
         '**/test/unit/src/**/*.test.mjs',
-        'test/unit/vitest_bootstrap.mjs',
+        'test/unit/bootstrap.mjs',
       ], // exclude vitest files
       plugins: ['mocha', 'chai-expect', 'chai-friendly'],
       env: {
@@ -105,10 +107,7 @@ module.exports = {
       },
     },
     {
-      files: [
-        '**/test/unit/src/**/*.test.mjs',
-        'test/unit/vitest_bootstrap.mjs',
-      ],
+      files: ['**/test/unit/src/**/*.test.mjs', 'test/unit/bootstrap.mjs'],
       env: {
         jest: true, // best match for vitest API etc.
       },
@@ -126,6 +125,7 @@ module.exports = {
         'chai-expect/missing-assertion': 'error',
         'chai-expect/terminating-properties': 'error',
         '@typescript-eslint/no-unused-expressions': 'off',
+        '@overleaf/require-vi-doMock-valid-path': 'error',
       },
     },
     {
@@ -136,6 +136,8 @@ module.exports = {
         'app.mjs',
         'scripts/**/*.mjs',
         'migrations/**/*.mjs',
+        '**/test/acceptance/src/**/*.mjs',
+        '**/test/unit/src/**/*.mjs',
       ],
       excludedFiles: [
         // migration template file
@@ -154,6 +156,8 @@ module.exports = {
             ignore: ['^p-queue$'],
           },
         ],
+        'import/named': 'error',
+        'import/default': 'error',
         'import/extensions': [
           'error',
           'ignorePackages',
@@ -228,7 +232,7 @@ module.exports = {
     },
     {
       // Backend scripts specific rules
-      files: ['**/scripts/**/*.js'],
+      files: ['**/scripts/**/*.{js,mjs}'],
       rules: {
         'no-restricted-syntax': [
           'error',
@@ -255,6 +259,113 @@ module.exports = {
           },
         ],
       },
+    },
+    {
+      // Insist on using Script Runner for new scripts. Old scripts should be
+      // converted to use Script Runner in future, but are excluded for now
+      rules: {
+        '@overleaf/require-script-runner': 'error',
+      },
+      files: ['**/scripts/**/*.mjs'], // ESM only
+      excludedFiles: [
+        'modules/admin-roles/scripts/import_admin_role_assignments.mjs',
+        'modules/admin-roles/scripts/remove_admin_role_from_user.mjs',
+        'modules/admin-roles/scripts/remove_admin_roles_from_non_admins.mjs',
+        'modules/admin-roles/scripts/utils.mjs',
+        'modules/institutions/scripts/apply_policy_to_institution.mjs',
+        'modules/server-ce-scripts/scripts/change-compile-timeout.mjs',
+        'modules/server-ce-scripts/scripts/check-mongodb.mjs',
+        'modules/server-ce-scripts/scripts/check-redis.mjs',
+        'modules/server-ce-scripts/scripts/check-texlive-images.mjs',
+        'modules/server-ce-scripts/scripts/create-user.mjs',
+        'modules/server-ce-scripts/scripts/delete-user.mjs',
+        'modules/server-ce-scripts/scripts/export-user-projects.mjs',
+        'modules/server-ce-scripts/scripts/migrate-user-emails.mjs',
+        'modules/server-ce-scripts/scripts/rename-tag.mjs',
+        'modules/server-ce-scripts/scripts/transfer-all-projects-to-user.mjs',
+        'modules/server-ce-scripts/scripts/upgrade-user-features.mjs',
+        'modules/subscriptions/scripts/backfill_user_last_trial.mjs',
+        'scripts/add_feature_override.mjs',
+        'scripts/add_subscription_members_csv.mjs',
+        'scripts/analytics/helpers/GoogleBigQueryHelper.mjs',
+        'scripts/attach_dangling_comments_to_doc.mjs',
+        'scripts/backfill_mixpanel_user_properties.mjs',
+        'scripts/backfill_project_image_name.mjs',
+        'scripts/backfill_user_properties.mjs',
+        'scripts/backfill_users_sso_attribute.mjs',
+        'scripts/bench_bcrypt.mjs',
+        'scripts/check_institution_users.mjs',
+        'scripts/check_overleafModuleImports.mjs',
+        'scripts/check_saml_emails.mjs',
+        'scripts/clear_feedback_collection.mjs',
+        'scripts/clear_sessions_set_must_reconfirm.mjs',
+        'scripts/count_files_in_projects.mjs',
+        'scripts/count_project_size.mjs',
+        'scripts/create_oauth_personal_access_token.mjs',
+        'scripts/create_project.mjs',
+        'scripts/deactivate_projects.mjs',
+        'scripts/delete-duplicate-splittest-versions/delete_test_dupes.mjs',
+        'scripts/delete-orphaned-docs/delete-orphaned-docs.mjs',
+        'scripts/delete_dangling_comments.mjs',
+        'scripts/delete_orphaned_chat_threads.mjs',
+        'scripts/delete_orphaned_data_helper.mjs',
+        'scripts/delete_subscriptions.mjs',
+        'scripts/devcontainer_setup.mjs',
+        'scripts/e2e_test_setup.mjs',
+        'scripts/ensure_affiliations.mjs',
+        'scripts/esm-check-migration.mjs',
+        'scripts/example/script_for_migration.mjs',
+        'scripts/fix_collaborator_refs_null.mjs',
+        'scripts/fix_comment_id.mjs',
+        'scripts/helpers/chunkArray.mjs',
+        'scripts/helpers/env_variable_helper.mjs',
+        'scripts/inst_table.mjs',
+        'scripts/invalidate_tokens.mjs',
+        'scripts/ip_matcher_ranges.mjs',
+        'scripts/learn/checkSanitize/checkSanitizeOptions.mjs',
+        'scripts/learn/checkSanitize/scrape.mjs',
+        'scripts/lezer-latex/benchmark.mjs',
+        'scripts/lezer-latex/print-tree.mjs',
+        'scripts/lezer-latex/random.mjs',
+        'scripts/lezer-latex/run.mjs',
+        'scripts/lezer-latex/test-incremental-parser.mjs',
+        'scripts/mark_migration.mjs',
+        'scripts/marketing-exports/error-assistant-export.mjs',
+        'scripts/marketing-exports/export.mjs',
+        'scripts/marketing-exports/linked-papers-users.mjs',
+        'scripts/marketing-exports/papers-export.mjs',
+        'scripts/marketing-exports/writefull-export.mjs',
+        'scripts/oauth/upgrade_token_scopes.mjs',
+        'scripts/plan-prices/plans.mjs',
+        'scripts/process_lapsed_reconfirmations.mjs',
+        'scripts/purge_non_logged_in_sessions.mjs',
+        'scripts/recurly/generate_recurly_prices.mjs',
+        'scripts/recurly/get_paypal_accounts_csv.mjs',
+        'scripts/recurly/recurly_prices.mjs',
+        'scripts/recurly/resync_recurly_state_single_subscription.mjs',
+        'scripts/recurly/resync_subscriptions.mjs',
+        'scripts/recurly/set_manually_collected_subscriptions.mjs',
+        'scripts/refresh_features.mjs',
+        'scripts/regenerate_duplicate_referral_ids.mjs',
+        'scripts/remove_deleted_users_from_token_access_refs.mjs',
+        'scripts/remove_email.mjs',
+        'scripts/remove_user_enrollment.mjs',
+        'scripts/sso_id_migration_check.mjs',
+        'scripts/stress_test.mjs',
+        'scripts/suspend_users.mjs',
+        'scripts/sync-user-entitlements/sync-user-entitlements.mjs',
+        'scripts/update_project_image_name.mjs',
+        'scripts/user-export/analytics.mjs',
+        'scripts/user-export/fs.mjs',
+        'scripts/user-export/http.mjs',
+        'scripts/user-export/observer.mjs',
+        'scripts/user-export/options.mjs',
+        'scripts/user-export/project.mjs',
+        'scripts/user-export/scrubber.mjs',
+        'scripts/user-export/stream.mjs',
+        'scripts/user-export/user.mjs',
+        'scripts/validate-data-of-model.mjs',
+      ],
     },
     {
       // Cypress specific rules
@@ -321,6 +432,7 @@ module.exports = {
         'react/no-did-update-set-state': 'error',
         'react/no-unused-prop-types': 'error',
         'react/prop-types': 'error',
+        '@overleaf/no-generated-editor-themes': 'error',
         // "react/react-in-jsx-scope": "error",
         // END: inline standard-react rules
 
@@ -422,6 +534,7 @@ module.exports = {
       rules: {
         '@overleaf/no-unnecessary-trans': 'error',
         '@overleaf/should-unescape-trans': 'error',
+        '@overleaf/require-loading-label': 'error',
 
         // https://astexplorer.net/
         'no-restricted-syntax': [

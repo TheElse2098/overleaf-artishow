@@ -1,5 +1,5 @@
 import express from 'express'
-import { plainTextResponse } from './Response.js'
+import { plainTextResponse } from './Response.mjs'
 
 /*
     This wrapper is implemented specifically to handle "Premature Close" errors.
@@ -15,7 +15,10 @@ function serveStaticWrapper(root, options) {
         return next()
       }
 
-      if (error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+      if (
+        error.code !== 'ERR_STREAM_PREMATURE_CLOSE' &&
+        error.code !== 'ERR_STREAM_UNABLE_TO_PIPE'
+      ) {
         return next(error)
       }
 

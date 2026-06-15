@@ -58,6 +58,7 @@ describe('DocumentManager', function () {
     }
     this.Settings = {
       max_doc_length: 2 * 1024 * 1024, // 2mb
+      maxUnflushedAgeMs: 300 * 1000, // 5 minutes
     }
 
     this.DocumentManager = SandboxedModule.require(modulePath, {
@@ -755,7 +756,18 @@ describe('DocumentManager', function () {
       ]
       this.version = 34
       this.lines = ['original', 'lines']
-      this.ranges = { entries: 'mock', comments: 'mock' }
+      this.ranges = {
+        entries: 'mock',
+        comments: 'mock',
+        changes: [
+          { id: 'mock-change-id', metadata: { user_id: 'mock-user-id-0' } },
+          { id: 'mock-change-id-1', metadata: { user_id: 'mock-user-id-1' } },
+          { id: 'mock-change-id-2', metadata: { user_id: 'mock-user-id-2' } },
+          { id: 'mock-change-id-3', metadata: { user_id: 'mock-user-id-3' } },
+          { id: 'mock-change-id-4', metadata: { user_id: 'mock-user-id-4' } },
+          { id: 'other-change-id', metadata: { user_id: 'other-user-id' } },
+        ],
+      }
       this.updated_ranges = { entries: 'updated', comments: 'updated' }
       this.DocumentManager.promises.getDoc = sinon.stub().resolves({
         lines: this.lines,
@@ -767,7 +779,7 @@ describe('DocumentManager', function () {
 
     describe('successfully with a single change', function () {
       beforeEach(async function () {
-        await this.DocumentManager.promises.acceptChanges(
+        this.result = await this.DocumentManager.promises.acceptChanges(
           this.project_id,
           this.doc_id,
           [this.change_id]
@@ -802,11 +814,15 @@ describe('DocumentManager', function () {
           )
           .should.equal(true)
       })
+
+      it('should return the change contributors', function () {
+        expect(this.result).to.deep.equal(['mock-user-id-0'])
+      })
     })
 
     describe('successfully with multiple changes', function () {
       beforeEach(async function () {
-        await this.DocumentManager.promises.acceptChanges(
+        this.result = await this.DocumentManager.promises.acceptChanges(
           this.project_id,
           this.doc_id,
           this.change_ids
@@ -822,6 +838,15 @@ describe('DocumentManager', function () {
             this.ranges
           )
           .should.equal(true)
+      })
+
+      it('should return the change contributors', function () {
+        expect(this.result).to.deep.equal([
+          'mock-user-id-1',
+          'mock-user-id-2',
+          'mock-user-id-3',
+          'mock-user-id-4',
+        ])
       })
     })
 
@@ -870,9 +895,7 @@ describe('DocumentManager', function () {
             this.doc_id,
             'mock-comment-id-1'
           )
-        ).to.eventually.deep.equal({
-          comment: { id: 'mock-comment-id-1' },
-        })
+        ).to.eventually.deep.equal({ id: 'mock-comment-id-1' })
       })
 
       it("should get the document's current ranges", function () {
@@ -1032,7 +1055,7 @@ describe('DocumentManager', function () {
             ranges: this.ranges,
             projectHistoryId: this.projectHistoryId,
             pathname: this.pathname,
-            unflushedTime: Date.now() - 1e9,
+            unflushedTime: Date.now() - 2 * this.Settings.maxUnflushedAgeMs, // document is older than max unflushed age
             alreadyLoaded: true,
           })
           this.result = await this.DocumentManager.promises.getDocAndFlushIfOld(
@@ -1068,7 +1091,7 @@ describe('DocumentManager', function () {
             version: this.version,
             ranges: this.ranges,
             pathname: this.pathname,
-            unflushedTime: Date.now() - 100,
+            unflushedTime: Date.now() - 0.5 * this.Settings.maxUnflushedAgeMs, // document is not old enough to trigger flush
             alreadyLoaded: true,
           })
           this.result = await this.DocumentManager.promises.getDocAndFlushIfOld(

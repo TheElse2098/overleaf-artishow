@@ -1,5 +1,5 @@
 const { Binary, ObjectId } = require('mongodb')
-const { projects, backedUpBlobs } = require('../mongodb')
+const { projects, deletedProjects, backedUpBlobs } = require('../mongodb')
 const OError = require('@overleaf/o-error')
 
 // List projects with pending backups older than the specified interval
@@ -68,17 +68,28 @@ async function getHistoryId(projectId) {
   return project.overleaf.history.id
 }
 
-async function getBackupStatus(projectId) {
+async function getBackupStatus(projectId, options = {}) {
+  const projection = {
+    'overleaf.history': 1,
+    'overleaf.backup': 1,
+  }
+  if (options.includeRootFolder) {
+    projection.rootFolder = 1
+  }
   const project = await projects.findOne(
     { _id: new ObjectId(projectId) },
     {
-      projection: {
-        'overleaf.history': 1,
-        'overleaf.backup': 1,
-      },
+      projection,
     }
   )
   if (!project) {
+    // Check whether the project was deleted
+    const deletedProject = await deletedProjects.findOne({
+      'deleterData.deletedProjectId': new ObjectId(projectId),
+    })
+    if (deletedProject) {
+      throw new Error('Project deleted')
+    }
     throw new Error('Project not found')
   }
   return {
@@ -86,7 +97,36 @@ async function getBackupStatus(projectId) {
     historyId: `${project.overleaf.history.id}`,
     currentEndVersion: project.overleaf.history.currentEndVersion,
     currentEndTimestamp: project.overleaf.history.currentEndTimestamp,
+    ...(options.includeRootFolder && { rootFolder: project.rootFolder?.[0] }),
   }
+}
+
+/**
+ * Recursively traverses the file tree and collects file hashes into a Set.
+ *
+ * @param {object} rootFolder - The root folder object of the file tree.
+ * @returns {Set<string>} A Set containing all unique file hashes found in the file tree.
+ */
+function getHashesFromFileTree(rootFolder) {
+  const hashSet = new Set()
+
+  function processFolder(folder) {
+    for (const file of folder.fileRefs || []) {
+      if (file?.hash) {
+        hashSet.add(file.hash)
+      }
+    }
+
+    for (const subfolder of folder.folders || []) {
+      if (subfolder?._id) {
+        processFolder(subfolder)
+      }
+    }
+  }
+
+  processFolder(rootFolder)
+
+  return hashSet
 }
 
 async function setBackupVersion(
@@ -209,4 +249,5 @@ module.exports = {
   listUninitializedBackups,
   getBackedUpBlobHashes,
   unsetBackedUpBlobHashes,
+  getHashesFromFileTree,
 }

@@ -6,8 +6,8 @@ import {
   db,
   ObjectId,
   READ_PREFERENCE_SECONDARY,
-} from '../app/src/infrastructure/mongodb.js'
-import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.js'
+} from '../app/src/infrastructure/mongodb.mjs'
+import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.mjs'
 import { NotFoundError } from '../app/src/Features/Errors/Errors.js'
 import { scriptRunner } from './lib/ScriptRunner.mjs'
 
@@ -48,7 +48,7 @@ function parseArgs() {
 }
 
 function usage() {
-  console.log(`Usage: find_dangling_comments.mjs [OPTS]
+  console.log(`Usage: check_docs.mjs [OPTS]
 
 Options:
 
@@ -149,6 +149,9 @@ function getProjectIds() {
     .map(x => x._id.toString())
 }
 
+/**
+ * @param {any} projectId
+ */
 async function getDocs(projectId) {
   const mongoDocs = db.docs.find(
     {
@@ -192,6 +195,10 @@ async function getDocs(projectId) {
   return docs
 }
 
+/**
+ * @param {any} projectId
+ * @param {any} docs
+ */
 async function findDanglingThreadIds(projectId, docs) {
   const threadIds = new Set()
   for (const doc of docs) {
@@ -205,7 +212,7 @@ async function findDanglingThreadIds(projectId, docs) {
     return []
   }
 
-  const rooms = await db.rooms.find(
+  const rooms = db.rooms.find(
     { project_id: new ObjectId(projectId), thread_id: { $exists: true } },
     { readPreference: READ_PREFERENCE_SECONDARY }
   )
@@ -219,6 +226,9 @@ async function findDanglingThreadIds(projectId, docs) {
   return Array.from(threadIds)
 }
 
+/**
+ * @param {any} docs
+ */
 function docsHaveTrackedChanges(docs) {
   for (const doc of docs) {
     const changes = doc.ranges?.changes ?? []
@@ -229,6 +239,9 @@ function docsHaveTrackedChanges(docs) {
   return false
 }
 
+/**
+ * @param {any} docs
+ */
 function docsHaveAnyComments(docs) {
   for (const doc of docs) {
     const comments = doc.ranges?.comments ?? []

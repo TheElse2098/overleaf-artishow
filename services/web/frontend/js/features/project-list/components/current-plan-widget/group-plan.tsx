@@ -1,6 +1,6 @@
 import { useTranslation, Trans } from 'react-i18next'
 import { GroupPlanSubscription } from '../../../../../../types/project/dashboard/subscription'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
+import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import MaterialIcon from '@/shared/components/material-icon'
 
 type GroupPlanProps = Pick<
@@ -9,9 +9,9 @@ type GroupPlanProps = Pick<
 >
 
 function getFriendlyPlanName(planName: string): string {
-  if (planName.toLowerCase().includes('professional')) {
-    return 'Professional'
-  } else if (planName.toLowerCase().includes('collaborator')) {
+  if (planName.toLowerCase().includes('pro group')) {
+    return 'Pro'
+  } else if (planName.toLowerCase().includes('standard')) {
     return 'Standard'
   }
   // fallback on plan name

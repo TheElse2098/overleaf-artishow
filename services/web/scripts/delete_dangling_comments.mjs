@@ -1,11 +1,11 @@
 // @ts-check
 
 import minimist from 'minimist'
-import ChatApiHandler from '../app/src/Features/Chat/ChatApiHandler.js'
-import DocumentUpdaterHandler from '../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.js'
-import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.js'
-import HistoryManager from '../app/src/Features/History/HistoryManager.js'
-import { db, ObjectId } from '../app/src/infrastructure/mongodb.js'
+import ChatApiHandler from '../app/src/Features/Chat/ChatApiHandler.mjs'
+import DocumentUpdaterHandler from '../app/src/Features/DocumentUpdater/DocumentUpdaterHandler.mjs'
+import DocstoreManager from '../app/src/Features/Docstore/DocstoreManager.mjs'
+import HistoryManager from '../app/src/Features/History/HistoryManager.mjs'
+import { db, ObjectId } from '../app/src/infrastructure/mongodb.mjs'
 
 const OPTS = parseArgs()
 
@@ -29,6 +29,9 @@ function parseArgs() {
   }
 }
 
+/**
+ * @param {any} projectId
+ */
 async function processProject(projectId) {
   console.log(`Processing project ${projectId}...`)
   await DocumentUpdaterHandler.promises.flushProjectToMongoAndDelete(projectId)
@@ -49,6 +52,11 @@ async function processProject(projectId) {
   }
 }
 
+/**
+ * @param {any} projectId
+ * @param {any} doc
+ * @param {any} threadIds
+ */
 async function processDoc(projectId, doc, threadIds) {
   let commentsDeleted = 0
   for (const comment of doc.ranges?.comments ?? []) {
@@ -66,6 +74,10 @@ async function processDoc(projectId, doc, threadIds) {
   return commentsDeleted
 }
 
+/**
+ * @param {any} docId
+ * @param {any} threadId
+ */
 async function deleteComment(docId, threadId) {
   await db.docs.updateOne(
     { _id: new ObjectId(docId) },

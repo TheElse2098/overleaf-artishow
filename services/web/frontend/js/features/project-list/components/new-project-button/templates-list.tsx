@@ -1,6 +1,7 @@
 //templates-list.tsx
 import { useState } from 'react'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
+import { useTranslation } from 'react-i18next'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
 import TemplateCard from './template-card'
 
 type Template = {

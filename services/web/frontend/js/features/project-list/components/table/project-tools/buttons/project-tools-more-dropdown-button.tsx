@@ -6,7 +6,7 @@ import {
   Dropdown,
   DropdownMenu,
   DropdownToggle,
-} from '@/features/ui/components/bootstrap-5/dropdown-menu'
+} from '@/shared/components/dropdown/dropdown-menu'
 
 function ProjectToolsMoreDropdownButton() {
   const { t } = useTranslation()
@@ -17,12 +17,8 @@ function ProjectToolsMoreDropdownButton() {
         {t('more')}
       </DropdownToggle>
       <DropdownMenu flip={false} data-testid="project-tools-more-dropdown-menu">
-        <li role="none">
-          <RenameProjectMenuItem />
-        </li>
-        <li role="none">
-          <CopyProjectMenuItem />
-        </li>
+        <RenameProjectMenuItem />
+        <CopyProjectMenuItem />
       </DropdownMenu>
     </Dropdown>
   )

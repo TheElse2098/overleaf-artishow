@@ -1,14 +1,25 @@
 import { expect } from 'chai'
 import UserHelper from './helpers/User.mjs'
-import { Project } from '../../../app/src/models/Project.js'
+import { Project } from '../../../app/src/models/Project.mjs'
 import mongodb from 'mongodb-legacy'
 import cheerio from 'cheerio'
-import { Subscription } from '../../../app/src/models/Subscription.js'
-import Features from '../../../app/src/infrastructure/Features.js'
+import { Subscription } from '../../../app/src/models/Subscription.mjs'
+import Features from '../../../app/src/infrastructure/Features.mjs'
+import Metrics from './helpers/metrics.mjs'
 
 const ObjectId = mongodb.ObjectId
 
 const User = UserHelper.promises
+
+async function getProjectAccessStats() {
+  const hit = await Metrics.promises.sumMetrics(
+    s => s.startsWith('project_access_cache') && s.includes('"hit"')
+  )
+  const miss = await Metrics.promises.sumMetrics(
+    s => s.startsWith('project_access_cache') && s.includes('"miss"')
+  )
+  return { hit, miss }
+}
 
 describe('Project CRUD', function () {
   beforeEach(async function () {
@@ -64,6 +75,22 @@ describe('Project CRUD', function () {
       expect(body).to.include(
         '<meta name="ol-showUpgradePrompt" data-type="boolean">'
       )
+    })
+
+    it('should cache the project access', async function () {
+      const prev = await getProjectAccessStats()
+      await loadProject(this.user, this.projectId)
+      if (Features.hasFeature('saas')) {
+        expect(await getProjectAccessStats()).to.deep.equal({
+          hit: prev.hit + 7,
+          miss: prev.miss + 1,
+        })
+      } else {
+        expect(await getProjectAccessStats()).to.deep.equal({
+          hit: prev.hit + 4,
+          miss: prev.miss + 1,
+        })
+      }
     })
   })
 
@@ -163,6 +190,52 @@ describe('Project CRUD', function () {
 
       const trashedProject = await Project.findById(this.projectId).exec()
       expectObjectIdArrayEqual(trashedProject.trashed, [])
+    })
+  })
+
+  describe('ProjectAdminSettings', async function () {
+    it('publicAccessLevel can be set to private', async function () {
+      const { response } = await this.user.doRequest('POST', {
+        url: `/project/${this.projectId}/settings/admin`,
+        json: {
+          publicAccessLevel: 'private',
+        },
+      })
+      expect(response.statusCode).to.equal(204)
+      const project = await Project.findById(this.projectId).exec()
+      expect(project.publicAccesLevel).to.equal('private')
+    })
+    it('publicAccessLevel can be set to tokenBased', async function () {
+      await this.user.makePrivate(this.projectId)
+      const { response } = await this.user.doRequest('POST', {
+        url: `/project/${this.projectId}/settings/admin`,
+        json: {
+          publicAccessLevel: 'tokenBased',
+        },
+      })
+      expect(response.statusCode).to.equal(204)
+      const project = await Project.findById(this.projectId).exec()
+      expect(project.publicAccesLevel).to.equal('tokenBased')
+    })
+    it('returns a 400 when publicAccessLevel is an unsupported access level', async function () {
+      await this.user.makePrivate(this.projectId)
+      const { response } = await this.user.doRequest('POST', {
+        url: `/project/${this.projectId}/settings/admin`,
+        json: {
+          publicAccessLevel: 'readOnly',
+        },
+      })
+      expect(response.statusCode).to.equal(400)
+      const project = await Project.findById(this.projectId).exec()
+      expect(project.publicAccesLevel).to.equal('private')
+    })
+    it('returns a 500 when no publicAccessLevel is provided', async function () {
+      const { response, body } = await this.user.doRequest('POST', {
+        url: `/project/${this.projectId}/settings/admin`,
+        json: {},
+      })
+      expect(response.statusCode).to.equal(500)
+      expect(body).to.equal('Internal Server Error')
     })
   })
 })

@@ -1,11 +1,10 @@
 import { useTranslation } from 'react-i18next'
-import { Spinner } from 'react-bootstrap'
 import {
   Dropdown,
   DropdownItem,
   DropdownMenu,
   DropdownToggle,
-} from '@/features/ui/components/bootstrap-5/dropdown-menu'
+} from '@/shared/components/dropdown/dropdown-menu'
 import CopyProjectButton from '../table/cells/action-buttons/copy-project-button'
 import DownloadProjectButton from '../table/cells/action-buttons/download-project-button'
 import ArchiveProjectButton from '../table/cells/action-buttons/archive-project-button'
@@ -19,6 +18,8 @@ import CompileAndDownloadProjectPDFButton from '../table/cells/action-buttons/co
 import RenameProjectButton from '../table/cells/action-buttons/rename-project-button'
 import TemplateProjectButton from '../table/cells/action-buttons/template-project-button'
 import MaterialIcon from '@/shared/components/material-icon'
+import OLSpinner from '@/shared/components/ol/ol-spinner'
+import getMeta from '../../../../utils/meta'
 
 type ActionDropdownProps = {
   project: Project
@@ -90,13 +91,9 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
                 }}
                 leadingIcon={
                   pendingCompile ? (
-                    <Spinner
-                      animation="border"
-                      aria-hidden="true"
-                      as="span"
-                      className="dropdown-item-leading-icon spinner"
+                    <OLSpinner
                       size="sm"
-                      role="status"
+                      className="dropdown-item-leading-icon spinner"
                     />
                   ) : (
                     'picture_as_pdf'
@@ -165,18 +162,28 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
           )}
         </UntrashProjectButton>
         <LeaveProjectButton project={project}>
-          {text => (
+          {(text, handleOpenModal) => (
             <li role="none">
-              <DropdownItem as="button" tabIndex={-1} leadingIcon="logout">
+              <DropdownItem
+                as="button"
+                tabIndex={-1}
+                onClick={handleOpenModal}
+                leadingIcon="logout"
+              >
                 {text}
               </DropdownItem>
             </li>
           )}
         </LeaveProjectButton>
         <DeleteProjectButton project={project}>
-          {text => (
+          {(text, handleOpenModal) => (
             <li role="none">
-              <DropdownItem as="button" tabIndex={-1} leadingIcon="block">
+              <DropdownItem
+                as="button"
+                tabIndex={-1}
+                onClick={handleOpenModal}
+                leadingIcon="block"
+              >
                 {text}
               </DropdownItem>
             </li>

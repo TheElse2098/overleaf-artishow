@@ -1,11 +1,12 @@
 import { useTranslation } from 'react-i18next'
 import { memo, useEffect, useState } from 'react'
 import { useConnectionContext } from '@/features/ide-react/context/connection-context'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
+} from '@/shared/components/ol/ol-modal'
 
 // show modal when editor is forcefully disconnected
 function ForceDisconnected() {
@@ -55,7 +56,7 @@ function ForceDisconnected() {
       backdrop={false}
       keyboard={false}
     >
-      <OLModalHeader>
+      <OLModalHeader closeButton={false}>
         <OLModalTitle>{t('please_wait')}</OLModalTitle>
       </OLModalHeader>
       <OLModalBody>

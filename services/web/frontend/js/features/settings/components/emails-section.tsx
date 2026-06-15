@@ -8,9 +8,8 @@ import {
 import EmailsHeader from './emails/header'
 import EmailsRow from './emails/row'
 import AddEmail from './emails/add-email'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
-import OLSpinner from '@/features/ui/components/ol/ol-spinner'
-import { LeaversSurveyAlert } from './leavers-survey-alert'
+import OLNotification from '@/shared/components/ol/ol-notification'
+import LoadingSpinner from '@/shared/components/loading-spinner'
 
 function EmailsSectionContent() {
   const { t } = useTranslation()
@@ -63,7 +62,7 @@ function EmailsSectionContent() {
         {isInitializing ? (
           <div className="affiliations-table-row-highlighted">
             <div className="affiliations-table-cell text-center">
-              <OLSpinner size="sm" /> {t('loading')}...
+              <LoadingSpinner size="sm" />
             </div>
           </div>
         ) : (
@@ -76,7 +75,6 @@ function EmailsSectionContent() {
             ))}
           </>
         )}
-        {isInitializingSuccess && <LeaversSurveyAlert />}
         {isInitializingSuccess && !hideAddSecondaryEmail && <AddEmail />}
         {isInitializingError && (
           <OLNotification

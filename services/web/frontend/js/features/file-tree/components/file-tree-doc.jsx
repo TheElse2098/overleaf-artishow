@@ -5,7 +5,7 @@ import { useSelectableEntity } from '../contexts/file-tree-selectable'
 import FileTreeItemInner from './file-tree-item/file-tree-item-inner'
 import { useTranslation } from 'react-i18next'
 import MaterialIcon from '../../../shared/components/material-icon'
-import iconTypeFromName from '../util/icon-type-from-name'
+import { newEditorIconTypeFromName as iconTypeFromName } from '../util/icon-type-from-name'
 import classnames from 'classnames'
 
 function FileTreeDoc({ name, id, isFile, isLinkedFile }) {

@@ -1,17 +1,28 @@
 import PasswordResetHandler from './PasswordResetHandler.mjs'
-import AuthenticationController from '../Authentication/AuthenticationController.js'
-import AuthenticationManager from '../Authentication/AuthenticationManager.js'
-import SessionManager from '../Authentication/SessionManager.js'
-import UserGetter from '../User/UserGetter.js'
-import UserUpdater from '../User/UserUpdater.js'
-import UserSessionsManager from '../User/UserSessionsManager.js'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import AuthenticationManager from '../Authentication/AuthenticationManager.mjs'
+import SessionManager from '../Authentication/SessionManager.mjs'
+import UserGetter from '../User/UserGetter.mjs'
+import UserUpdater from '../User/UserUpdater.mjs'
+import UserSessionsManager from '../User/UserSessionsManager.mjs'
 import OError from '@overleaf/o-error'
-import EmailsHelper from '../Helpers/EmailHelper.js'
+import EmailsHelper from '../Helpers/EmailHelper.mjs'
 import { expressify } from '@overleaf/promise-utils'
+import { z, parseReq } from '../../infrastructure/Validation.mjs'
+import Features from '../../infrastructure/Features.mjs'
+
+const setNewUserPasswordSchema = z.object({
+  body: z.object({
+    email: z.string().optional(),
+    password: z.string(),
+    passwordResetToken: z.string(),
+  }),
+})
 
 async function setNewUserPassword(req, res, next) {
   let user
-  let { passwordResetToken, password, email } = req.body
+  const { body } = parseReq(req, setNewUserPasswordSchema)
+  let { passwordResetToken, password, email } = body
   if (!passwordResetToken || !password) {
     return res.status(400).json({
       message: {
@@ -102,8 +113,15 @@ async function setNewUserPassword(req, res, next) {
   AuthenticationController.finishLogin(user, req, res, next)
 }
 
+const requestResetSchema = z.object({
+  body: z.object({
+    email: z.string(),
+  }),
+})
+
 async function requestReset(req, res, next) {
-  const email = EmailsHelper.parseEmail(req.body.email)
+  const { body } = parseReq(req, requestResetSchema)
+  const email = EmailsHelper.parseEmail(body.email)
   if (!email) {
     return res.status(400).json({
       message: req.i18n.translate('must_be_email_address'),
@@ -147,29 +165,38 @@ async function requestReset(req, res, next) {
   }
 }
 
+const renderSetPasswordFormSchema = z.object({
+  query: z.object({
+    email: z.string(),
+    passwordResetToken: z.string().optional(),
+  }),
+})
+
 async function renderSetPasswordForm(req, res, next) {
-  if (req.query.passwordResetToken != null) {
+  const { query } = parseReq(req, renderSetPasswordFormSchema)
+
+  if (query.passwordResetToken != null) {
     try {
       const result =
         await PasswordResetHandler.promises.getUserForPasswordResetToken(
-          req.query.passwordResetToken
+          query.passwordResetToken
         )
 
       const { user, remainingPeeks } = result || {}
       if (!user || remainingPeeks <= 0) {
         return res.redirect('/user/password/reset?error=token_expired')
       }
-      req.session.resetToken = req.query.passwordResetToken
-      let emailQuery = ''
+      req.session.resetToken = query.passwordResetToken
 
-      if (typeof req.query.email === 'string') {
-        const email = EmailsHelper.parseEmail(req.query.email)
+      const params = new URLSearchParams()
+      if (typeof query.email === 'string') {
+        const email = EmailsHelper.parseEmail(query.email)
         if (email) {
-          emailQuery = `?email=${encodeURIComponent(email)}`
+          params.append('email', email)
         }
       }
-
-      return res.redirect('/user/password/set' + emailQuery)
+      const queryString = params.toString() ? `?${params.toString()}` : ''
+      return res.redirect('/user/password/set' + queryString)
     } catch (err) {
       if (err.name === 'ForbiddenError') {
         return next(err)
@@ -182,30 +209,45 @@ async function renderSetPasswordForm(req, res, next) {
     return res.redirect('/user/password/reset')
   }
 
-  const email = EmailsHelper.parseEmail(req.query.email)
+  const email = EmailsHelper.parseEmail(query.email)
 
   // clean up to avoid leaking the token in the session object
   const passwordResetToken = req.session.resetToken
   delete req.session.resetToken
 
-  res.render('user/setPassword', {
-    title: 'set_password',
-    email,
-    passwordResetToken,
-  })
+  res.render(
+    Features.hasFeature('saas') ? 'user/setPasswordCiam' : 'user/setPassword',
+    {
+      title: 'set_password',
+      email,
+      passwordResetToken,
+    }
+  )
 }
 
+const renderRequestResetFormSchema = z.object({
+  query: z.object({
+    error: z.string().optional(),
+  }),
+})
+
 async function renderRequestResetForm(req, res) {
-  const errorQuery = req.query.error
+  const { query } = parseReq(req, renderRequestResetFormSchema)
+  const errorQuery = query.error
   let error = null
   if (errorQuery === 'token_expired') {
     error = 'password_reset_token_expired'
   }
 
-  res.render('user/passwordReset', {
-    title: 'reset_password',
-    error,
-  })
+  res.render(
+    Features.hasFeature('saas')
+      ? 'user/passwordResetCiam'
+      : 'user/passwordReset',
+    {
+      title: 'reset_password',
+      error,
+    }
+  )
 }
 
 export default {

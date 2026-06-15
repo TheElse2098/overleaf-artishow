@@ -1,17 +1,22 @@
-const fs = require('fs')
-const Path = require('path')
-const { execFile } = require('child_process')
-const express = require('express')
-const bodyParser = require('body-parser')
-const {
-  celebrate: validate,
-  Joi,
-  errors: handleValidationErrors,
-} = require('celebrate')
-const YAML = require('js-yaml')
+import fs from 'node:fs'
+import Path from 'node:path'
+import { promisify } from 'node:util'
+import { execFile as execFileCb } from 'node:child_process'
+import bodyParser from 'body-parser'
+import express from 'express'
+import YAML from 'js-yaml'
+import {
+  InvalidParamsError,
+  InvalidRequestError,
+  parseReq,
+  z,
+} from '@overleaf/validation-tools'
+import { expressify } from '@overleaf/promise-utils'
+
+const execFile = promisify(execFileCb)
 
 const DATA_DIR = Path.join(
-  __dirname,
+  import.meta.dirname,
   'data',
   // Give each shard their own data dir.
   process.env.CYPRESS_SHARD || 'default'
@@ -28,6 +33,11 @@ const IMAGES = {
   CE: process.env.IMAGE_TAG_CE.replace(/:.+/, ''),
   PRO: process.env.IMAGE_TAG_PRO.replace(/:.+/, ''),
 }
+const LATEST = {
+  CE: process.env.IMAGE_TAG_CE.replace(/.+:/, '') || 'latest',
+  PRO: process.env.IMAGE_TAG_PRO.replace(/.+:/, '') || 'latest',
+  GIT_BRIDGE: 'latest', // TODO, build in CI?
+}
 
 function defaultDockerComposeOverride() {
   return {
@@ -36,6 +46,7 @@ function defaultDockerComposeOverride() {
         environment: {},
       },
       'git-bridge': {},
+      mongo: {},
     },
   }
 }
@@ -49,7 +60,7 @@ function readDockerComposeOverride() {
     if (error.code !== 'ENOENT') {
       throw error
     }
-    return defaultDockerComposeOverride
+    return defaultDockerComposeOverride()
   }
 }
 
@@ -57,7 +68,7 @@ function writeDockerComposeOverride(cfg) {
   fs.writeFileSync(PATHS.DOCKER_COMPOSE_OVERRIDE, YAML.dump(cfg))
 }
 
-function runDockerCompose(command, args, callback) {
+async function runDockerCompose(command, args) {
   const files = ['-f', PATHS.DOCKER_COMPOSE_FILE]
   if (process.env.NATIVE_CYPRESS) {
     files.push('-f', PATHS.DOCKER_COMPOSE_NATIVE)
@@ -65,7 +76,7 @@ function runDockerCompose(command, args, callback) {
   if (fs.existsSync(PATHS.DOCKER_COMPOSE_OVERRIDE)) {
     files.push('-f', PATHS.DOCKER_COMPOSE_OVERRIDE)
   }
-  execFile('docker', ['compose', ...files, command, ...args], callback)
+  return await execFile('docker', ['compose', ...files, command, ...args])
 }
 
 function purgeDataDir() {
@@ -80,10 +91,14 @@ app.get('/status', (req, res) => {
 app.use(bodyParser.json())
 app.use((req, res, next) => {
   // Basic access logs
-  console.log(req.method, req.url, req.body)
+  if (process.env.CI !== 'true') {
+    console.log(req.method, req.url, req.body)
+  }
   const json = res.json
   res.json = body => {
-    console.log(req.method, req.url, req.body, '->', body)
+    if (process.env.CI !== 'true' || body.error) {
+      console.log(req.method, req.url, req.body, '->', body)
+    }
     json.call(res, body)
   }
   next()
@@ -101,39 +116,76 @@ app.use((req, res, next) => {
 
 app.post(
   '/run/script',
-  validate(
-    {
-      body: {
-        cwd: Joi.string().required(),
-        script: Joi.string().required(),
-        args: Joi.array().items(Joi.string()),
-      },
-    },
-    { allowUnknown: false }
-  ),
-  (req, res) => {
-    const { cwd, script, args } = req.body
+  expressify(async (req, res) => {
+    const {
+      body: { cwd, script, args, user, hasOverleafEnv },
+    } = parseReq(
+      req,
+      z.object({
+        body: z.object({
+          cwd: z.string(),
+          script: z.string(),
+          args: z.array(z.string()),
+          user: z.string(),
+          hasOverleafEnv: z.boolean(),
+        }),
+      })
+    )
 
-    runDockerCompose(
-      'exec',
-      [
+    const env = hasOverleafEnv
+      ? 'source /etc/overleaf/env.sh || source /etc/sharelatex/env.sh'
+      : 'true'
+    try {
+      const { stdout, stderr } = await runDockerCompose('exec', [
+        '--workdir',
+        `/overleaf/${cwd}`,
         'sharelatex',
         'bash',
         '-c',
-        `source /etc/container_environment.sh && source /etc/overleaf/env.sh || source /etc/sharelatex/env.sh && cd ${JSON.stringify(cwd)} && node ${JSON.stringify(script)} ${args.map(a => JSON.stringify(a)).join(' ')}`,
-      ],
-      (error, stdout, stderr) => {
-        res.json({
-          error,
-          stdout,
-          stderr,
-        })
-      }
-    )
-  }
+        `source /etc/container_environment.sh && ${env} && /sbin/setuser ${user} node ${script} ${args.map(a => JSON.stringify(a)).join(' ')}`,
+      ])
+      res.json({
+        stdout,
+        stderr,
+      })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
 )
 
-const allowedVars = Joi.object(
+app.post(
+  '/run/gruntTask',
+  expressify(async (req, res) => {
+    const {
+      body: { task, args },
+    } = parseReq(
+      req,
+      z.object({
+        body: z.object({
+          task: z.string(),
+          args: z.array(z.string()),
+        }),
+      })
+    )
+
+    try {
+      const { stdout, stderr } = await runDockerCompose('exec', [
+        '--workdir',
+        '/var/www/sharelatex',
+        'sharelatex',
+        'bash',
+        '-c',
+        `source /etc/container_environment.sh && /sbin/setuser www-data grunt ${JSON.stringify(task)} ${args.map(a => JSON.stringify(a)).join(' ')}`,
+      ])
+      res.json({ stdout, stderr })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
+)
+
+const allowedVars = z.object(
   Object.fromEntries(
     [
       'OVERLEAF_APP_NAME',
@@ -151,6 +203,7 @@ const allowedVars = Joi.object(
       'OVERLEAF_NEW_PROJECT_TEMPLATE_LINKS',
       'OVERLEAF_ALLOW_PUBLIC_ACCESS',
       'OVERLEAF_ALLOW_ANONYMOUS_READ_AND_WRITE_SHARING',
+      'OVERLEAF_DISABLE_LINK_SHARING',
       'EXTERNAL_AUTH',
       'OVERLEAF_SAML_ENTRYPOINT',
       'OVERLEAF_SAML_CALLBACK_URL',
@@ -174,15 +227,22 @@ const allowedVars = Joi.object(
       'SHARELATEX_SITE_URL',
       'SHARELATEX_MONGO_URL',
       'SHARELATEX_REDIS_HOST',
-    ].map(name => [name, Joi.string()])
+    ].map(name => [name, z.string().optional()])
   )
 )
 
-function setVarsDockerCompose({ pro, vars, version, withDataDir }) {
+function setVarsDockerCompose({
+  pro,
+  vars,
+  version,
+  withDataDir,
+  mongoVersion,
+}) {
   const cfg = readDockerComposeOverride()
 
-  cfg.services.sharelatex.image = `${pro ? IMAGES.PRO : IMAGES.CE}:${version}`
-  cfg.services['git-bridge'].image = `quay.io/sharelatex/git-bridge:${version}`
+  cfg.services.sharelatex.image = `${pro ? IMAGES.PRO : IMAGES.CE}:${version === 'latest' ? (pro ? LATEST.PRO : LATEST.CE) : version}`
+  cfg.services['git-bridge'].image =
+    `quay.io/sharelatex/git-bridge:${version === 'latest' ? LATEST.GIT_BRIDGE : version}`
 
   cfg.services.sharelatex.environment = vars
 
@@ -198,8 +258,8 @@ function setVarsDockerCompose({ pro, vars, version, withDataDir }) {
 
   const dataDirInContainer =
     version === 'latest' || version >= '5.0'
-      ? '/var/lib/overleaf/data'
-      : '/var/lib/sharelatex/data'
+      ? '/var/lib/overleaf'
+      : '/var/lib/sharelatex'
 
   cfg.services.sharelatex.volumes = []
   if (withDataDir) {
@@ -220,9 +280,21 @@ function setVarsDockerCompose({ pro, vars, version, withDataDir }) {
     )
     if (!withDataDir) {
       cfg.services.sharelatex.volumes.push(
-        `${PATHS.SANDBOXED_COMPILES_HOST_DIR}:${dataDirInContainer}/compiles`
+        `${PATHS.SANDBOXED_COMPILES_HOST_DIR}:${dataDirInContainer}/data/compiles`
       )
     }
+  }
+
+  if (mongoVersion) {
+    cfg.services.mongo.image = `mongo:${mongoVersion}`
+  } else {
+    delete cfg.services.mongo.image
+  }
+
+  if (version === 'latest') {
+    cfg.services.mongo.command = '--replSet overleaf --notablescan'
+  } else {
+    delete cfg.services.mongo.command
   }
 
   writeDockerComposeOverride(cfg)
@@ -230,120 +302,190 @@ function setVarsDockerCompose({ pro, vars, version, withDataDir }) {
 
 app.post(
   '/docker/compose/:cmd',
-  validate(
-    {
-      body: {
-        args: Joi.array().allow(
-          '--detach',
-          '--wait',
-          '--volumes',
-          '--timeout=60',
-          'sharelatex',
-          'git-bridge',
-          'mongo',
-          'redis'
-        ),
-      },
-      params: {
-        cmd: Joi.allow('up', 'stop', 'down', 'ps', 'logs'),
-      },
-    },
-    { allowUnknown: false }
-  ),
-  (req, res) => {
-    const { cmd } = req.params
-    const { args } = req.body
-    runDockerCompose(cmd, args, (error, stdout, stderr) => {
-      res.json({ error, stdout, stderr })
-    })
-  }
+  expressify(async (req, res) => {
+    const {
+      params: { cmd },
+      body: { args },
+    } = parseReq(
+      req,
+      z.object({
+        params: z.object({
+          cmd: z.literal(['up', 'stop', 'down', 'ps', 'logs']),
+        }),
+        body: z.object({
+          args: z.array(
+            z.literal([
+              '--detach',
+              '--wait',
+              '--volumes',
+              '--timeout=60',
+              'sharelatex',
+              'git-bridge',
+              'mongo',
+              'redis',
+            ])
+          ),
+        }),
+      })
+    )
+
+    try {
+      const { stdout, stderr } = await runDockerCompose(cmd, args)
+      res.json({ stdout, stderr })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
 )
 
-function maybeResetData(resetData, callback) {
-  if (!resetData) return callback()
+async function maybeResetData(resetData) {
+  if (!resetData) return
 
   previousConfig = ''
-  runDockerCompose(
-    'down',
-    ['--timeout=0', '--volumes', 'mongo', 'redis', 'sharelatex'],
-    (error, stdout, stderr) => {
-      if (error) return callback(error, stdout, stderr)
-
-      try {
-        purgeDataDir()
-      } catch (error) {
-        return callback(error)
-      }
-      callback()
-    }
-  )
+  await runDockerCompose('down', [
+    '--timeout=0',
+    '--volumes',
+    'mongo',
+    'redis',
+    'sharelatex',
+  ])
+  purgeDataDir()
 }
 
 app.post(
   '/reconfigure',
-  validate(
-    {
-      body: {
-        pro: Joi.boolean().required(),
-        version: Joi.string().required(),
-        vars: allowedVars,
-        withDataDir: Joi.boolean().optional(),
-        resetData: Joi.boolean().optional(),
-      },
-    },
-    { allowUnknown: false }
-  ),
-  (req, res) => {
-    const { pro, version, vars, withDataDir, resetData } = req.body
-    maybeResetData(resetData, (error, stdout, stderr) => {
-      if (error) return res.json({ error, stdout, stderr })
+  expressify(async (req, res) => {
+    const {
+      body: { pro, version, vars, withDataDir, resetData, mongoVersion },
+    } = parseReq(
+      req,
+      z.object({
+        body: z.object({
+          pro: z.boolean(),
+          version: z.string(),
+          vars: allowedVars,
+          withDataDir: z.boolean(),
+          resetData: z.boolean(),
+          mongoVersion: z.string(),
+        }),
+      })
+    )
+    try {
+      await maybeResetData(resetData)
+    } catch (error) {
+      return res.json({ error })
+    }
 
-      const previousConfigServer = previousConfig
-      const newConfig = JSON.stringify(req.body)
-      if (previousConfig === newConfig) {
-        return res.json({ previousConfigServer })
-      }
+    const previousConfigServer = previousConfig
+    const newConfig = JSON.stringify(req.body)
+    if (previousConfig === newConfig) {
+      return res.json({ previousConfigServer })
+    }
 
-      try {
-        setVarsDockerCompose({ pro, version, vars, withDataDir })
-      } catch (error) {
-        return res.json({ error })
-      }
+    try {
+      setVarsDockerCompose({ pro, version, vars, withDataDir, mongoVersion })
+    } catch (error) {
+      return res.json({ error })
+    }
 
-      if (error) return res.json({ error, stdout, stderr })
-      runDockerCompose(
-        'up',
-        ['--detach', '--wait', 'sharelatex'],
-        (error, stdout, stderr) => {
-          previousConfig = newConfig
-          res.json({ error, stdout, stderr, previousConfigServer })
-        }
-      )
-    })
-  }
+    try {
+      const { stdout, stderr } = await runDockerCompose('up', [
+        '--detach',
+        '--wait',
+        'sharelatex',
+      ])
+      res.json({ stdout, stderr, previousConfigServer })
+    } catch (error) {
+      return res.json({
+        error,
+        previousConfigServer,
+      })
+    } finally {
+      previousConfig = newConfig
+    }
+  })
 )
 
-app.get('/redis/keys', (req, res) => {
-  runDockerCompose(
-    'exec',
-    ['redis', 'redis-cli', 'KEYS', '*'],
-    (error, stdout, stderr) => {
-      res.json({ error, stdout, stderr })
+app.post(
+  '/mongo/setFeatureCompatibilityVersion',
+  expressify(async (req, res) => {
+    const {
+      body: { mongoVersion },
+    } = parseReq(
+      req,
+      z.object({
+        body: z.object({
+          mongoVersion: z.string(),
+        }),
+      })
+    )
+    const mongosh = mongoVersion > '5' ? 'mongosh' : 'mongo'
+    const params = {
+      setFeatureCompatibilityVersion: mongoVersion,
     }
-  )
-})
-
-app.delete('/data/user_files', (req, res) => {
-  runDockerCompose(
-    'exec',
-    ['sharelatex', 'rm', '-rf', '/var/lib/overleaf/data/user_files'],
-    (error, stdout, stderr) => {
-      res.json({ error, stdout, stderr })
+    if (mongoVersion >= '7.0') {
+      // MongoServerError: Once you have upgraded to 7.0, you will not be able to downgrade FCV and binary version without support assistance. Please re-run this command with 'confirm: true' to acknowledge this and continue with the FCV upgrade.
+      // NOTE: 6.0 does not know about this flag. So conditionally add it.
+      // MongoServerError: BSON field 'setFeatureCompatibilityVersion.confirm' is an unknown field.
+      params.confirm = true
     }
-  )
-})
+    try {
+      const { stdout, stderr } = await runDockerCompose('exec', [
+        'mongo',
+        mongosh,
+        '--eval',
+        `db.adminCommand(${JSON.stringify(params)})`,
+      ])
+      res.json({ stdout, stderr })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
+)
 
-app.use(handleValidationErrors())
+app.get(
+  '/redis/keys',
+  expressify(async (req, res) => {
+    try {
+      const { stdout, stderr } = await runDockerCompose('exec', [
+        'redis',
+        'redis-cli',
+        'KEYS',
+        '*',
+      ])
+      res.json({ stdout, stderr })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
+)
+
+app.delete(
+  '/data/user_files',
+  expressify(async (req, res) => {
+    try {
+      const { stdout, stderr } = await runDockerCompose('exec', [
+        'sharelatex',
+        'rm',
+        '-vrf',
+        '/var/lib/overleaf/data/user_files',
+      ])
+      res.json({ stdout, stderr })
+    } catch (error) {
+      return res.json({ error })
+    }
+  })
+)
+
+app.use((error, req, res, next) => {
+  if (error instanceof InvalidParamsError) {
+    res.status(404).json({ error })
+  } else if (error instanceof InvalidRequestError) {
+    res.status(400).json({ error: error.zodError })
+  } else {
+    next(error)
+  }
+})
 
 purgeDataDir()
 writeDockerComposeOverride(defaultDockerComposeOverride())

@@ -1,17 +1,14 @@
 const crypto = require('node:crypto')
 const fs = require('node:fs')
 const fsPromises = require('node:fs/promises')
-const globCallbacks = require('glob')
+const { glob } = require('glob')
 const Path = require('node:path')
 const { PassThrough } = require('node:stream')
 const { pipeline } = require('node:stream/promises')
-const { promisify } = require('node:util')
 
 const AbstractPersistor = require('./AbstractPersistor')
 const { ReadError, WriteError, NotImplementedError } = require('./Errors')
 const PersistorHelper = require('./PersistorHelper')
-
-const glob = promisify(globCallbacks)
 
 module.exports = class FSPersistor extends AbstractPersistor {
   constructor(settings = {}) {
@@ -86,7 +83,7 @@ module.exports = class FSPersistor extends AbstractPersistor {
       metric: 'fs.ingress', // ingress to us from disk
       bucket: location,
     })
-    const fsPath = this._getFsPath(location, name)
+    const fsPath = this._getFsPath(location, name, opts.useSubdirectories)
 
     try {
       opts.fd = await fsPromises.open(fsPath, 'r')
@@ -197,6 +194,50 @@ module.exports = class FSPersistor extends AbstractPersistor {
     }
   }
 
+  async listDirectoryKeys(location, name) {
+    const fsPath = this._getFsPath(location, name)
+    const paths = await this._listDirectory(fsPath)
+
+    // Filter to only return files, not directories
+    const files = []
+    for (const path of paths) {
+      try {
+        const stat = await fsPromises.stat(path)
+        if (stat.isFile()) {
+          files.push(path)
+        }
+      } catch (err) {
+        // ignore files that may have just been deleted
+        if (err.code !== 'ENOENT') {
+          throw err
+        }
+      }
+    }
+    return files
+  }
+
+  async listDirectoryStats(location, name) {
+    const fsPath = this._getFsPath(location, name)
+    const paths = await this._listDirectory(fsPath)
+
+    // Filter to only return files, not directories, with their sizes
+    const stats = []
+    for (const path of paths) {
+      try {
+        const stat = await fsPromises.stat(path)
+        if (stat.isFile()) {
+          stats.push({ key: path, size: stat.size })
+        }
+      } catch (err) {
+        // ignore files that may have just been deleted
+        if (err.code !== 'ENOENT') {
+          throw err
+        }
+      }
+    }
+    return stats
+  }
+
   async checkIfObjectExists(location, name) {
     const fsPath = this._getFsPath(location, name)
     try {
@@ -295,9 +336,9 @@ module.exports = class FSPersistor extends AbstractPersistor {
     await fsPromises.rm(dirPath, { force: true, recursive: true })
   }
 
-  _getFsPath(location, key) {
+  _getFsPath(location, key, useSubdirectories = false) {
     key = key.replace(/\/$/, '')
-    if (!this.useSubdirectories) {
+    if (!this.useSubdirectories && !useSubdirectories) {
       key = key.replace(/\//g, '_')
     }
     return Path.join(location, key)
@@ -305,10 +346,8 @@ module.exports = class FSPersistor extends AbstractPersistor {
 
   async _listDirectory(path) {
     if (this.useSubdirectories) {
-      // eslint-disable-next-line @typescript-eslint/return-await
       return await glob(Path.join(path, '**'))
     } else {
-      // eslint-disable-next-line @typescript-eslint/return-await
       return await glob(`${path}_*`)
     }
   }

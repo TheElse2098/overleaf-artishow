@@ -1,7 +1,7 @@
 import UserHelper from './helpers/UserHelper.mjs'
 import Settings from '@overleaf/settings'
 import { expect } from 'chai'
-import Features from '../../../app/src/infrastructure/Features.js'
+import Features from '../../../app/src/infrastructure/Features.mjs'
 import MockV1ApiClass from './mocks/MockV1Api.mjs'
 import SubscriptionHelper from './helpers/Subscription.mjs'
 
@@ -265,6 +265,10 @@ describe('PrimaryEmailCheck', function () {
 
     describe('when the user is a managed user', function () {
       beforeEach(async function () {
+        if (!Features.hasFeature('saas')) {
+          this.skip()
+        }
+
         const adminUser = await UserHelper.createUser()
         this.subscription = new Subscription({
           adminId: adminUser._id,

@@ -4,10 +4,10 @@ import { postJSON, FetchError } from '../../../../infrastructure/fetch-json'
 import getMeta from '../../../../utils/meta'
 import LeaveModalFormError from './modal-form-error'
 import { useLocation } from '../../../../shared/hooks/use-location'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import OLFormLabel from '@/features/ui/components/ol/ol-form-label'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import OLFormCheckbox from '@/features/ui/components/ol/ol-form-checkbox'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import OLFormLabel from '@/shared/components/ol/ol-form-label'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import OLFormCheckbox from '@/shared/components/ol/ol-form-checkbox'
 
 export type LeaveModalFormProps = {
   setInFlight: Dispatch<SetStateAction<boolean>>
@@ -77,7 +77,6 @@ function LeaveModalForm({
         <OLFormLabel>{t('email')}</OLFormLabel>
         <OLFormControl
           type="text"
-          placeholder={t('email')}
           required
           value={email}
           onChange={handleEmailChange}
@@ -87,7 +86,6 @@ function LeaveModalForm({
         <OLFormLabel>{t('password')}</OLFormLabel>
         <OLFormControl
           type="password"
-          placeholder={t('password')}
           required
           value={password}
           onChange={handlePasswordChange}

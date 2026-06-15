@@ -1,41 +1,26 @@
-import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import classnames from 'classnames'
-import { Question, User } from '@phosphor-icons/react'
 import NewProjectButton from '../new-project-button'
 import SidebarFilters from './sidebar-filters'
 import AddAffiliation, { useAddAffiliation } from '../add-affiliation'
 import { usePersistedResize } from '@/shared/hooks/use-resize'
-import { Dropdown } from 'react-bootstrap'
-import getMeta from '@/utils/meta'
-import OLTooltip from '@/features/ui/components/ol/ol-tooltip'
-import { useTranslation } from 'react-i18next'
-import { NavDropdownMenuItems } from '@/features/ui/components/bootstrap-5/navbar/nav-dropdown-from-data'
-import { NavbarDropdownItemData } from '@/features/ui/components/types/navbar'
-import { useContactUsModal } from '@/shared/hooks/use-contact-us-modal'
-import { UserProvider } from '@/shared/context/user-context'
-import { AccountMenuItems } from '@/features/ui/components/bootstrap-5/navbar/account-menu-items'
 import { useScrolled } from '@/features/project-list/components/sidebar/use-scroll'
-import { useSendProjectListMB } from '@/features/project-list/components/project-list-events'
 import { SurveyWidgetDsNav } from '@/features/project-list/components/survey-widget-ds-nav'
+import { SidebarLowerSection } from '@/shared/components/sidebar/sidebar-lower-section'
+import { isSplitTestEnabled } from '@/utils/splitTestUtils'
+import { DsNavPageSwitcher } from '@/shared/components/sidebar/ds-nav-page-switcher'
+import { useProjectListContext } from '@/features/project-list/context/project-list-context'
 
 function SidebarDsNav() {
   const { t } = useTranslation()
-  const [showAccountDropdown, setShowAccountDropdown] = useState(false)
-  const [showHelpDropdown, setShowHelpDropdown] = useState(false)
-  const { showModal: showContactUsModal, modal: contactUsModal } =
-    useContactUsModal({
-      autofillProjectUrl: false,
-    })
   const { show: showAddAffiliationWidget } = useAddAffiliation()
+  const isLibraryEnabled = isSplitTestEnabled('overleaf-library')
+  const { selectFilter } = useProjectListContext()
   const { mousePos, getHandleProps, getTargetProps } = usePersistedResize({
     name: 'project-sidebar',
   })
-  const sendMB = useSendProjectListMB()
-  const { sessionUser, showSubscriptionLink, items } = getMeta('ol-navbar')
-  const helpItem = items.find(
-    item => item.text === 'help_and_resources'
-  ) as NavbarDropdownItemData
   const { containerRef, scrolledUp, scrolledDown } = useScrolled()
+
   return (
     <div
       className="project-list-sidebar-wrapper-react d-none d-md-flex"
@@ -45,122 +30,47 @@ function SidebarDsNav() {
         },
       })}
     >
-      <NewProjectButton
-        id="new-project-button-sidebar"
-        className={scrolledDown ? 'show-shadow' : undefined}
-      />
-      <div
-        className="project-list-sidebar-scroll"
-        ref={containerRef}
-        data-testid="project-list-sidebar-scroll"
+      {isLibraryEnabled && (
+        <>
+          <DsNavPageSwitcher
+            activePage="projects"
+            showLogo={false}
+            onProjectsClick={() => selectFilter('all')}
+          />
+          <hr className="ds-nav-page-switcher-divider" />
+        </>
+      )}
+      <nav
+        className="flex-grow flex-shrink"
+        aria-label={t('project_categories_tags')}
       >
-        <SidebarFilters />
-        {showAddAffiliationWidget && <hr />}
-        <AddAffiliation />
-      </div>
+        {!isLibraryEnabled && (
+          <NewProjectButton
+            id="new-project-button-sidebar"
+            className={scrolledDown ? 'show-shadow' : undefined}
+          />
+        )}
+        <div
+          className="project-list-sidebar-scroll"
+          ref={containerRef}
+          data-testid="project-list-sidebar-scroll"
+        >
+          <SidebarFilters />
+          {showAddAffiliationWidget && <hr />}
+          <AddAffiliation />
+        </div>
+      </nav>
       <div
         className={classnames(
           'ds-nav-sidebar-lower',
           scrolledUp && 'show-shadow'
         )}
       >
-        <div className="project-list-sidebar-survey-wrapper">
-          <SurveyWidgetDsNav />
-        </div>
-        <div className="d-flex gap-3 mb-2">
-          {helpItem && (
-            <Dropdown
-              className="ds-nav-icon-dropdown"
-              onToggle={show => {
-                setShowHelpDropdown(show)
-                if (show) {
-                  sendMB('menu-expand', { item: 'help', location: 'sidebar' })
-                }
-              }}
-              role="menu"
-            >
-              <Dropdown.Toggle role="menuitem" aria-label={t('help')}>
-                <OLTooltip
-                  description={t('help')}
-                  id="help-icon"
-                  overlayProps={{
-                    placement: 'top',
-                    show: showHelpDropdown ? false : undefined,
-                  }}
-                >
-                  <div>
-                    <Question size={24} />
-                  </div>
-                </OLTooltip>
-              </Dropdown.Toggle>
-              <Dropdown.Menu
-                as="ul"
-                role="menu"
-                align="end"
-                popperConfig={{
-                  modifiers: [{ name: 'offset', options: { offset: [0, 5] } }],
-                }}
-              >
-                <NavDropdownMenuItems
-                  dropdown={helpItem.dropdown}
-                  showContactUsModal={showContactUsModal}
-                  location="sidebar"
-                />
-              </Dropdown.Menu>
-            </Dropdown>
-          )}
-          {sessionUser && (
-            <>
-              <Dropdown
-                className="ds-nav-icon-dropdown"
-                onToggle={show => {
-                  setShowAccountDropdown(show)
-                  if (show) {
-                    sendMB('menu-expand', {
-                      item: 'account',
-                      location: 'sidebar',
-                    })
-                  }
-                }}
-                role="menu"
-              >
-                <Dropdown.Toggle role="menuitem" aria-label={t('Account')}>
-                  <OLTooltip
-                    description={t('Account')}
-                    id="open-account"
-                    overlayProps={{
-                      placement: 'top',
-                      show: showAccountDropdown ? false : undefined,
-                    }}
-                  >
-                    <div>
-                      <User size={24} />
-                    </div>
-                  </OLTooltip>
-                </Dropdown.Toggle>
-                <Dropdown.Menu
-                  as="ul"
-                  role="menu"
-                  align="end"
-                  popperConfig={{
-                    modifiers: [
-                      { name: 'offset', options: { offset: [-50, 5] } },
-                    ],
-                  }}
-                >
-                  <AccountMenuItems
-                    sessionUser={sessionUser}
-                    showSubscriptionLink={showSubscriptionLink}
-                  />
-                </Dropdown.Menu>
-              </Dropdown>
-              <UserProvider>{contactUsModal}</UserProvider>
-            </>
-          )}
-        </div>
-        <div className="ds-nav-ds-name" translate="no">
-          <span>Digital Science</span>
-        </div>
+        <SidebarLowerSection showThemeToggle>
+          <div className="project-list-sidebar-survey-wrapper">
+            <SurveyWidgetDsNav />
+          </div>
+        </SidebarLowerSection>
       </div>
       <div
         {...getHandleProps({

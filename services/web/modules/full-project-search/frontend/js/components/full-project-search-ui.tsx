@@ -19,8 +19,8 @@ import { SearchQuery } from '@codemirror/search'
 import { debugConsole } from '@/utils/debugging'
 import useEventListener from '@/shared/hooks/use-event-listener'
 import { Col, Form, Row } from 'react-bootstrap'
-import OLFormControl from '@/features/ui/components/ol/ol-form-control'
-import Button from '@/features/ui/components/bootstrap-5/button'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import Button from '@/shared/components/button/button'
 import Notification from '@/shared/components/notification'
 import '../../stylesheets/full-project-search.scss'
 import { userStyles } from '@/shared/utils/styles'
@@ -28,15 +28,13 @@ import { useUserSettingsContext } from '@/shared/context/user-settings-context'
 import { FullProjectMatchCounts } from './full-project-match-counts'
 import { FullProjectSearchModifiers } from './full-project-search-modifiers'
 import { isMac } from '@/shared/utils/os'
-import { PanelHeading } from '@/shared/components/panel-heading'
 import { useEditorManagerContext } from '@/features/ide-react/context/editor-manager-context'
-import { createRegExp } from '../util/regexp'
+import { createRegExp } from '@/features/source-editor/utils/regexp'
 import { useEditorOpenDocContext } from '@/features/ide-react/context/editor-open-doc-context'
 import { useFileTreePathContext } from '@/features/file-tree/contexts/file-tree-path'
 import { FullProjectSearchResults } from './full-project-search-results'
 import { signalWithTimeout } from '@/utils/abort-signal'
-import { useIsNewEditorEnabled } from '@/features/ide-redesign/utils/new-editor-utils'
-import RailPanelHeader from '@/features/ide-redesign/components/rail-panel-header'
+import RailPanelHeader from '@/features/ide-react/components/rail/rail-panel-header'
 import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 
 const FullProjectSearchUI: FC = () => {
@@ -45,7 +43,6 @@ const FullProjectSearchUI: FC = () => {
   const { projectSnapshot } = useProjectContext()
   const { openDocs } = useEditorManagerContext()
   const { pathInFolder } = useFileTreePathContext()
-  const newEditor = useIsNewEditorEnabled()
 
   const { currentDocument: currentDoc } = useEditorOpenDocContext()
 
@@ -126,6 +123,12 @@ const FullProjectSearchUI: FC = () => {
 
   const searchInputRef = useRef<HTMLInputElement>(null)
 
+  useEffect(() => {
+    if (!document.activeElement?.closest('.ide-rail')) {
+      searchInputRef.current?.focus()
+    }
+  }, [])
+
   const handleKeyDown: React.KeyboardEventHandler<HTMLElement> = useCallback(
     event => {
       if (event.key === 'Escape') {
@@ -187,15 +190,7 @@ const FullProjectSearchUI: FC = () => {
       style={variableStyle}
       data-bs-theme={activeOverallTheme === 'light' ? 'light' : 'dark'}
     >
-      {newEditor ? (
-        <RailPanelHeader title={t('search')} />
-      ) : (
-        <PanelHeading
-          title={t('search')}
-          handleClose={() => setProjectSearchIsOpen(false)}
-          splitTestName="full-project-search"
-        />
-      )}
+      <RailPanelHeader title={t('search')} />
 
       <div // eslint-disable-line jsx-a11y/no-static-element-interactions
         className="full-project-search-form"
@@ -214,7 +209,6 @@ const FullProjectSearchUI: FC = () => {
                 name="search"
                 size="sm"
                 aria-label={t('search')}
-                autoFocus // eslint-disable-line jsx-a11y/no-autofocus
                 spellCheck={false}
                 autoComplete="off"
                 ref={searchInputRef}

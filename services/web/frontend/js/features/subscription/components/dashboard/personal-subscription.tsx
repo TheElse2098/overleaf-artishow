@@ -1,12 +1,12 @@
 import { Trans, useTranslation } from 'react-i18next'
 import { PaidSubscription } from '../../../../../../types/subscription/dashboard/subscription'
 import { PausedSubscription } from './states/active/paused'
-import { ActiveSubscriptionNew } from '@/features/subscription/components/dashboard/states/active/active-new'
+import { ActiveSubscription } from '@/features/subscription/components/dashboard/states/active/active'
 import { CanceledSubscription } from './states/canceled'
 import { ExpiredSubscription } from './states/expired'
 import { useSubscriptionDashboardContext } from '../../context/subscription-dashboard-context'
 import PersonalSubscriptionSyncEmail from './personal-subscription-sync-email'
-import OLNotification from '@/features/ui/components/ol/ol-notification'
+import OLNotification from '@/shared/components/ol/ol-notification'
 
 function PastDueSubscriptionAlert({
   subscription,
@@ -43,7 +43,7 @@ function PersonalSubscriptionStates({
 
   if (state === 'active') {
     // This version handles subscriptions with and without addons
-    return <ActiveSubscriptionNew subscription={subscription} />
+    return <ActiveSubscription subscription={subscription} />
   } else if (state === 'canceled') {
     return <CanceledSubscription subscription={subscription} />
   } else if (state === 'expired') {

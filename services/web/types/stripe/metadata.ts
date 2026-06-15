@@ -12,3 +12,10 @@ export type ProductMetadata = Stripe.Metadata & {
   planCode: MetadataPlanCode
   addOnCode?: Extract<RecurlyPlanCode, 'assistant'>
 }
+
+export type SubscriptionMetadata = Stripe.Metadata & {
+  itm_campaign?: string
+  itm_content?: string
+  itm_referrer?: string
+  checkoutSource?: 'hosted-checkout' | 'elements-checkout'
+}

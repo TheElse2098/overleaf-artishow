@@ -11,7 +11,7 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
  */
 import OError from '@overleaf/o-error'
-import V1Api from './V1Api.js'
+import V1Api from './V1Api.mjs'
 import logger from '@overleaf/logger'
 
 let V1Handler
@@ -45,9 +45,9 @@ export default V1Handler = {
           )
           return callback(null, isValid, userProfile)
         } else {
-          err = new Error(
-            `Unexpected status from v1 login api: ${response.statusCode}`
-          )
+          err = new OError('Unexpected status from v1 login api', {
+            status: response.statusCode,
+          })
           return callback(err)
         }
       }
@@ -79,9 +79,9 @@ export default V1Handler = {
           )
           return callback(null, true)
         } else {
-          err = new Error(
-            `Unexpected status from v1 password reset api: ${response.statusCode}`
-          )
+          err = new OError('Unexpected status from v1 password reset api', {
+            status: response.statusCode,
+          })
           return callback(err, false)
         }
       }

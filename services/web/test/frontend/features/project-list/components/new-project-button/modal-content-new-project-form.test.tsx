@@ -4,6 +4,7 @@ import fetchMock from 'fetch-mock'
 import sinon from 'sinon'
 import ModalContentNewProjectForm from '../../../../../../frontend/js/features/project-list/components/new-project-button/modal-content-new-project-form'
 import { location } from '@/shared/components/location'
+import * as projectListApi from '@/features/project-list/util/api'
 
 describe('<ModalContentNewProjectForm />', function () {
   beforeEach(function () {
@@ -34,7 +35,7 @@ describe('<ModalContentNewProjectForm />', function () {
 
     expect(createButton.getAttribute('disabled')).to.exist
 
-    fireEvent.change(screen.getByPlaceholderText('Project Name'), {
+    fireEvent.change(screen.getByLabelText('Project name'), {
       target: { value: 'Test Name' },
     })
 
@@ -51,6 +52,45 @@ describe('<ModalContentNewProjectForm />', function () {
     sinon.assert.calledWith(assignStub, `/project/${projectId}`)
   })
 
+  it('redirects even when adding tags fails', async function () {
+    const projectId = 'ab123'
+
+    fetchMock.post('/project/new', {
+      status: 200,
+      body: {
+        project_id: projectId,
+      },
+    })
+
+    const addProjectsToTagStub = this.locationWrapperSandbox
+      .stub(projectListApi, 'addProjectsToTag')
+      .rejects(new Error('tag add failed'))
+
+    render(
+      <ModalContentNewProjectForm
+        onCancel={() => {}}
+        initialTags={[{ _id: 'tag-1', user_id: 'user-1', name: 'Tag 1' }]}
+      />
+    )
+
+    fireEvent.change(screen.getByLabelText('Project name'), {
+      target: { value: 'Test Name' },
+    })
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Create',
+      })
+    )
+
+    const assignStub = this.locationWrapperStub.assign
+    await waitFor(() => {
+      sinon.assert.calledOnce(assignStub)
+    })
+    sinon.assert.calledWith(assignStub, `/project/${projectId}`)
+    sinon.assert.calledWith(addProjectsToTagStub, 'tag-1', [projectId])
+  })
+
   it('shows error when project name contains "/"', async function () {
     const errorMessage = 'Project name cannot contain / characters'
 
@@ -61,7 +101,7 @@ describe('<ModalContentNewProjectForm />', function () {
 
     render(<ModalContentNewProjectForm onCancel={() => {}} />)
 
-    fireEvent.change(screen.getByPlaceholderText('Project Name'), {
+    fireEvent.change(screen.getByLabelText('Project name'), {
       target: { value: '/' },
     })
 
@@ -87,7 +127,7 @@ describe('<ModalContentNewProjectForm />', function () {
 
     render(<ModalContentNewProjectForm onCancel={() => {}} />)
 
-    fireEvent.change(screen.getByPlaceholderText('Project Name'), {
+    fireEvent.change(screen.getByLabelText('Project name'), {
       target: { value: '\\' },
     })
 
@@ -113,7 +153,7 @@ describe('<ModalContentNewProjectForm />', function () {
 
     render(<ModalContentNewProjectForm onCancel={() => {}} />)
 
-    fireEvent.change(screen.getByPlaceholderText('Project Name'), {
+    fireEvent.change(screen.getByLabelText('Project name'), {
       target: {
         value: `
       Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Arcu risus quis varius quam quisque id diam vel quam. Sit amet porttitor eget dolor morbi non arcu risus quis. In aliquam sem fringilla ut. Gravida cum sociis natoque penatibus. Semper risus in hendrerit gravida rutrum quisque non. Ut aliquam purus sit amet luctus venenatis. Neque ornare aenean euismod elementum nisi. Adipiscing bibendum est ultricies integer quis auctor elit. Nulla posuere sollicitudin aliquam ultrices sagittis. Nulla facilisi nullam vehicula ipsum a arcu cursus. Tristique senectus et netus et malesuada fames ac. Pulvinar pellentesque habitant morbi tristique senectus et netus et. Nisi scelerisque eu ultrices vitae auctor eu. Hendrerit gravida rutrum quisque non tellus orci. Volutpat blandit aliquam etiam erat velit scelerisque in dictum non. Donec enim diam vulputate ut pharetra sit amet aliquam id. Ullamcorper eget nulla facilisi etiam.

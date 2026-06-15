@@ -3,13 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { FetchError, postJSON } from '@/infrastructure/fetch-json'
 import useAsync from '../../../../shared/hooks/use-async'
 import { UserEmailData } from '../../../../../../types/user-email'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLModal, {
+import OLButton from '@/shared/components/ol/ol-button'
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
+} from '@/shared/components/ol/ol-modal'
 import { ConfirmEmailForm } from '@/features/settings/components/emails/confirm-email-form'
 
 type ResendConfirmationEmailButtonProps = {
@@ -56,7 +57,7 @@ function ResendConfirmationCodeModal({
           id="action-project-modal"
           backdrop="static"
         >
-          <OLModalHeader closeButton>
+          <OLModalHeader>
             <OLModalTitle>{t('confirm_your_email')}</OLModalTitle>
           </OLModalHeader>
 
@@ -96,6 +97,7 @@ function ResendConfirmationCodeModal({
         variant={triggerVariant}
         disabled={groupLoading}
         isLoading={isLoading}
+        loadingLabel={t('sending')}
         onClick={handleResendConfirmationEmail}
         className={triggerVariant === 'link' ? 'btn-inline-link' : undefined}
       >

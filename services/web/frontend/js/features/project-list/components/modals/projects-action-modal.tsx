@@ -6,13 +6,14 @@ import useIsMounted from '../../../../shared/hooks/use-is-mounted'
 import * as eventTracking from '../../../../infrastructure/event-tracking'
 import { isSmallDevice } from '../../../../infrastructure/event-tracking'
 import Notification from '@/shared/components/notification'
-import OLButton from '@/features/ui/components/ol/ol-button'
-import OLModal, {
+import OLButton from '@/shared/components/ol/ol-button'
+import {
+  OLModal,
   OLModalBody,
   OLModalFooter,
   OLModalHeader,
   OLModalTitle,
-} from '@/features/ui/components/ol/ol-modal'
+} from '@/shared/components/ol/ol-modal'
 
 type ProjectsActionModalProps = {
   title?: string
@@ -79,7 +80,7 @@ function ProjectsActionModal({
       id="action-project-modal"
       backdrop="static"
     >
-      <OLModalHeader closeButton>
+      <OLModalHeader>
         <OLModalTitle>{title}</OLModalTitle>
       </OLModalHeader>
       <OLModalBody>

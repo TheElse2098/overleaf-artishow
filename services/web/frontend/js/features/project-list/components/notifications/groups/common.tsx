@@ -10,7 +10,7 @@ import {
 } from '../../../../../../../types/project/dashboard/notification'
 import GroupInvitationNotification from './group-invitation/group-invitation'
 import { debugConsole } from '@/utils/debugging'
-import OLButton from '@/features/ui/components/ol/ol-button'
+import OLButton from '@/shared/components/ol/ol-button'
 
 function Common() {
   const notifications = getMeta('ol-notifications') || []
@@ -192,7 +192,7 @@ function CommonNotification({ notification }: CommonNotificationProps) {
         />
       ) : templateKey === 'notification_tpds_file_limit' ? (
         <Notification
-          type="error"
+          type="warning"
           onDismiss={() => id && handleDismiss(id)}
           title={`${notification?.messageOpts?.projectName || 'A project'} exceeds the 2000 file limit`}
           content={
@@ -286,6 +286,12 @@ function CommonNotification({ notification }: CommonNotificationProps) {
               components={[<strong />, <a href="/user/subscription" />]}
             />
           }
+        />
+      ) : templateKey === 'notification_old_debug_projects' ? (
+        <Notification
+          type="warning"
+          onDismiss={() => id && handleDismiss(id)}
+          content={html}
         />
       ) : (
         <Notification

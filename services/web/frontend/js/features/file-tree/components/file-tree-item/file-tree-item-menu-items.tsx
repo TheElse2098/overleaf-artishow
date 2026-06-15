@@ -6,7 +6,7 @@ import { useProjectContext } from '@/shared/context/project-context'
 import {
   DropdownDivider,
   DropdownItem,
-} from '@/features/ui/components/bootstrap-5/dropdown-menu'
+} from '@/shared/components/dropdown/dropdown-menu'
 import { useUserContext } from '../../../../shared/context/user-context'
 import { useFileTreeData } from '../../../../shared/context/file-tree-data-context'
 import { getFullPath } from '../../contexts/get-full-path'
@@ -50,7 +50,9 @@ function FileTreeItemMenuItems() {
     startCreatingDocOrFile,
     startUploadingDocOrFile,
     downloadPath,
-    selectedFileName
+    selectedFileName,
+    canSetRootDocId,
+    setRootDocId,
   } = useFileTreeActionable()
 
   const { fileTreeData } = useFileTreeData()
@@ -101,10 +103,23 @@ function FileTreeItemMenuItems() {
           </DropdownItem>
         </li>
       ) : null}
+      {canSetRootDocId ? (
+        <>
+          <DropdownDivider />
+          <li role="none">
+            <DropdownItem onClick={setRootDocId}>
+              {t('set_as_main_document')}
+            </DropdownItem>
+          </li>
+        </>
+      ) : null}
       {canDelete ? (
-        <li role="none">
-          <DropdownItem onClick={startDeleting}>{t('delete')}</DropdownItem>
-        </li>
+        <>
+          <DropdownDivider />
+          <li role="none">
+            <DropdownItem onClick={startDeleting}>{t('delete')}</DropdownItem>
+          </li>
+        </>
       ) : null}
       {canCreate ? (
         <>

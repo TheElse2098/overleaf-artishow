@@ -15,6 +15,8 @@ html(lang='en')
 		link(rel='icon' href='/favicon.ico')
 
 		if buildCssPath
-			link(rel='stylesheet' href=buildCssPath('', 5))
+			link(rel='stylesheet' href=buildCssPath())
 
-block body
+		block meta
+
+	block body

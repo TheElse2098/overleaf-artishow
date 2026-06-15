@@ -20,3 +20,5 @@ if (process.env.SANDBOXED_COMPILES === 'true') {
   }
   Settings.currentImageName = process.env.TEX_LIVE_DOCKER_IMAGE
 }
+
+export default {}

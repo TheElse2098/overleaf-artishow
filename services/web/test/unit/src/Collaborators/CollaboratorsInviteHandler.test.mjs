@@ -1,7 +1,7 @@
 import { expect, vi } from 'vitest'
 import sinon from 'sinon'
 import mongodb from 'mongodb-legacy'
-import Crypto from 'crypto'
+import Crypto from 'node:crypto'
 
 const ObjectId = mongodb.ObjectId
 
@@ -82,7 +82,7 @@ describe('CollaboratorsInviteHandler', function () {
       default: ctx.settings,
     }))
 
-    vi.doMock('../../../../app/src/models/ProjectInvite.js', () => ({
+    vi.doMock('../../../../app/src/models/ProjectInvite.mjs', () => ({
       ProjectInvite: ctx.ProjectInvite,
     }))
 
@@ -98,29 +98,29 @@ describe('CollaboratorsInviteHandler', function () {
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Collaborators/CollaboratorsHandler.js',
+      '../../../../app/src/Features/Collaborators/CollaboratorsHandler.mjs',
       () => ({
         default: ctx.CollaboratorsHandler,
       })
     )
 
-    vi.doMock('../../../../app/src/Features/User/UserGetter.js', () => ({
+    vi.doMock('../../../../app/src/Features/User/UserGetter.mjs', () => ({
       default: ctx.UserGetter,
     }))
 
-    vi.doMock('../../../../app/src/Features/Project/ProjectGetter.js', () => ({
+    vi.doMock('../../../../app/src/Features/Project/ProjectGetter.mjs', () => ({
       default: ctx.ProjectGetter,
     }))
 
     vi.doMock(
-      '../../../../app/src/Features/Notifications/NotificationsBuilder.js',
+      '../../../../app/src/Features/Notifications/NotificationsBuilder.mjs',
       () => ({
         default: ctx.NotificationsBuilder,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Collaborators/CollaboratorsInviteHelper.js',
+      '../../../../app/src/Features/Collaborators/CollaboratorsInviteHelper.mjs',
       () => ({
         default: ctx.CollaboratorsInviteHelper,
       })
@@ -134,21 +134,21 @@ describe('CollaboratorsInviteHandler', function () {
     )
 
     vi.doMock(
-      '../../../../app/src/Features/SplitTests/SplitTestHandler.js',
+      '../../../../app/src/Features/SplitTests/SplitTestHandler.mjs',
       () => ({
         default: ctx.SplitTestHandler,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Subscription/LimitationsManager.js',
+      '../../../../app/src/Features/Subscription/LimitationsManager.mjs',
       () => ({
         default: ctx.LimitationsManager,
       })
     )
 
     vi.doMock(
-      '../../../../app/src/Features/Project/ProjectAuditLogHandler.js',
+      '../../../../app/src/Features/Project/ProjectAuditLogHandler.mjs',
       () => ({
         default: ctx.ProjectAuditLogHandler,
       })

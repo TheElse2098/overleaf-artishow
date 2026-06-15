@@ -1,10 +1,10 @@
 import { batchedUpdateWithResultHandling } from '@overleaf/mongo-utils/batchedUpdate.js'
 import { promiseMapWithLimit } from '@overleaf/promise-utils'
-import SubscriptionLocator from '../app/src/Features/Subscription/SubscriptionLocator.js'
-import PlansLocator from '../app/src/Features/Subscription/PlansLocator.js'
-import FeaturesHelper from '../app/src/Features/Subscription/FeaturesHelper.js'
-import AnalyticsManager from '../app/src/Features/Analytics/AnalyticsManager.js'
-import { db } from '../app/src/infrastructure/mongodb.js'
+import SubscriptionLocator from '../app/src/Features/Subscription/SubscriptionLocator.mjs'
+import PlansLocator from '../app/src/Features/Subscription/PlansLocator.mjs'
+import FeaturesHelper from '../app/src/Features/Subscription/FeaturesHelper.mjs'
+import AnalyticsManager from '../app/src/Features/Analytics/AnalyticsManager.mjs'
+import { db } from '../app/src/infrastructure/mongodb.mjs'
 
 const WRITE_CONCURRENCY = parseInt(process.env.WRITE_CONCURRENCY, 10) || 10
 

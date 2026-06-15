@@ -1,4 +1,4 @@
-import { DropdownHeader } from '@/features/ui/components/bootstrap-5/dropdown-menu'
+import { DropdownHeader } from '@/shared/components/dropdown/dropdown-menu'
 import { ToolbarButtonMenu } from './button-menu'
 import { emitToolbarEvent } from '../../extensions/toolbar/utils/analytics'
 import MaterialIcon from '../../../../shared/components/material-icon'
@@ -10,24 +10,22 @@ import {
   wrapInInlineMath,
 } from '../../extensions/toolbar/commands'
 import { memo } from 'react'
-import OLListGroupItem from '@/features/ui/components/ol/ol-list-group-item'
+import OLListGroupItem from '@/shared/components/ol/ol-list-group-item'
 import sparkleWhite from '@/shared/svgs/sparkle-small-white.svg'
 import sparkle from '@/shared/svgs/ai-sparkle-text.svg'
-import { isSplitTestEnabled } from '@/utils/splitTestUtils'
 
 export const MathDropdown = memo(function MathDropdown() {
   const { t } = useTranslation()
   const view = useCodeMirrorViewContext()
   const { writefullInstance } = useEditorContext()
 
-  const wfRebrandEnabled = isSplitTestEnabled('overleaf-assist-bundle')
   return (
     <ToolbarButtonMenu
       id="toolbar-math"
       label={t('toolbar_insert_math')}
       icon={<MaterialIcon type="calculate" />}
     >
-      {wfRebrandEnabled && writefullInstance && (
+      {writefullInstance && (
         <>
           <DropdownHeader className="ol-cm-toolbar-header mx-2">
             {t('toolbar_insert_math_lowercase')}

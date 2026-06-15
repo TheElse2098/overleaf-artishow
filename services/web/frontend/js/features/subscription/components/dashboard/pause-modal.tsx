@@ -3,13 +3,14 @@ import { useSubscriptionDashboardContext } from '../../context/subscription-dash
 import { useCallback, useMemo, useState } from 'react'
 import { postJSON } from '@/infrastructure/fetch-json'
 import { useLocation } from '@/shared/hooks/use-location'
-import OLModal, {
+import {
+  OLModal,
   OLModalBody,
   OLModalHeader,
-} from '@/features/ui/components/ol/ol-modal'
+} from '@/shared/components/ol/ol-modal'
 import { Select } from '@/shared/components/select'
-import OLFormGroup from '@/features/ui/components/ol/ol-form-group'
-import Button from '@/features/ui/components/bootstrap-5/button'
+import OLFormGroup from '@/shared/components/ol/ol-form-group'
+import Button from '@/shared/components/button/button'
 import { Stack } from 'react-bootstrap'
 import { debugConsole } from '@/utils/debugging'
 import * as eventTracking from '../../../../infrastructure/event-tracking'
@@ -88,7 +89,7 @@ export default function PauseSubscriptionModal() {
       backdrop="static"
     >
       <OLModalBody>
-        <OLModalHeader closeButton style={{ border: 0 }} />
+        <OLModalHeader style={{ border: 0 }} />
         <img
           src={PauseDuck}
           alt="Need to duck out for a while?"

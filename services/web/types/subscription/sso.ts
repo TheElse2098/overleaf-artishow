@@ -9,6 +9,7 @@ export type SSOConfig = {
   entryPoint?: string
   certificates: Certificate[]
   userIdAttribute?: string
+  userEmailAttribute?: string
   userFirstNameAttribute?: string
   userLastNameAttribute?: string
   validated?: boolean

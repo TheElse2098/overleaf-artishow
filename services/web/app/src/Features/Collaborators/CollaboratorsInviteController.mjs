@@ -1,21 +1,24 @@
-import ProjectGetter from '../Project/ProjectGetter.js'
-import LimitationsManager from '../Subscription/LimitationsManager.js'
-import UserGetter from '../User/UserGetter.js'
-import CollaboratorsGetter from './CollaboratorsGetter.js'
+import ProjectGetter from '../Project/ProjectGetter.mjs'
+import LimitationsManager from '../Subscription/LimitationsManager.mjs'
+import UserGetter from '../User/UserGetter.mjs'
+import CollaboratorsGetter from './CollaboratorsGetter.mjs'
 import CollaboratorsInviteHandler from './CollaboratorsInviteHandler.mjs'
-import CollaboratorsInviteGetter from './CollaboratorsInviteGetter.js'
+import CollaboratorsInviteGetter from './CollaboratorsInviteGetter.mjs'
+import CollaboratorsInviteHelper from './CollaboratorsInviteHelper.mjs'
 import logger from '@overleaf/logger'
 import Settings from '@overleaf/settings'
-import EmailHelper from '../Helpers/EmailHelper.js'
-import EditorRealTimeController from '../Editor/EditorRealTimeController.js'
-import AnalyticsManager from '../Analytics/AnalyticsManager.js'
-import SessionManager from '../Authentication/SessionManager.js'
-import { RateLimiter } from '../../infrastructure/RateLimiter.js'
+import EmailHelper from '../Helpers/EmailHelper.mjs'
+import EditorRealTimeController from '../Editor/EditorRealTimeController.mjs'
+import AnalyticsManager from '../Analytics/AnalyticsManager.mjs'
+import SessionManager from '../Authentication/SessionManager.mjs'
+import { RateLimiter } from '../../infrastructure/RateLimiter.mjs'
+import { z, zz, parseReq } from '../../infrastructure/Validation.mjs'
 import { expressify } from '@overleaf/promise-utils'
-import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.js'
+import ProjectAuditLogHandler from '../Project/ProjectAuditLogHandler.mjs'
 import Errors from '../Errors/Errors.js'
-import AuthenticationController from '../Authentication/AuthenticationController.js'
-import PrivilegeLevels from '../Authorization/PrivilegeLevels.js'
+import AuthenticationController from '../Authentication/AuthenticationController.mjs'
+import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
+import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 
 // This rate limiter allows a different number of requests depending on the
 // number of callaborators a user is allowed. This is implemented by providing
@@ -80,9 +83,24 @@ async function _checkRateLimit(userId) {
   return true
 }
 
+const inviteToProjectSchema = z.object({
+  params: z.object({
+    Project_id: zz.objectId(),
+  }),
+  body: z.object({
+    email: z.string(),
+    privileges: z.enum([
+      PrivilegeLevels.READ_ONLY,
+      PrivilegeLevels.READ_AND_WRITE,
+      PrivilegeLevels.REVIEW,
+    ]),
+  }),
+})
+
 async function inviteToProject(req, res) {
-  const projectId = req.params.Project_id
-  let { email, privileges } = req.body
+  const { params, body } = parseReq(req, inviteToProjectSchema)
+  const projectId = params.Project_id
+  let { email, privileges } = body
   const sendingUser = SessionManager.getSessionUser(req.session)
   const sendingUserId = sendingUser._id
   req.logger.addFields({ email, sendingUserId })
@@ -155,7 +173,7 @@ async function inviteToProject(req, res) {
     req.ip,
     {
       inviteId: invite._id,
-      privileges,
+      role: CollaboratorsInviteHelper.privilegeLevelToRole(invite.privileges),
     }
   )
 
@@ -186,7 +204,8 @@ async function revokeInvite(req, res) {
       req.ip,
       {
         inviteId: invite._id,
-        privileges: invite.privileges,
+        collaboratorEmail: invite.email,
+        role: CollaboratorsInviteHelper.privilegeLevelToRole(invite.privileges),
       }
     )
     EditorRealTimeController.emitToRoom(
@@ -245,10 +264,18 @@ async function viewInvite(req, res) {
   const projectId = req.params.Project_id
   const { token } = req.params
 
+  const { variant: sharingUpdates } =
+    await SplitTestHandler.promises.getAssignment(req, res, 'sharing-updates')
+
   const _renderInvalidPage = function () {
     res.status(404)
     logger.debug({ projectId }, 'invite not valid, rendering not-valid page')
-    res.render('project/invite/not-valid', { title: 'Invalid Invite' })
+
+    if (sharingUpdates === 'enabled') {
+      res.render('project/invite/not-valid', { title: 'Invalid Invite' })
+    } else {
+      res.render('project/invite/not-valid-legacy', { title: 'Invalid Invite' })
+    }
   }
 
   // check if the user is already a member of the project
@@ -312,13 +339,22 @@ async function viewInvite(req, res) {
   delete req.session.sharedProjectData
 
   // finally render the invite
-  res.render('project/invite/show', {
-    invite,
-    token,
-    project,
-    owner,
-    title: 'Project Invite',
-  })
+  if (sharingUpdates === 'enabled') {
+    res.render('project/invite/show', {
+      token,
+      projectName: project.name,
+      projectId: invite.projectId,
+      title: 'Project Invite',
+    })
+  } else {
+    res.render('project/invite/show-legacy', {
+      invite,
+      token,
+      project,
+      owner,
+      title: 'Project Invite',
+    })
+  }
 }
 
 async function acceptInvite(req, res) {
@@ -345,6 +381,7 @@ async function acceptInvite(req, res) {
     req.ip,
     {
       inviteId: invite._id,
+      collaboratorEmail: invite.email,
       privileges: invite.privileges,
     }
   )
