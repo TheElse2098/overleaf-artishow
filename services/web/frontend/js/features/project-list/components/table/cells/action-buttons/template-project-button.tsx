@@ -68,7 +68,10 @@ function TemplateProjectButton({
     }
   }, [project, description, isGeneral, isAdmin, updateProjectViewData])
 
-  if (project.archived || project.trashed) return null
+  // Only the owner can (un)mark a project as a template.
+  if (project.accessLevel !== 'owner' || project.archived || project.trashed) {
+    return null
+  }
 
   return (
     <>

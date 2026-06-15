@@ -69,15 +69,19 @@ const TemplatesController = {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const { projectId } = req.params
-    // Admins can remove any template; non-admins only their own (Personnel) one.
-    if (!user?.isAdmin) {
-      const project = await Project.findOne(
-        { _id: projectId },
-        { owner_ref: 1 }
-      ).lean()
-      if (!project || project.owner_ref?.toString() !== userId.toString()) {
-        return res.sendStatus(403)
-      }
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1, templateCategory: 1 }
+    ).lean()
+    if (!project) {
+      return res.sendStatus(403)
+    }
+    const isOwner = project.owner_ref?.toString() === userId.toString()
+    const isGeneral = project.templateCategory === 'General'
+    // You can remove your own template; an admin can additionally remove any
+    // "General" (shared) template — but never someone else's Personnel one.
+    if (!isOwner && !(user?.isAdmin && isGeneral)) {
+      return res.sendStatus(403)
     }
     await Project.updateOne(
       { _id: projectId },
@@ -92,15 +96,15 @@ const TemplatesController = {
     const { projectId } = req.params
     const { isTemplate, templateDescription, isGeneral } = req.body
 
-    // Non-admins may only (un)mark their own projects.
-    if (!user?.isAdmin) {
-      const project = await Project.findOne(
-        { _id: projectId },
-        { owner_ref: 1 }
-      ).lean()
-      if (!project || project.owner_ref?.toString() !== userId.toString()) {
-        return res.sendStatus(403)
-      }
+    // Templates can only be (un)marked on a project you own — admins included.
+    // This prevents anyone (even an admin) from publishing another user's
+    // private project as a template and exposing its content.
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1 }
+    ).lean()
+    if (!project || project.owner_ref?.toString() !== userId.toString()) {
+      return res.sendStatus(403)
     }
 
     const wantsTemplate = Boolean(isTemplate)
