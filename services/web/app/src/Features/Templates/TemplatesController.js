@@ -6,6 +6,7 @@ const logger = require('@overleaf/logger')
 const { expressify } = require('@overleaf/promise-utils')
 const { Project } = require('../../models/Project')
 const { User } = require('../../models/User')
+const { ObjectId } = require('mongodb-legacy')
 
 const TemplatesController = {
   async getV1Template(req, res) {
@@ -67,8 +68,11 @@ const TemplatesController = {
 
   async removeTemplate(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const project = await Project.findOne(
       { _id: projectId },
       { owner_ref: 1, templateCategory: 1 }
@@ -92,8 +96,11 @@ const TemplatesController = {
 
   async setTemplateStatus(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const { isTemplate, templateDescription, isGeneral } = req.body
 
     // Templates can only be (un)marked on a project you own — admins included.
