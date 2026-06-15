@@ -102,6 +102,11 @@ function TemplateProjectButton({
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setDescription(e.target.value)
             }
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+              if (e.key === 'Enter' && !saving) {
+                handleSave()
+              }
+            }}
           />
           <div className="mt-2 text-muted small">
             Category: {isAdmin && isGeneral ? 'General' : 'Personnel'}

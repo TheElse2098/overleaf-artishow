@@ -149,9 +149,19 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
             type="text"
             placeholder="Project name"
             value={projectName}
+            autoFocus
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setProjectName(e.target.value)
             }
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+              if (
+                e.key === 'Enter' &&
+                !isCreating &&
+                projectName.trim() !== ''
+              ) {
+                handleCreateProject()
+              }
+            }}
           />
         </OLModalBody>
         <OLModalFooter>
