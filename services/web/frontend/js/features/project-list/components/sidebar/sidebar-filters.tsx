@@ -55,7 +55,7 @@ function GeneralTemplatesSection() {
         <hr />
       </li>
       <li className="sidebar-section-header">
-        <span>Templates généraux</span>
+        <span>General templates</span>
       </li>
       {templates.map(tmpl => (
         <li key={tmpl.id}>

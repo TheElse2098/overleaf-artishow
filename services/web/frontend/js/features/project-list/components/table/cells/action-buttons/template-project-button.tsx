@@ -35,8 +35,10 @@ function TemplateProjectButton({
   const [saving, setSaving] = useState(false)
 
   const text = project.isTemplate
-    ? 'Modifier le template'
-    : 'Marquer comme template'
+    ? isAdmin
+      ? 'Edit description or category'
+      : 'Edit description'
+    : 'Mark as template'
 
   const handleOpenModal = useCallback(() => {
     setDescription(project.templateDescription)
@@ -89,20 +91,20 @@ function TemplateProjectButton({
                   onChange={e => setIsGeneral(e.target.checked)}
                   className="me-2"
                 />
-                Marquer comme template général
+                Mark as general template
               </label>
             </div>
           )}
           <OLFormControl
             type="text"
-            placeholder="Description du template"
+            placeholder="Template description"
             value={description}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setDescription(e.target.value)
             }
           />
           <div className="mt-2 text-muted small">
-            Catégorie : {isAdmin && isGeneral ? 'General' : 'Personnel'}
+            Category: {isAdmin && isGeneral ? 'General' : 'Personnel'}
           </div>
         </OLModalBody>
         <OLModalFooter>
@@ -128,7 +130,12 @@ export default memo(TemplateProjectButton)
 const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip({
   project,
 }: { project: Project }) {
-  const text = project.isTemplate ? 'Modifier le template' : 'Marquer comme template'
+  const isAdmin = getMeta('ol-user')?.isAdmin
+  const text = project.isTemplate
+    ? isAdmin
+      ? 'Edit description or category'
+      : 'Edit description'
+    : 'Mark as template'
 
   return (
     <TemplateProjectButton project={project}>
