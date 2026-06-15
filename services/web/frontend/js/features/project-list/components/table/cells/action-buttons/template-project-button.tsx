@@ -28,7 +28,6 @@ function TemplateProjectButton({
   const { updateProjectViewData } = useProjectListContext()
   const isAdmin = getMeta('ol-user')?.isAdmin
   const [showModal, setShowModal] = useState(false)
-  const [isTemplate, setIsTemplate] = useState(project.isTemplate)
   const [description, setDescription] = useState(project.templateDescription)
   const [isGeneral, setIsGeneral] = useState(
     project.templateCategory === 'General'
@@ -40,30 +39,24 @@ function TemplateProjectButton({
     : 'Marquer comme template'
 
   const handleOpenModal = useCallback(() => {
-    setIsTemplate(project.isTemplate)
     setDescription(project.templateDescription)
     setIsGeneral(project.templateCategory === 'General')
     setShowModal(true)
-  }, [
-    project.isTemplate,
-    project.templateDescription,
-    project.templateCategory,
-  ])
+  }, [project.templateDescription, project.templateCategory])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     try {
+      // Saving the modal marks the project as a template; admins may flag it
+      // "General", everyone else (and admins who leave it unchecked) gets a
+      // "Personnel" template.
       await postJSON(`/project/${project.id}/template`, {
-        body: { isTemplate, templateDescription: description, isGeneral },
+        body: { isTemplate: true, templateDescription: description, isGeneral },
       })
-      const templateCategory = isTemplate
-        ? isAdmin && isGeneral
-          ? 'General'
-          : 'Personnel'
-        : ''
+      const templateCategory = isAdmin && isGeneral ? 'General' : 'Personnel'
       updateProjectViewData({
         ...project,
-        isTemplate,
+        isTemplate: true,
         templateDescription: description,
         templateCategory,
       })
@@ -71,7 +64,7 @@ function TemplateProjectButton({
     } finally {
       setSaving(false)
     }
-  }, [project, isTemplate, description, isGeneral, isAdmin, updateProjectViewData])
+  }, [project, description, isGeneral, isAdmin, updateProjectViewData])
 
   if (project.archived || project.trashed) return null
 
@@ -87,45 +80,30 @@ function TemplateProjectButton({
           <OLModalTitle>Template</OLModalTitle>
         </OLModalHeader>
         <OLModalBody>
-          <div className="mb-2">
-            <label>
-              <input
-                type="checkbox"
-                checked={isTemplate}
-                onChange={e => setIsTemplate(e.target.checked)}
-                className="me-2"
-              />
-              Marquer ce projet comme template
-            </label>
-          </div>
-          {isTemplate && (
-            <>
-              <OLFormControl
-                type="text"
-                placeholder="Description du template"
-                value={description}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setDescription(e.target.value)
-                }
-              />
-              {isAdmin && (
-                <div className="mt-2">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={isGeneral}
-                      onChange={e => setIsGeneral(e.target.checked)}
-                      className="me-2"
-                    />
-                    Marquer comme template général
-                  </label>
-                </div>
-              )}
-              <div className="mt-2 text-muted small">
-                Catégorie : {isAdmin && isGeneral ? 'General' : 'Personnel'}
-              </div>
-            </>
+          {isAdmin && (
+            <div className="mb-2">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={isGeneral}
+                  onChange={e => setIsGeneral(e.target.checked)}
+                  className="me-2"
+                />
+                Marquer comme template général
+              </label>
+            </div>
           )}
+          <OLFormControl
+            type="text"
+            placeholder="Description du template"
+            value={description}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setDescription(e.target.value)
+            }
+          />
+          <div className="mt-2 text-muted small">
+            Catégorie : {isAdmin && isGeneral ? 'General' : 'Personnel'}
+          </div>
         </OLModalBody>
         <OLModalFooter>
           <OLButton variant="secondary" onClick={() => setShowModal(false)}>
