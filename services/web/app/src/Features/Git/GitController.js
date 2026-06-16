@@ -24,6 +24,16 @@ function isValidObjectId(id) {
   return typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)
 }
 
+// Vérifie qu'un filePath fourni par le client est un chemin relatif sûr,
+// confiné au dépôt du projet. Rejette les chemins absolus et tout segment de
+// remontée ("..") afin d'empêcher le path traversal (lecture/suppression hors projet).
+function isSafeRelativePath(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return false
+  if (path.isAbsolute(filePath)) return false
+  // Découpe sur / et \ et rejette tout segment de remontée
+  return !filePath.split(/[/\\]+/).some(segment => segment === '..')
+}
+
 // Middleware : lit projectId depuis le body/query, le valide, et l'expose dans
 // req.params.Project_id pour que les middlewares d'autorisation Overleaf
 // (ensureUserCanReadProject / ensureUserCanWriteProjectContent) puissent l'utiliser.
@@ -1234,6 +1244,7 @@ GitController = {
   async markDeleted(req, res) {
     const { projectId, filePath } = req.body
     if (!projectId || !filePath) return res.status(400).json({ error: 'projectId et filePath requis.' })
+    if (!isSafeRelativePath(filePath)) return res.status(400).json({ error: 'filePath invalide.' })
     try {
       const project = await Project.findById(projectId, 'git').lean().exec()
       if (!project?.git?.linkedAt) return res.sendStatus(200) // projet non lié, rien à faire
@@ -1253,6 +1264,9 @@ GitController = {
     const userId = req.body.userId
     const filePath = req.body.filePath
     const deleted = req.body.deleted === true
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: 'filePath invalide.' })
+    }
     console.log("Adding " + filePath + (deleted ? " (deletion)" : ""))
     move(projectId, userId)
 
@@ -1538,6 +1552,7 @@ GitController = {
       // Supprimer du working tree les fichiers supprimés dans Overleaf
       const repoPath = dataPath + projectId + "-" + userId
       for (const f of deletedFiles) {
+        if (!isSafeRelativePath(f)) continue // ignore tout chemin non confiné au dépôt
         const fullPath = path.join(repoPath, f)
         try {
           if (await fs.pathExists(fullPath)) await fs.remove(fullPath)
