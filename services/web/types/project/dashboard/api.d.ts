@@ -53,6 +53,7 @@ export type ProjectApi = {
   source: Source
   isTemplate: boolean
   templateDescription: string
+  templateCategory: string
 }
 
 export type Project = MergeAndOverride<
