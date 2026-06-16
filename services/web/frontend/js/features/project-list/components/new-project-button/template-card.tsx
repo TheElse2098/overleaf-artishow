@@ -2,8 +2,17 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import OLButton from '@/shared/components/ol/ol-button'
-import { postJSON } from '../../../../infrastructure/fetch-json'
+import {
+  OLModal,
+  OLModalBody,
+  OLModalFooter,
+  OLModalHeader,
+  OLModalTitle,
+} from '@/shared/components/ol/ol-modal'
+import OLFormControl from '@/shared/components/ol/ol-form-control'
+import { postJSON, deleteJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
+import getMeta from '../../../../utils/meta'
 
 type Template = {
   id: string
@@ -16,21 +25,33 @@ type Template = {
 
 type TemplateCardProps = {
   template: Template
-  onSelect: () => void
+  onRemoved: (id: string) => void
 }
 
-function TemplateCard({ template, onSelect }: TemplateCardProps) {
+function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const { t } = useTranslation()
   const [isCreating, setIsCreating] = useState(false)
+  const [isRemoving, setIsRemoving] = useState(false)
+  const [showNameModal, setShowNameModal] = useState(false)
+  const [projectName, setProjectName] = useState('')
   const location = useLocation()
+  const isAdmin = getMeta('ol-user')?.isAdmin
+  // The catalogue only shows a user their own Personnel templates, so any
+  // visible Personnel card belongs to the viewer and can be removed by them.
+  const canRemove = isAdmin || template.category === 'Personnel'
+
+  const openNameModal = () => {
+    setProjectName(template.name)
+    setShowNameModal(true)
+  }
 
   const handleCreateProject = async () => {
     try {
       setIsCreating(true)
-      
+
       const response = await postJSON('/project/new', {
         body: {
-          projectName: `${template.name} Project`,
+          projectName: projectName.trim() || template.name,
           template: 'from_template',
           templateId: template.id,
         },
@@ -42,6 +63,17 @@ function TemplateCard({ template, onSelect }: TemplateCardProps) {
     } catch (error) {
       console.error('Error creating project from template:', error)
       setIsCreating(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    try {
+      setIsRemoving(true)
+      await deleteJSON(`/project/${template.id}/template`)
+      onRemoved(template.id)
+    } catch (error) {
+      console.error('Error removing template:', error)
+      setIsRemoving(false)
     }
   }
 
@@ -83,18 +115,74 @@ function TemplateCard({ template, onSelect }: TemplateCardProps) {
           </div>
         )}
         
-        <div className="mt-auto">
+        <div className="mt-auto d-flex gap-2">
           <OLButton
             variant="primary"
             size="sm"
-            onClick={handleCreateProject}
-            disabled={isCreating}
-            className="w-100"
+            onClick={openNameModal}
+            disabled={isCreating || isRemoving}
+            className="flex-grow-1"
           >
-            {isCreating ? t('creating') + '...' : t('use_template')}
+            {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
+          {canRemove && (
+            <OLButton
+              variant="danger"
+              size="sm"
+              onClick={handleRemove}
+              disabled={isCreating || isRemoving}
+            >
+              {isRemoving ? '...' : 'Remove'}
+            </OLButton>
+          )}
         </div>
       </div>
+      <OLModal
+        show={showNameModal}
+        onHide={() => setShowNameModal(false)}
+        id={`template-name-modal-${template.id}`}
+      >
+        <OLModalHeader closeButton>
+          <OLModalTitle>New project</OLModalTitle>
+        </OLModalHeader>
+        <OLModalBody>
+          <OLFormControl
+            type="text"
+            placeholder="Project name"
+            value={projectName}
+            autoFocus
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+              setProjectName(e.target.value)
+            }
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+              if (
+                e.key === 'Enter' &&
+                !isCreating &&
+                projectName.trim() !== ''
+              ) {
+                handleCreateProject()
+              }
+            }}
+          />
+        </OLModalBody>
+        <OLModalFooter>
+          <OLButton
+            variant="secondary"
+            onClick={() => setShowNameModal(false)}
+            disabled={isCreating}
+          >
+            {t('cancel')}
+          </OLButton>
+          <OLButton
+            variant="primary"
+            onClick={handleCreateProject}
+            disabled={isCreating || projectName.trim() === ''}
+            isLoading={isCreating}
+          >
+            {t('create')}
+          </OLButton>
+        </OLModalFooter>
+      </OLModal>
     </div>
   )
 }

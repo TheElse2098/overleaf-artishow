@@ -1,5 +1,3 @@
-import path from 'node:path'
-import fs from 'fs-extra'
 import _ from 'lodash'
 import OError from '@overleaf/o-error'
 import crypto from 'node:crypto'
@@ -325,9 +323,31 @@ const _ProjectController = {
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
     const { template, templateId, token, tokenType } = req.body
+    const fromTemplate =
+      (template === 'example' || template === 'from_template') && templateId
+
+    if (fromTemplate) {
+      // Creating a project from a template duplicates an existing project by
+      // id. "General" templates can be used by anyone; "Personnel" templates
+      // can only be duplicated by their owner. This keeps a user from cloning
+      // an arbitrary (private) project they cannot access.
+      const templateProject = await ProjectGetter.promises.getProject(
+        templateId,
+        { isTemplate: 1, templateCategory: 1, owner_ref: 1 }
+      )
+      const isGeneralTemplate =
+        templateProject?.isTemplate &&
+        templateProject.templateCategory !== 'Personnel'
+      const isOwnTemplate =
+        templateProject?.isTemplate &&
+        templateProject.owner_ref?.toString() === userId.toString()
+      if (!isGeneralTemplate && !isOwnTemplate) {
+        return res.sendStatus(403)
+      }
+    }
 
     const project = await (
-      (template === 'example' && templateId)
+      fromTemplate
         ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
         : (template === 'example')
           ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
@@ -1271,52 +1291,6 @@ const _ProjectController = {
     return portalTemplates
   },
 
-  copyDirectory(req, res) {
-    console.log("Copying")
-    const src = req.body.src
-    const dest = req.body.dest
-    fs.copy(src, dest, err => {
-
-        if (err) {
-          console.error(`Error when copying ${src} to ${dest}:`, err)
-          res.sendStatus(400)
-       }
-
-        fs.readdir(dest, (err, files) => {
-        if (err) {
-            console.error(`Erreur when reading folder: ${err}`)
-            res.sendStatus(400)
-        }
-
-        files.forEach(file => {
-
-            const filePath = path.join(dest, file);
-
-            fs.stat(filePath, (err, stats) => {
-
-                if (err) {
-                    console.error(`Error getting stats of file: ${filePath}, ${err}`);
-                    return res.sendStatus(400);
-                }
-
-                if (!stats.isDirectory() && path.extname(file) !== '.tex') {
-
-                    fs.remove(filePath, err => {
-                        if (err) {
-                            console.error(`Couldn't delete file: ${filePath}, ${err}`)
-                            res.sendStatus(400)
-                        }
-                    });
-                }
-           });
-       });
-    });
-    console.log("Source: " + src)
-    console.log("Destination: " + dest)
-    res.sendStatus(200)
-   })
-  },
-
   importProject(req, res, next) {
     const currentUser = SessionManager.getSessionUser(req.session)
     const {
@@ -1505,7 +1479,6 @@ const LEGACY_THEME_LIST = [
 const ProjectController = {
   archiveProject: expressify(_ProjectController.archiveProject),
   cloneProject: expressify(_ProjectController.cloneProject),
-  copyDirectory: expressify(_ProjectController.copyDirectory),
   deleteProject: expressify(_ProjectController.deleteProject),
   expireDeletedProject: expressify(_ProjectController.expireDeletedProject),
   expireDeletedProjectsAfterDuration: expressify(

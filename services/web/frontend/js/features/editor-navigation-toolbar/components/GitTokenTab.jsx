@@ -24,7 +24,7 @@ function GitTokenTab({ projectId }) {
   const loadGitInfo = async () => {
     try {
       const info = await getJSON('/git-info?projectId=' + projectId)
-      if (info && info.token) {
+      if (info && info.hasToken) {
         setHasExistingToken(true)
         setExistingTokenType(info.tokenType || 'github')
         setTokenType(info.tokenType || 'github')

@@ -25,8 +25,8 @@ export default function ActionsCell({ project }: ActionsCellProps) {
       <UnarchiveProjectButtonTooltip project={project} />
       <UntrashProjectButtonTooltip project={project} />
       <LeaveProjectButtonTooltip project={project} />
-      <DeleteProjectButtonTooltip project={project} />
       <TemplateProjectButtonTooltip project={project} />
+      <DeleteProjectButtonTooltip project={project} />
     </>
   )
 }

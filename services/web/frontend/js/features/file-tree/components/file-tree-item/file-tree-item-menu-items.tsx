@@ -12,7 +12,6 @@ import { useFileTreeData } from '../../../../shared/context/file-tree-data-conte
 import { getFullPath } from '../../contexts/get-full-path'
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
 import { useFileTreeSelectable } from '../../contexts/file-tree-selectable'
-import { copyDirectory } from '../../../../shared/utils/storage-handler'
 
 import useAsync from '../../../../shared/hooks/use-async'
 import {
