@@ -27,7 +27,6 @@ type ActionDropdownProps = {
 
 function ActionsDropdown({ project }: ActionDropdownProps) {
   const { t } = useTranslation()
-  const isAdmin = getMeta('ol-user')?.isAdmin
 
   return (
     <Dropdown align="end">
@@ -190,22 +189,20 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
             </li>
           )}
         </DeleteProjectButton>
-        {isAdmin && (
-          <TemplateProjectButton project={project}>
-            {(text, handleOpenModal) => (
-              <li role="none">
-                <DropdownItem
-                  as="button"
-                  tabIndex={-1}
-                  onClick={handleOpenModal}
-                  leadingIcon="bookmark"
-                >
-                  {text}
-                </DropdownItem>
-              </li>
-            )}
-          </TemplateProjectButton>
-        )}
+        <TemplateProjectButton project={project}>
+          {(text, handleOpenModal) => (
+            <li role="none">
+              <DropdownItem
+                as="button"
+                tabIndex={-1}
+                onClick={handleOpenModal}
+                leadingIcon="bookmark"
+              >
+                {text}
+              </DropdownItem>
+            </li>
+          )}
+        </TemplateProjectButton>
       </DropdownMenu>
     </Dropdown>
   )

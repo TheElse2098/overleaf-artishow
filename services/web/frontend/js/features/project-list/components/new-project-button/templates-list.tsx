@@ -15,11 +15,10 @@ type Template = {
 
 type TemplatesListProps = {
   templates: Template[]
-  onTemplateSelect: (templateId: string) => void
+  onTemplateRemoved: (id: string) => void
 }
 
-function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
-  const { t } = useTranslation()
+function TemplatesList({ templates, onTemplateRemoved }: TemplatesListProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
 
@@ -42,7 +41,7 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
           <div className="col-md-8">
             <OLFormControl
               type="text"
-              placeholder={t('search_templates')}
+              placeholder="Search templates"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="form-control"
@@ -56,7 +55,7 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
             >
               {categories.map(category => (
                 <option key={category} value={category}>
-                  {category === 'all' ? t('all_categories') : category}
+                  {category === 'all' ? 'All categories' : category}
                 </option>
               ))}
             </select>
@@ -67,15 +66,15 @@ function TemplatesList({ templates, onTemplateSelect }: TemplatesListProps) {
       <div className="templates-grid">
         {filteredTemplates.length === 0 ? (
           <div className="text-center py-4">
-            <p className="text-muted">{t('no_templates_found')}</p>
+            <p className="text-muted">{'No templates found'}</p>
           </div>
         ) : (
           <div className="row">
             {filteredTemplates.map(template => (
               <div key={template.id} className="col-lg-4 col-md-6 mb-3">
-                <TemplateCard 
+                <TemplateCard
                   template={template}
-                  onSelect={() => onTemplateSelect(template.id)}
+                  onRemoved={onTemplateRemoved}
                 />
               </div>
             ))}

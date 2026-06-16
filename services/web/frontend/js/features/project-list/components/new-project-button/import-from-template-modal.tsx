@@ -25,10 +25,9 @@ type Template = {
 
 type ImportFromTemplateModalProps = {
   onHide: () => void
-  openProject: (projectId: string) => void
 }
 
-function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModalProps) {
+function ImportFromTemplateModal({ onHide }: ImportFromTemplateModalProps) {
   const { t } = useTranslation()
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,11 +50,8 @@ function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModa
     fetchTemplates()
   }, [])
 
-  const handleTemplateSelect = (templateId: string) => {
-    // Cette fonction sera appelée quand un template est sélectionné
-    // Elle devrait créer un nouveau projet basé sur le template
-    console.log('Template selected:', templateId)
-    // Ici on peut implémenter la logique pour créer le projet
+  const handleTemplateRemoved = (id: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== id))
   }
 
   return (
@@ -68,26 +64,26 @@ function ImportFromTemplateModal({ onHide, openProject }: ImportFromTemplateModa
       size="lg"
     >
       <OLModalHeader closeButton>
-        <OLModalTitle as="h3">{t('import_from_template')}</OLModalTitle>
+        <OLModalTitle as="h3">{'Import from template'}</OLModalTitle>
       </OLModalHeader>
-      
+
       <OLModalBody>
         {loading && <FullSizeLoadingSpinner />}
-        
+
         {error && (
           <div className="notification-list">
             <Notification type="error" content={error} />
           </div>
         )}
-        
+
         {!loading && !error && (
-          <TemplatesList 
+          <TemplatesList
             templates={templates}
-            onTemplateSelect={handleTemplateSelect}
+            onTemplateRemoved={handleTemplateRemoved}
           />
         )}
       </OLModalBody>
-      
+
       <OLModalFooter>
         <OLButton variant="secondary" onClick={onHide}>
           {t('cancel')}

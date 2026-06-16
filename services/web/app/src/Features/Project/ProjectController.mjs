@@ -323,9 +323,31 @@ const _ProjectController = {
     const projectName =
       req.body.projectName != null ? req.body.projectName.trim() : undefined
     const { template, templateId, token, tokenType } = req.body
+    const fromTemplate =
+      (template === 'example' || template === 'from_template') && templateId
+
+    if (fromTemplate) {
+      // Creating a project from a template duplicates an existing project by
+      // id. "General" templates can be used by anyone; "Personnel" templates
+      // can only be duplicated by their owner. This keeps a user from cloning
+      // an arbitrary (private) project they cannot access.
+      const templateProject = await ProjectGetter.promises.getProject(
+        templateId,
+        { isTemplate: 1, templateCategory: 1, owner_ref: 1 }
+      )
+      const isGeneralTemplate =
+        templateProject?.isTemplate &&
+        templateProject.templateCategory !== 'Personnel'
+      const isOwnTemplate =
+        templateProject?.isTemplate &&
+        templateProject.owner_ref?.toString() === userId.toString()
+      if (!isGeneralTemplate && !isOwnTemplate) {
+        return res.sendStatus(403)
+      }
+    }
 
     const project = await (
-      (template === 'example' && templateId)
+      fromTemplate
         ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
         : (template === 'example')
           ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
