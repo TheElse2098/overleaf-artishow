@@ -34,6 +34,7 @@ type GeneralTemplate = {
   id: string
   name: string
   description?: string
+  category?: string
 }
 
 function GeneralTemplatesSection() {
@@ -42,7 +43,8 @@ function GeneralTemplatesSection() {
   useEffect(() => {
     getJSON('/project/templates')
       .then((data: { templates: GeneralTemplate[] }) => {
-        setTemplates(data.templates ?? [])
+        // The sidebar lists only "General" templates (and is admin-only).
+        setTemplates((data.templates ?? []).filter(t => t.category === 'General'))
       })
       .catch(() => {})
   }, [])
