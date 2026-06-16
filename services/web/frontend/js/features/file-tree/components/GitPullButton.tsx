@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { postJSON, getJSON } from '../../../infrastructure/fetch-json'
+import { postJSON } from '../../../infrastructure/fetch-json'
 import MaterialIcon from '@/shared/components/material-icon'
 import { GitNotif, GitConfirm } from '../../editor-navigation-toolbar/components/GitFeedback'
 
@@ -11,178 +11,121 @@ type Props = {
 
 type Notif = { type: string; message: string }
 
-type GitInfo = {
-  remoteUrl?: string | null
-  branch?: string | null
-  linkedAt?: string | null
-} | null
+const CONFIRM_MSG =
+  'Le pull va intégrer les modifications du dépôt git distant. ' +
+  'Vos commits locaux seront conservés via un merge. ' +
+  'Les modifications non commitées seront sauvegardées (stash) et restaurées apres le pull.'
 
-// ── Sous-composant : formulaire d'initialisation ─────────────────────────────
-type InitFormProps = {
-  onConfirm: (params: { remoteUrl: string; branch: string; token: string; tokenType: string }) => void
+// Popup d'initialisation : case à cocher optionnelle pour lier un remote
+function GitInitPopup({
+  onConfirm,
+  onCancel,
+  isLoading,
+}: {
+  onConfirm: (remoteUrl: string | null) => void
   onCancel: () => void
-}
-
-function GitInitForm({ onConfirm, onCancel }: InitFormProps) {
+  isLoading: boolean
+}) {
+  const [wantsRemote, setWantsRemote] = useState(false)
   const [remoteUrl, setRemoteUrl] = useState('')
-  const [branch, setBranch] = useState('main')
-  const [token, setToken] = useState('')
-  const [tokenType, setTokenType] = useState('github')
 
   function handleSubmit() {
-    onConfirm({ remoteUrl: remoteUrl.trim(), branch: branch.trim() || 'main', token: token.trim(), tokenType })
+    const url = wantsRemote && remoteUrl.trim() ? remoteUrl.trim() : null
+    onConfirm(url)
   }
-
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '4px 6px',
-    fontSize: '12px',
-    border: '1px solid var(--border-primary, #ccc)',
-    borderRadius: '4px',
-    background: 'var(--bg-light-secondary, #fff)',
-    color: 'var(--content-primary, #000)',
-    boxSizing: 'border-box',
-  }
-  const labelStyle: React.CSSProperties = { fontSize: '11px', marginBottom: '2px', display: 'block', fontWeight: 600 }
-  const rowStyle: React.CSSProperties = { marginBottom: '8px' }
 
   return (
-    <div
-      style={{
-        background: 'var(--bg-light-primary, #fff)',
-        border: '1px solid var(--border-primary, #ccc)',
-        borderRadius: '6px',
-        padding: '12px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-      }}
-    >
-      <p style={{ margin: '0 0 10px', fontWeight: 700, fontSize: '13px' }}>
-        Initialiser le dépôt Git
-      </p>
-      <p style={{ margin: '0 0 10px', fontSize: '12px', color: 'var(--content-secondary, #555)' }}>
-        Ce projet n'est pas encore lié à un dépôt Git. Renseignez les informations ci-dessous pour l'initialiser.
-      </p>
+    <div style={{ background: 'var(--bg-dark-secondary, #2c2c2c)', border: '1px solid var(--border-primary, #444)', borderRadius: 6, padding: '12px 14px', color: 'var(--content-primary, #eee)', fontSize: 13 }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>Aucun dépôt git trouvé</div>
+      <div style={{ marginBottom: 10, lineHeight: 1.5, color: 'var(--content-secondary, #aaa)' }}>
+        Ce projet n'est pas encore lié à un dépôt git. Voulez-vous en initialiser un maintenant ?
+      </div>
 
-      <div style={rowStyle}>
-        <label style={labelStyle}>URL du dépôt distant (optionnel)</label>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: wantsRemote ? 8 : 0, cursor: 'pointer' }}>
         <input
-          style={inputStyle}
+          type="checkbox"
+          checked={wantsRemote}
+          onChange={e => setWantsRemote(e.target.checked)}
+        />
+        Lier un dépôt distant (remote)
+      </label>
+
+      {wantsRemote && (
+        <input
           type="text"
-          placeholder="https://github.com/... ou git@github.com:..."
+          placeholder="git@github.com:user/repo.git"
           value={remoteUrl}
           onChange={e => setRemoteUrl(e.target.value)}
+          style={{
+            width: '100%',
+            marginBottom: 10,
+            padding: '5px 8px',
+            borderRadius: 4,
+            border: '1px solid var(--border-primary, #555)',
+            background: 'var(--bg-dark-primary, #1e1e1e)',
+            color: 'var(--content-primary, #eee)',
+            fontSize: 12,
+            boxSizing: 'border-box',
+          }}
+          autoFocus
         />
-      </div>
-
-      <div style={rowStyle}>
-        <label style={labelStyle}>Branche</label>
-        <input
-          style={inputStyle}
-          type="text"
-          placeholder="main"
-          value={branch}
-          onChange={e => setBranch(e.target.value)}
-        />
-      </div>
-
-      {remoteUrl && (
-        <>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Type de token (HTTPS)</label>
-            <select
-              style={inputStyle}
-              value={tokenType}
-              onChange={e => setTokenType(e.target.value)}
-            >
-              <option value="github">GitHub (x-access-token)</option>
-              <option value="gitlab">GitLab (oauth2)</option>
-            </select>
-          </div>
-          <div style={rowStyle}>
-            <label style={labelStyle}>Token d'accès (optionnel — ignoré si SSH)</label>
-            <input
-              style={inputStyle}
-              type="password"
-              placeholder="ghp_... ou token GitLab"
-              value={token}
-              onChange={e => setToken(e.target.value)}
-            />
-          </div>
-        </>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '4px' }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
         <button
           className="btn btn-secondary btn-sm"
           onClick={onCancel}
-          style={{ fontSize: '12px' }}
+          disabled={isLoading}
         >
           Annuler
         </button>
         <button
           className="btn btn-primary btn-sm"
           onClick={handleSubmit}
-          style={{ fontSize: '12px' }}
+          disabled={isLoading || (wantsRemote && !remoteUrl.trim())}
         >
-          Initialiser
+          {isLoading ? 'Initialisation…' : 'Initialiser'}
         </button>
       </div>
     </div>
   )
 }
 
-// ── Composant principal ───────────────────────────────────────────────────────
-const PULL_CONFIRM_MSG =
-  'Le pull va intégrer les modifications du dépôt git distant. ' +
-  'Vos commits locaux seront conservés via un merge. ' +
-  'Les modifications non commitées seront sauvegardées (stash) et restaurées après le pull.'
-
-type Step =
-  | 'idle'
-  | 'checking'       // GET /git-info en cours
-  | 'confirm-pull'   // repo déjà lié → confirmer le pull
-  | 'init-form'      // repo non lié → afficher le formulaire d'init
-  | 'confirm-init'   // formulaire rempli → confirmer l'init
-  | 'loading'        // opération en cours
-
 export default function GitPullButton({ projectId, userId }: Props) {
-  const [step, setStep] = useState<Step>('idle')
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [showInit, setShowInit] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [notif, setNotif] = useState<Notif | null>(null)
   const [popupRect, setPopupRect] = useState<DOMRect | null>(null)
-  const [gitInfo, setGitInfo] = useState<GitInfo>(null)
-  const [initParams, setInitParams] = useState<{ remoteUrl: string; branch: string; token: string; tokenType: string } | null>(null)
   const buttonRef = useRef<HTMLDivElement>(null)
 
-  function captureRect() {
+  function openPopup() {
     if (buttonRef.current) {
       setPopupRect(buttonRef.current.getBoundingClientRect())
     }
   }
 
-  async function handleClick() {
-    captureRect()
+  function handleClick() {
+    openPopup()
     setNotif(null)
-    setStep('checking')
-
-    try {
-      const info: GitInfo = await getJSON(`/git-info?projectId=${projectId}`)
-      setGitInfo(info)
-      if (info?.linkedAt) {
-        setStep('confirm-pull')
-      } else {
-        setStep('init-form')
-      }
-    } catch {
-      setNotif({ type: 'error', message: 'Impossible de vérifier l\'état git du projet.' })
-      setStep('idle')
-    }
+    setShowInit(false)
+    setShowConfirm(true)
   }
 
-  async function handleConfirmPull() {
-    setStep('loading')
-    captureRect()
+  async function handleConfirm() {
+    setShowConfirm(false)
+    setIsLoading(true)
+    setNotif(null)
+    openPopup()
     try {
-      await postJSON('/git-pull', { body: { projectId, userId } })
+      const response = await postJSON('/git-pull', { body: { projectId, userId } }) as any
+
+      // Le backend signale qu'aucun repo git n'existe : on propose l'initialisation
+      if (response?.notInitialized) {
+        setShowInit(true)
+        return
+      }
+
       setNotif({ type: 'success', message: 'Pull effectué avec succès.' })
     } catch (err: any) {
       setNotif({
@@ -190,115 +133,68 @@ export default function GitPullButton({ projectId, userId }: Props) {
         message: err?.data?.errorReason || err?.message || 'Échec du pull.',
       })
     } finally {
-      setStep('idle')
+      setIsLoading(false)
     }
   }
 
-  function handleInitFormConfirm(params: { remoteUrl: string; branch: string; token: string; tokenType: string }) {
-    setInitParams(params)
-    captureRect()
-    setStep('confirm-init')
-  }
-
-  async function handleConfirmInit() {
-    if (!initParams) return
-    setStep('loading')
-    captureRect()
+  async function handleInit(remoteUrl: string | null) {
+    setIsLoading(true)
     try {
-      const result: any = await postJSON('/git-init', {
-        body: {
-          projectId,
-          userId,
-          remoteUrl: initParams.remoteUrl || null,
-          branch: initParams.branch || 'main',
-          token: initParams.token || null,
-          tokenType: initParams.tokenType || null,
-        },
-      })
-      const msg = result?.message || 'Dépôt git initialisé avec succès.'
-      setNotif({ type: 'success', message: msg })
+      const response = await postJSON('/git-init', {
+        body: { projectId, userId, remoteUrl },
+      }) as any
+      setShowInit(false)
+      setNotif({ type: 'success', message: response?.message ?? 'Dépôt initialisé avec succès.' })
     } catch (err: any) {
+      setShowInit(false)
       setNotif({
         type: 'error',
-        message: err?.data?.errorReason || err?.message || 'Échec de l\'initialisation git.',
+        message: err?.data?.errorReason || err?.message || "Échec de l'initialisation.",
       })
     } finally {
-      setStep('idle')
+      setIsLoading(false)
     }
   }
 
-  function handleCancel() {
-    setStep('idle')
-  }
-
-  const isLoading = step === 'loading' || step === 'checking'
-  const showPopup = step !== 'idle' && step !== 'checking' && step !== 'loading'
-
-  const popup =
-    showPopup && popupRect
-      ? createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              top: popupRect.bottom + 4,
-              left: popupRect.left,
-              zIndex: 9999,
-              width: '340px',
-            }}
-          >
-            {step === 'confirm-pull' && (
-              <GitConfirm
-                message="Confirmer le pull ?"
-                detail={PULL_CONFIRM_MSG}
-                confirmLabel="Pull"
-                isDanger={false}
-                onConfirm={handleConfirmPull}
-                onCancel={handleCancel}
-              />
-            )}
-            {step === 'init-form' && (
-              <GitInitForm onConfirm={handleInitFormConfirm} onCancel={handleCancel} />
-            )}
-            {step === 'confirm-init' && initParams && (
-              <GitConfirm
-                message="Confirmer l'initialisation ?"
-                detail={
-                  initParams.remoteUrl
-                    ? `Un repo git sera créé localement et lié au remote "${initParams.remoteUrl}" (branche : ${initParams.branch}).`
-                    : `Un repo git local sera créé pour ce projet (branche : ${initParams.branch}). Aucun remote ne sera configuré.`
-                }
-                confirmLabel="Initialiser"
-                isDanger={false}
-                onConfirm={handleConfirmInit}
-                onCancel={() => setStep('init-form')}
-              />
-            )}
-          </div>,
-          document.body
-        )
-      : null
-
-  const notifPortal =
-    notif && popupRect
-      ? createPortal(
-          <div
-            style={{
-              position: 'fixed',
-              top: popupRect.bottom + 4,
-              left: popupRect.left,
-              zIndex: 9999,
-              width: '340px',
-            }}
-          >
+  const popup = (showConfirm || showInit || notif) && popupRect
+    ? createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            top: popupRect.bottom + 4,
+            left: popupRect.left,
+            zIndex: 9999,
+            width: '320px',
+          }}
+        >
+          {showConfirm && (
+            <GitConfirm
+              message="Confirmer le pull ?"
+              detail={CONFIRM_MSG}
+              confirmLabel="Pull"
+              isDanger={false}
+              onConfirm={handleConfirm}
+              onCancel={() => setShowConfirm(false)}
+            />
+          )}
+          {showInit && (
+            <GitInitPopup
+              onConfirm={handleInit}
+              onCancel={() => setShowInit(false)}
+              isLoading={isLoading}
+            />
+          )}
+          {notif && (
             <GitNotif
               type={notif.type}
               message={notif.message}
               onDismiss={() => setNotif(null)}
             />
-          </div>,
-          document.body
-        )
-      : null
+          )}
+        </div>,
+        document.body
+      )
+    : null
 
   return (
     <div ref={buttonRef} style={{ display: 'inline-block' }}>
@@ -306,17 +202,12 @@ export default function GitPullButton({ projectId, userId }: Props) {
         className="btn"
         onClick={handleClick}
         disabled={isLoading}
-        title={gitInfo?.linkedAt ? 'Pull' : 'Git'}
+        title="Pull"
         style={{ opacity: isLoading ? 0.6 : 1, color: 'var(--file-tree-expand-button-color)' }}
       >
-        <MaterialIcon
-          type={isLoading ? 'sync' : gitInfo?.linkedAt ? 'repeat' : 'source_branch'}
-          fw
-          accessibilityLabel={gitInfo?.linkedAt ? 'pull' : 'git init'}
-        />
+        <MaterialIcon type="repeat" fw accessibilityLabel="pull" />
       </button>
       {popup}
-      {notifPortal}
     </div>
   )
 }
