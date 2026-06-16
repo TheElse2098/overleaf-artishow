@@ -38,12 +38,19 @@ function isSafeRelativePath(filePath) {
 // req.params.Project_id pour que les middlewares d'autorisation Overleaf
 // (ensureUserCanReadProject / ensureUserCanWriteProjectContent) puissent l'utiliser.
 function setProjectIdParam(req, res, next) {
-  const projectId = (req.body && req.body.projectId) || (req.query && req.query.projectId)
+  const fromBody = req.body && req.body.projectId
+  const fromQuery = req.query && req.query.projectId
+  if (fromBody && fromQuery && fromBody !== fromQuery) {
+    return res.status(400).json({ error: 'projectId ambigu.' })
+  }
+  const projectId = fromBody || fromQuery
   if (!isValidObjectId(projectId)) {
     return res.status(400).json({ error: 'projectId invalide.' })
   }
   req.params = req.params || {}
   req.params.Project_id = projectId
+  if (req.body) req.body.projectId = projectId
+  if (req.query) req.query.projectId = projectId
   next()
 }
 
