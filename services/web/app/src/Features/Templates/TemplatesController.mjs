@@ -6,7 +6,7 @@ import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
 import { Project } from '../../models/Project.mjs'
 import { User } from '../../models/User.mjs'
-const { ObjectId } = require('mongodb-legacy')
+import { ObjectId } from 'mongodb'
 
 const TemplatesController = {
   async getV1Template(req, res) {
