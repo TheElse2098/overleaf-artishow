@@ -8,7 +8,6 @@ import {
 } from '../app/src/infrastructure/mongodb.mjs'
 import ProjectEntityHandler from '../app/src/Features/Project/ProjectEntityHandler.mjs'
 import ProjectGetter from '../app/src/Features/Project/ProjectGetter.mjs'
-import Errors from '../app/src/Features/Errors/Errors.js'
 import HistoryManager from '../app/src/Features/History/HistoryManager.mjs'
 
 
@@ -46,7 +45,16 @@ const limit = pLimit(CONCURRENCY)
 
 let processed = 0
 let skipped = 0
-let errored = 0
+let loadErrored = 0
+let docErrored = 0
+let fileErrored = 0
+
+function describeError(err) {
+  const status = err.response?.status ?? err.statusCode
+  return [err.name, err.message, status && `status=${status}`]
+    .filter(Boolean)
+    .join(' ')
+}
 
 async function getUserStatsCollection() {
   return await getCollectionInternal('userStats')
@@ -75,18 +83,22 @@ async function aggregateProjectsByOwner() {
     .toArray()
 }
 
-async function countFilesSize(files, projectId) {
+async function countFilesSize(files, historyId) {
   if (!(files?.length > 0)) {
     return 0
   }
   let totalFileSize = 0
   for (const { file } of files) {
-    const { contentLength } =
-      await HistoryManager.promises.requestBlobWithProjectId(
-        projectId,
-        file.hash,
-        'HEAD'
-      )
+    if (!file.hash) {
+      continue
+    }
+    // Talk to history-v1 directly with the project's history id (one fewer Mongo
+    // read than requestBlobWithProjectId, which re-fetches the project).
+    const { contentLength } = await HistoryManager.promises.requestBlob(
+      historyId,
+      file.hash,
+      'HEAD'
+    )
     totalFileSize += contentLength
   }
   return totalFileSize
@@ -122,26 +134,59 @@ async function countDocsSizes(docs) {
   return totalDocSize
 }
 
-// docs + files size for a single project. Errors (missing project / blob) are
-// swallowed so one bad project never aborts the whole run.
+// docs + files size for a single project. Docs (Mongo) and files (history-v1)
+// are computed independently so a history failure never wipes out the doc size,
+// and each failure is logged with enough detail to diagnose (status, historyId).
 async function computeProjectSize(projectId) {
+  let project
   try {
-    const project = await ProjectGetter.promises.getProject(projectId)
-    if (!project) {
-      throw new Errors.NotFoundError('project not found')
-    }
-    const { files, docs } =
-      ProjectEntityHandler.getAllEntitiesFromProject(project)
-    const [fileSizeBytes, docSizeBytes] = await Promise.all([
-      countFilesSize(files, projectId),
-      countDocsSizes(docs),
-    ])
-    return { docSizeBytes, fileSizeBytes }
+    project = await ProjectGetter.promises.getProject(projectId)
   } catch (err) {
-    errored++
-    console.error('error sizing project', projectId.toString(), err.message)
+    loadErrored++
+    console.error('load failed', projectId.toString(), describeError(err))
     return { docSizeBytes: 0, fileSizeBytes: 0 }
   }
+  if (!project) {
+    loadErrored++
+    console.error('project not found', projectId.toString())
+    return { docSizeBytes: 0, fileSizeBytes: 0 }
+  }
+
+  const { files, docs } =
+    ProjectEntityHandler.getAllEntitiesFromProject(project)
+
+  let docSizeBytes = 0
+  try {
+    docSizeBytes = await countDocsSizes(docs)
+  } catch (err) {
+    docErrored++
+    console.error('docs sizing failed', projectId.toString(), describeError(err))
+  }
+
+  let fileSizeBytes = 0
+  const historyId = project.overleaf?.history?.id
+  if (files?.length > 0 && historyId == null) {
+    fileErrored++
+    console.error(
+      'no history id',
+      projectId.toString(),
+      `— skipping ${files.length} file(s)`
+    )
+  } else {
+    try {
+      fileSizeBytes = await countFilesSize(files, historyId)
+    } catch (err) {
+      fileErrored++
+      console.error(
+        'files sizing failed',
+        projectId.toString(),
+        `historyId=${historyId}`,
+        describeError(err)
+      )
+    }
+  }
+
+  return { docSizeBytes, fileSizeBytes }
 }
 
 async function computeUserStats(group) {
@@ -238,7 +283,8 @@ async function main() {
   }
 
   console.error(
-    `done: processed=${processed} skipped=${skipped} sizingErrors=${errored}`
+    `done: processed=${processed} skipped=${skipped} ` +
+      `loadErrors=${loadErrored} docErrors=${docErrored} fileErrors=${fileErrored}`
   )
 }
 
