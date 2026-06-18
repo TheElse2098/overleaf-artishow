@@ -20,6 +20,7 @@ type DataResponse = {
   limit: number
   sortBy: string
   sortDir: 'asc' | 'desc'
+  refreshing: boolean
 }
 
 const COLUMNS: { key: string; label: string }[] = [
@@ -33,6 +34,8 @@ const COLUMNS: { key: string; label: string }[] = [
 ]
 
 const LIMIT = 50
+const POLL_INTERVAL_MS = 4000
+const MAX_POLLS = 150 // ~10 min safety cap
 
 function formatBytes(n: number) {
   if (!n) {
@@ -55,9 +58,9 @@ export default function AdminUserStatsTable() {
   const [sortBy, setSortBy] = useState('totalSizeBytes')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [search, setSearch] = useState('')
-  const [refreshing, setRefreshing] = useState(false)
+  const [recomputing, setRecomputing] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (): Promise<DataResponse | null> => {
     setLoading(true)
     setError(null)
     try {
@@ -70,8 +73,10 @@ export default function AdminUserStatsTable() {
       })
       const res = await getJSON(`/admin/user-stats/data?${params.toString()}`)
       setData(res)
+      return res
     } catch {
       setError('Failed to load user statistics')
+      return null
     } finally {
       setLoading(false)
     }
@@ -80,6 +85,23 @@ export default function AdminUserStatsTable() {
   useEffect(() => {
     load()
   }, [load])
+
+  // While a recompute is running, poll and reload until the server reports it
+  // finished (refreshing=false), so the table shows fresh numbers on its own.
+  useEffect(() => {
+    if (!recomputing) {
+      return
+    }
+    let attempts = 0
+    const id = window.setInterval(async () => {
+      attempts++
+      const res = await load()
+      if (!res || !res.refreshing || attempts >= MAX_POLLS) {
+        setRecomputing(false)
+      }
+    }, POLL_INTERVAL_MS)
+    return () => window.clearInterval(id)
+  }, [recomputing, load])
 
   const onSort = (key: string) => {
     if (sortBy === key) {
@@ -92,13 +114,21 @@ export default function AdminUserStatsTable() {
   }
 
   const onRefresh = async () => {
-    setRefreshing(true)
+    if (recomputing) {
+      return
+    }
+    setRecomputing(true)
     try {
       await postJSON('/admin/user-stats/refresh')
     } catch {
-      // 409 (already running) or 429 (rate limited) — nothing actionable here.
-    } finally {
-      setRefreshing(false)
+      // 409 (already running) or 429 (rate limited): keep polling anyway, a job
+      // may well be in progress.
+    }
+    // Reload immediately; if the job already finished, stop, otherwise the
+    // polling effect takes over.
+    const res = await load()
+    if (res && !res.refreshing) {
+      setRecomputing(false)
     }
   }
 
@@ -113,9 +143,9 @@ export default function AdminUserStatsTable() {
           type="button"
           className="btn btn-primary"
           onClick={onRefresh}
-          disabled={refreshing}
+          disabled={recomputing}
         >
-          {refreshing ? 'Starting…' : 'Refresh now'}
+          {recomputing ? 'Recomputing…' : 'Refresh now'}
         </button>
       </div>
 
@@ -148,7 +178,7 @@ export default function AdminUserStatsTable() {
           </tr>
         </thead>
         <tbody>
-          {loading ? (
+          {loading && !data ? (
             <tr>
               <td colSpan={COLUMNS.length}>Loading…</td>
             </tr>
@@ -178,6 +208,7 @@ export default function AdminUserStatsTable() {
         <span className="text-muted small">
           {data ? `${data.total} users` : ''}
           {computedAt ? ` · last computed ${formatDate(computedAt)}` : ''}
+          {recomputing ? ' · recomputing…' : ''}
         </span>
         <div className="btn-group">
           <button

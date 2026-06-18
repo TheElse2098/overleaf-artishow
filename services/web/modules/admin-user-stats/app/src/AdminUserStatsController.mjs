@@ -89,6 +89,8 @@ async function getData(req, res) {
     limit,
     sortBy,
     sortDir: sortDir === 1 ? 'asc' : 'desc',
+    // Lets the client poll and reload once the background recompute is done.
+    refreshing: refreshRunning,
   })
 }
 
