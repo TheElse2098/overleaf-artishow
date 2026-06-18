@@ -11,6 +11,7 @@ import ProjectGetter from '../app/src/Features/Project/ProjectGetter.mjs'
 import Errors from '../app/src/Features/Errors/Errors.js'
 import HistoryManager from '../app/src/Features/History/HistoryManager.mjs'
 
+
 // Pre-computes the admin "User Statistics" snapshot into the `userStats`
 // collection (one document per user). The admin page reads ONLY this snapshot,
 // so the heavy work lives here and never in the request path.
