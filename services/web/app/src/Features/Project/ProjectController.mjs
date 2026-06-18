@@ -25,6 +25,7 @@ import AuthorizationManager from '../Authorization/AuthorizationManager.mjs'
 import InactiveProjectManager from '../InactiveData/InactiveProjectManager.mjs'
 import ProjectUpdateHandler from './ProjectUpdateHandler.mjs'
 import ProjectGetter from './ProjectGetter.mjs'
+import TemplatesPolicy from '../Templates/TemplatesPolicy.mjs'
 import PrivilegeLevels from '../Authorization/PrivilegeLevels.mjs'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import Sources from '../Authorization/Sources.mjs'
@@ -337,13 +338,7 @@ const _ProjectController = {
         templateId,
         { isTemplate: 1, templateCategory: 1, owner_ref: 1 }
       )
-      const isGeneralTemplate =
-        templateProject?.isTemplate &&
-        templateProject.templateCategory !== 'Personnel'
-      const isOwnTemplate =
-        templateProject?.isTemplate &&
-        templateProject.owner_ref?.toString() === userId.toString()
-      if (!isGeneralTemplate && !isOwnTemplate) {
+      if (!TemplatesPolicy.canUse(templateProject, userId)) {
         return res.sendStatus(403)
       }
     }

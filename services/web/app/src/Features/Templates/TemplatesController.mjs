@@ -1,6 +1,7 @@
 import path from 'node:path'
 import SessionManager from '../Authentication/SessionManager.mjs'
 import TemplatesManager from './TemplatesManager.mjs'
+import TemplatesPolicy from './TemplatesPolicy.mjs'
 import ProjectHelper from '../Project/ProjectHelper.mjs'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
@@ -42,26 +43,19 @@ const TemplatesController = {
     // "General" templates are visible to everyone; "Personnel" templates are
     // visible only to their owner. Trashed projects are excluded (permanently
     // deleted projects drop out of the collection automatically).
-    const projects = await Project.find(
-      {
-        isTemplate: true,
-        $and: [
-          { $or: [{ trashed: { $exists: false } }, { trashed: { $size: 0 } }] },
-          {
-            $or: [
-              { templateCategory: { $ne: 'Personnel' } },
-              { templateCategory: 'Personnel', owner_ref: userId },
-            ],
-          },
-        ],
-      },
-      { name: 1, templateDescription: 1, templateCategory: 1 }
-    ).lean()
+    const projects = await Project.find(TemplatesPolicy.visibleFilter(userId), {
+      name: 1,
+      templateDescription: 1,
+      templateCategory: 1,
+    }).lean()
     const templates = projects.map(p => ({
       id: p._id.toString(),
       name: p.name,
       description: p.templateDescription || '',
-      category: p.templateCategory === 'Personnel' ? 'Personnel' : 'General',
+      category:
+        p.templateCategory === TemplatesPolicy.GENERAL
+          ? TemplatesPolicy.GENERAL
+          : TemplatesPolicy.PERSONNEL,
     }))
     res.json({ templates })
   },
@@ -75,16 +69,12 @@ const TemplatesController = {
     const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
     const project = await Project.findOne(
       { _id: projectId },
-      { owner_ref: 1, templateCategory: 1 }
+      { owner_ref: 1, templateCategory: 1, isTemplate: 1 }
     ).lean()
     if (!project) {
       return res.sendStatus(403)
     }
-    const isOwner = project.owner_ref?.toString() === userId.toString()
-    const isGeneral = project.templateCategory === 'General'
-    // You can remove your own template; an admin can additionally remove any
-    // "General" (shared) template — but never someone else's Personnel one.
-    if (!isOwner && !(user?.isAdmin && isGeneral)) {
+    if (!TemplatesPolicy.canRemove(project, userId, user?.isAdmin)) {
       return res.sendStatus(403)
     }
     await Project.updateOne(
@@ -110,14 +100,15 @@ const TemplatesController = {
       { _id: projectId },
       { owner_ref: 1 }
     ).lean()
-    if (!project || project.owner_ref?.toString() !== userId.toString()) {
+    if (!TemplatesPolicy.canMark(project, userId)) {
       return res.sendStatus(403)
     }
 
     const wantsTemplate = Boolean(isTemplate)
-    // Only admins can publish a shared "General" template; anything else is a
-    // "Personnel" template, visible only to its owner.
-    const category = user?.isAdmin && isGeneral ? 'General' : 'Personnel'
+    const category = TemplatesPolicy.categoryForMarking({
+      isAdmin: user?.isAdmin,
+      isGeneral,
+    })
 
     await Project.updateOne(
       { _id: projectId },
