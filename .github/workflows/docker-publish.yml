@@ -83,8 +83,10 @@ jobs:
           docker images
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/_/g')
-      
+          # Must match server-ce/Makefile BRANCH_NAME_TAG_SAFE: only '/' -> '--',
+          # every other character (including '-' and '_') is preserved.
+          CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's#/#--#g')
+
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       
           echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"
