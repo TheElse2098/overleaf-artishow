@@ -20,3 +20,20 @@ export async function commit(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+export async function push(req,res) {
+  const { projectId, userId, gitInfo } = req.body
+
+  if (!projectId || !userId || !gitInfo) {
+    return res.status(400).json({ error: 'projectId, userId, gitInfo requis.' })
+  }
+
+  try {
+    await GitManager.push(projectId, userId, gitInfo)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git push failed')
+    res.status(500).json({ error: err.message })
+  }
+
+}

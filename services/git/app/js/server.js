@@ -13,10 +13,10 @@ export async function createServer() {
 
   app.get('/health_check', (req, res) => res.sendStatus(200))
   app.post('/commit', commit)      // routes git
-  app.post('/pull', pull)
+  // app.post('/pull', pull)
   app.post('/push', push)
-  app.post('/add', add)
-  app.post('/checkout', checkout)
+  //app.post('/add', add)
+  //app.post('/checkout', checkout)
 
   const server = http.createServer(app)
   return { app, server }
