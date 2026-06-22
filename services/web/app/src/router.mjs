@@ -372,6 +372,12 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthenticationController.requireLogin(),
     GitController.pull
   )
+  
+  webRouter.post(
+    '/git-init',
+    AuthenticationController.requireLogin(),
+    GitController.init
+  )
 
   webRouter.post(
     '/git-commit',
