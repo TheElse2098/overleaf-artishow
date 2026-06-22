@@ -206,4 +206,30 @@ export async function add(projectId, userId, filePath, deleted) {
   }
   await git.add(filePath)
 }
+
+export async function checkout(projectId, userId, ref, gitInfo) {
+  const git = getGitForProject(projectId, userId)
+  const repoPath = DATA_PATH + projectId + '-' + userId
+
+  // Récupérer les refs distantes (auth token ou clé SSH)
+  await withRemoteAuth(userId, gitInfo, remote => git.fetch(remote))
+
+  if (ref.startsWith('origin/')) {
+    // Cible = branche distante → checkout/crée la branche locale correspondante
+    const localBranch = ref.slice('origin/'.length)
+    const localBranches = await git.branchLocal()
+    if (localBranches.all.includes(localBranch)) {
+      await git.checkout(localBranch)
+    } else {
+      await git.checkout(['-b', localBranch, ref])
+    }
+  } else {
+    // Cible = commit (ou réf locale) → checkout direct ; pour un commit, HEAD détaché
+    await git.checkout([ref])
+  }
+
+  // Réappliquer les attributs binaires puis ré-extraire pour éviter la corruption des binaires
+  await disableBinaryConversion(repoPath)
+  await git.raw(['checkout', 'HEAD', '--', '.'])
+}
  

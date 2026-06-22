@@ -71,3 +71,23 @@ export async function add(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+// Valide une réf git (branche "origin/xxx" ou hash de commit) : pas de segment
+// commençant par "-" (anti-injection d'argument), pas de segment vide.
+function isSafeRef(name) {
+  if (typeof name !== 'string' || name.length === 0) return false
+  return !name.split('/').some(seg => seg.startsWith('-') || seg === '')
+}
+
+export async function checkout(req, res) {
+  const { projectId, userId, ref, gitInfo } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  if (!isSafeRef(ref)) return res.status(400).json({ error: 'ref invalide.' })
+  try {
+    await GitManager.checkout(projectId, userId, ref, gitInfo)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git checkout failed')
+    res.status(500).json({ error: err.message })
+  }
+}
