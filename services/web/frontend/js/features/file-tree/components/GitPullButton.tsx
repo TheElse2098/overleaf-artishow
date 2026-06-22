@@ -14,9 +14,8 @@ type Notif = { type: string; message: string }
 const CONFIRM_MSG =
   'Le pull va intégrer les modifications du dépôt git distant. ' +
   'Vos commits locaux seront conservés via un merge. ' +
-  'Les modifications non commitées seront sauvegardées (stash) et restaurées apres le pull.'
+  'Les modifications non commitées seront sauvegardées (stash) et restaurées après le pull.'
 
-// Popup d'initialisation : case à cocher optionnelle pour lier un remote
 function GitInitPopup({
   onConfirm,
   onCancel,
@@ -120,8 +119,8 @@ export default function GitPullButton({ projectId, userId }: Props) {
     try {
       const response = await postJSON('/git-pull', { body: { projectId, userId } }) as any
 
-      // Le backend signale qu'aucun repo git n'existe : on propose l'initialisation
       if (response?.notInitialized) {
+        setIsLoading(false)  // débloquer le bouton avant d'afficher le formulaire
         setShowInit(true)
         return
       }
@@ -147,9 +146,13 @@ export default function GitPullButton({ projectId, userId }: Props) {
       setNotif({ type: 'success', message: response?.message ?? 'Dépôt initialisé avec succès.' })
     } catch (err: any) {
       setShowInit(false)
+      const status = (err as any)?.response?.status
       setNotif({
         type: 'error',
-        message: err?.data?.errorReason || err?.message || "Échec de l'initialisation.",
+        message:
+          status === 404
+            ? "La route /git-init est introuvable sur le serveur. Vérifiez que la route est bien déclarée."
+            : err?.data?.errorReason || err?.message || "Échec de l'initialisation.",
       })
     } finally {
       setIsLoading(false)
