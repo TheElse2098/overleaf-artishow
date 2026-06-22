@@ -65,6 +65,8 @@ jobs:
             TAG="overleaf"
           elif [ "$BRANCH_NAME" = "admin-panel" ]; then
             TAG="admin"
+          elif [ "$BRANCH_NAME" = "ui-upgrade" ]; then
+            TAG="ui-upgrade"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
