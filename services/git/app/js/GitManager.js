@@ -16,3 +16,14 @@ export async function commit(projectId, userId, message) {
   await git.addConfig('user.email', 'overleaf@overleaf.com')
   await git.commit(message)
 }
+
+
+export async function push(projectId, userId, gitInfo) {
+    const git = getGitForProject(projectId, userId)
+    if (gitInfo?.token && gitInfo?.remoteUrl) {
+        const authUrl = buildAuthentificatedUrl(gitInfo.remoteUrl, gitInfo.token, gitInfo.tokenType)
+        await git.push(authUrl, gitInfo.branch || null)
+    } else {
+        await withSshKey(userId, () => git.push('origin', gitInfo?.branch || null))
+    }
+}
