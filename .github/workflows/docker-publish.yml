@@ -61,6 +61,8 @@ jobs:
             TAG="git-compilation"
           elif [ "$BRANCH_NAME" = "overleaf" ]; then
             TAG="overleaf"
+          elif [ "$BRANCH_NAME" = "git-as-service" ]; then
+            TAG="git-service"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
