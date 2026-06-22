@@ -654,10 +654,13 @@ async function getGitInfo(projectId) {
 // remoteUrl est optionnel : si fourni, le remote "origin" est configuré et un push initial est tenté.
 async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
   const repoPath = dataPath + projectId + "-" + ownerId
- 
+  console.log(`début de l'init, projet ${projectId}, URL visé : ${remoteUrl}`)
   await fs.ensureDir(repoPath)
  
   const alreadyRepo = await isGitRepo(projectId, ownerId)
+
+  console.log(`######### l'init, projet ${projectId}, URL visé : ${remoteUrl}, repo ${repoPath}, isrepo ${alreadyRepo}`)
+  
   if (alreadyRepo) {
     console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
     return { created: false, remoteLinked: false }
@@ -668,16 +671,21 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
     baseDir: repoPath,
     config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf']
   })
+
+  console.log(`######### lance init, projet ${projectId}, URL visé : ${remoteUrl}, repo ${repoPath}, isrepo ${alreadyRepo}`)
   await localGit.init()
   await localGit.addConfig('user.name', 'overleaf')
   await localGit.addConfig('user.email', 'overleaf@overleaf.com')
- 
+
+  console.log(`////////////// finit init, projet ${projectId}, URL visé : ${remoteUrl}, repo ${repoPath}, isrepo ${alreadyRepo}`)
   // Écrire les attributs binaires pour éviter toute conversion de fins de ligne
   await disableBinaryConversion(repoPath)
- 
+  
+  console.log(`######### lance commit initial, projet ${projectId}, URL visé : ${remoteUrl}, repo ${repoPath}, isrepo ${alreadyRepo}`)
   // Commit initial vide pour que la branche existe
   await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
- 
+
+  console.log(`######### finit commit inital, projet ${projectId}, URL visé : ${remoteUrl}, repo ${repoPath}, isrepo ${alreadyRepo}`)
   // Renommer la branche par défaut si besoin (git init crée "master" par défaut)
   try {
     await localGit.raw(['branch', '-M', defaultBranch])
@@ -690,6 +698,7 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
   // Lier le remote et pousser si une URL est fournie
   let remoteLinked = false
   if (remoteUrl) {
+    console.log(`debute le remote "origin" avec url ${repoPath} (branche: ${defaultBranch})`)
     await localGit.addRemote('origin', remoteUrl)
     console.log(`Remote "origin" configuré sur ${remoteUrl}`)
     try {
