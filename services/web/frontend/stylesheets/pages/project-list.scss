@@ -870,6 +870,16 @@ form.project-search {
   }
 }
 
+// Template bookmark button is hidden until the user hovers over the row.
+// :focus-within ensures keyboard navigation keeps it visible.
+.project-dash-table {
+  tbody tr:not(:hover):not(:focus-within) {
+    .template-action-btn-wrapper {
+      visibility: hidden;
+    }
+  }
+}
+
 // Dark "version" of the project-dashboard modals. Upstream deliberately forces
 // every modal to the light theme (see components/modal.scss: "Until we add a
 // dark modal version…"); this provides that dark version, but scoped to the
@@ -907,5 +917,35 @@ body[data-theme='default']:has(#project-list-root) {
     .btn-close {
       filter: invert(1) grayscale(1);
     }
+  }
+
+  // Uppy "Upload Zipped Project" dropzone — override Uppy's built-in light theme.
+  .uppy-Dashboard-inner {
+    background-color: var(--bg-dark-secondary);
+    border-color: var(--border-divider-dark);
+  }
+
+  .uppy-Dashboard-AddFiles {
+    background-color: var(--bg-dark-secondary);
+
+    .uppy-Dashboard-AddFiles-title {
+      color: var(--content-primary-dark);
+    }
+
+    .uppy-Dashboard-AddFiles-info {
+      color: var(--content-secondary-dark);
+    }
+
+    // Dashed drop-target border
+    .uppy-Dashboard-dropFilesHereHint {
+      color: var(--content-secondary-dark);
+      border-color: var(--border-divider-dark);
+    }
+  }
+
+  // Uppy note text ("or drag a .zip file")
+  .uppy-DashboardTab-name,
+  .uppy-Dashboard-note {
+    color: var(--content-secondary-dark);
   }
 }
