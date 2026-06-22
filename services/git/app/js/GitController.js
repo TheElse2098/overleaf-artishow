@@ -37,3 +37,15 @@ export async function push(req,res) {
   }
 
 }
+
+export async function pull(req, res) {
+  const { projectId, userId, gitInfo } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const result = await GitManager.pull(projectId, userId, gitInfo)
+    res.json(result)              // { status: 'ok' | 'conflict' | 'stash-conflict', conflicts? }
+  } catch (err) {
+    logger.error({ err, projectId }, 'git pull failed')
+    res.status(500).json({ error: err.message })
+  }
+}

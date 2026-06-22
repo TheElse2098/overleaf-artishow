@@ -2,9 +2,11 @@ import simpleGit from 'simple-git'
 import fs from 'fs-extra'
 import crypto from 'node:crypto'
 import sshpk from 'sshpk'
+import path from 'node:path'
 
 
 const DATA_PATH = '/var/lib/overleaf/data/git/'
+const BANNED_FILES = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stderr', 'output.synctex.gz', '.project-sync-state']
 
 function getGitForProject(projectId, userId) {
   const repoPath = DATA_PATH + projectId + '-' + userId  // middleware via le web 
@@ -101,12 +103,94 @@ async function getKey(userId, type) {
   return convertPemToOpenSSH(publicKeyPEM)
 }
 
+// Choisit le remote + les credentials selon gitInfo, puis exécute fn(remote)
+// - token dispo  → URL HTTPS authentifiée
+// - sinon        → clé SSH, remote = 'origin'
+async function withRemoteAuth(userId, gitInfo, fn) {
+  if (gitInfo?.token && gitInfo?.remoteUrl) {
+    const authUrl = buildAuthenticatedUrl(gitInfo.remoteUrl, gitInfo.token, gitInfo.tokenType)
+    return fn(authUrl)
+  }
+  return withSshKey(userId, () => fn('origin'))
+}
+
+// Empêche git de convertir les fins de ligne (corruption des fichiers binaires)
+async function disableBinaryConversion(repoPath) {
+  await fs.ensureDir(path.join(repoPath, '.git', 'info'))
+  await fs.writeFile(path.join(repoPath, '.git', 'info', 'attributes'), '* -text\n', 'utf8')
+}
+
+// Annule le merge en cours et retourne la liste des fichiers en conflit
+async function abortMergeAndGetConflicts(git, knownConflicts) {
+  let conflicted = [...knownConflicts]
+  if (conflicted.length === 0) {
+    try { conflicted = (await git.status()).conflicted } catch (_) {}
+  }
+  try { await git.merge(['--abort']) } catch (_) {}
+  return conflicted
+}
+
 export async function push(projectId, userId, gitInfo) {
     const git = getGitForProject(projectId, userId)
-    if (gitInfo?.token && gitInfo?.remoteUrl) {
-        const authUrl = buildAuthenticatedUrl(gitInfo.remoteUrl, gitInfo.token, gitInfo.tokenType)
-        await git.push(authUrl, gitInfo.branch || null)
-    } else {
-        await withSshKey(userId, () => git.push('origin', gitInfo?.branch || null))
+    await withRemoteAuth(userId, gitInfo, remote =>
+      git.push(remote, gitInfo?.branch || null)
+    )
+}
+
+
+export async function pull(projectId, userId, gitInfo) {
+    const git = getGitForProject(projectId, userId)
+    const repoPath = DATA_PATH + projectId + '-' + userId
+
+    //stash
+    let stashed = false
+    const status = await git.status()
+    if (status.files.length > 0) {
+        await git.stash(['push', '-u', '-m', 'overleaf-auto-stash-before-pull'])
+        stashed = true
     }
+
+    await disableBinaryConversion(repoPath)
+
+    //pull
+
+    const result = await withRemoteAuth(userId, gitInfo, remote =>
+    git.pull(remote, gitInfo?.branch || null, { '--no-rebase': null })
+    )
+
+    //conflicts
+
+    if (result.conflicts && result.conflicts.length > 0) {
+        if (stashed) {
+            try { await git.raw(['reset', '--hard', 'HEAD']); await git.stash(['pop']) } catch (_) {}
+        }
+        const conflicted = await abortMergeAndGetConflicts(git, result.conflicts)
+        return { status: 'conflict', conflicts: conflicted }
+    }
+
+    //checkout HEAD
+    
+    await git.raw(['checkout', 'HEAD', '--', '.'])
+
+    //pop stash
+
+    let stashConflict = false
+    if (stashed) {
+        try {
+            await git.stash(['pop'])
+        } catch {
+            stashConflict = true
+            try { await git.raw(['reset', '--hard', 'HEAD']); await git.stash(['drop']) } catch (_) {}
+        }
+    }
+    
+    //del fichiers en rab
+    for (const banned of BANNED_FILES) {
+        const p = path.join(repoPath, banned)
+        if (await fs.pathExists(p)) await fs.remove(p)
+    }
+    
+    return { status: stashConflict ? 'stash-conflict' : 'ok' }
+
+
 }
