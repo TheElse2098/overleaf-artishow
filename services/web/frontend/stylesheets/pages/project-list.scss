@@ -869,3 +869,43 @@ form.project-search {
     }
   }
 }
+
+// Dark "version" of the project-dashboard modals. Upstream deliberately forces
+// every modal to the light theme (see components/modal.scss: "Until we add a
+// dark modal version…"); this provides that dark version, but scoped to the
+// dashboard via :has(#project-list-root) so editor/other modals are untouched.
+body[data-theme='default']:has(#project-list-root) {
+  .modal {
+    @include dark-dropdown-menu;
+    @include form-check-dark;
+    @include dark-notification;
+    @include dark-input;
+    @include dark-buttons;
+
+    // Inputs one shade lighter than the modal base so they read as surfaces.
+    --input-field-bg: var(--bg-dark-secondary);
+  }
+
+  .modal-content {
+    background-color: var(--bg-dark-primary);
+    color: var(--content-primary-dark);
+    border: 1px solid var(--border-divider-dark);
+
+    .modal-header {
+      border-bottom-color: var(--border-divider-dark);
+    }
+
+    .modal-title {
+      color: var(--content-primary-dark);
+    }
+
+    .modal-footer {
+      border-top-color: var(--border-divider-dark);
+    }
+
+    // The close (×) glyph is a dark SVG by default — invert it to stay visible.
+    .btn-close {
+      filter: invert(1) grayscale(1);
+    }
+  }
+}
