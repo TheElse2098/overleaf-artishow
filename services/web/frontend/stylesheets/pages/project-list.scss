@@ -779,3 +779,93 @@ form.project-search {
     inset: 0;
   }
 }
+
+// "Import from template" modal — higher-contrast, theme-aware cards.
+// The default Bootstrap-4 badge/`text-muted` classes were broken in BS5 and
+// did not adapt to dark mode; these styles use the design-system tokens so the
+// modal looks right in both light and dark themes.
+#import-from-template-modal {
+  .templates-list .text-muted {
+    color: var(--content-secondary);
+  }
+
+  .template-card {
+    background-color: var(--white);
+    border: 1px solid var(--border-divider);
+    border-radius: var(--border-radius-base);
+    transition:
+      border-color 0.15s ease-in-out,
+      box-shadow 0.15s ease-in-out;
+
+    &:hover {
+      border-color: var(--border-active);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+    }
+
+    .card-title {
+      color: var(--content-primary);
+      font-weight: 600;
+    }
+
+    .template-card-description {
+      color: var(--content-secondary);
+    }
+
+    .template-card-category,
+    .template-card-tag {
+      display: inline-block;
+      padding: var(--spacing-01) var(--spacing-03);
+      border-radius: 50rem;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .template-card-category {
+      font-weight: 600;
+      background-color: var(--neutral-20);
+      color: var(--content-primary);
+    }
+
+    .template-card-tag {
+      margin-right: var(--spacing-02);
+      background-color: var(--neutral-10);
+      color: var(--content-secondary);
+    }
+  }
+}
+
+@include theme('default') {
+  #import-from-template-modal {
+    .templates-list .text-muted {
+      color: var(--content-secondary-dark);
+    }
+
+    .template-card {
+      background-color: var(--bg-dark-secondary);
+      border-color: var(--border-divider-dark);
+
+      &:hover {
+        border-color: var(--border-active-dark);
+        box-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+      }
+
+      .card-title {
+        color: var(--content-primary-dark);
+      }
+
+      .template-card-description {
+        color: var(--content-secondary-dark);
+      }
+
+      .template-card-category {
+        background-color: var(--neutral-70);
+        color: var(--content-primary-dark);
+      }
+
+      .template-card-tag {
+        background-color: var(--neutral-80);
+        color: var(--content-secondary-dark);
+      }
+    }
+  }
+}

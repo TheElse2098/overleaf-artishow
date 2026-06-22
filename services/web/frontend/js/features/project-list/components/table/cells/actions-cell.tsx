@@ -17,6 +17,7 @@ type ActionsCellProps = {
 export default function ActionsCell({ project }: ActionsCellProps) {
   return (
     <>
+      <TemplateProjectButtonTooltip project={project} />
       <CopyProjectButtonTooltip project={project} />
       <DownloadProjectButtonTooltip project={project} />
       <CompileAndDownloadProjectPDFButtonTooltip project={project} />
@@ -25,7 +26,6 @@ export default function ActionsCell({ project }: ActionsCellProps) {
       <UnarchiveProjectButtonTooltip project={project} />
       <UntrashProjectButtonTooltip project={project} />
       <LeaveProjectButtonTooltip project={project} />
-      <TemplateProjectButtonTooltip project={project} />
       <DeleteProjectButtonTooltip project={project} />
     </>
   )
