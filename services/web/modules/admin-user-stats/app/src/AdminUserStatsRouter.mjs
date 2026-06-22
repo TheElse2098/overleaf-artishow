@@ -12,12 +12,6 @@ const refreshRateLimiter = new RateLimiter('admin-user-stats-refresh', {
 export default {
   apply(webRouter) {
     webRouter.get(
-      '/admin/user-stats',
-      AuthorizationMiddleware.ensureUserIsSiteAdmin,
-      AdminUserStatsController.renderPage
-    )
-
-    webRouter.get(
       '/admin/user-stats/data',
       AuthorizationMiddleware.ensureUserIsSiteAdmin,
       AdminUserStatsController.getData

@@ -37,12 +37,6 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function renderPage(req, res) {
-  res.render(Path.resolve(__dirname, '../views/admin-user-stats'), {
-    title: 'User Statistics',
-  })
-}
-
 async function getData(req, res) {
   const userStats = await getUserStatsCollection()
 
@@ -123,7 +117,6 @@ function refresh(req, res) {
 }
 
 export default {
-  renderPage,
   getData: expressify(getData),
   refresh,
 }
