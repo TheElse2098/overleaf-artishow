@@ -91,3 +91,16 @@ export async function checkout(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+export async function rollback(req, res) {
+  const { projectId, userId, commitHash } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  if (!commitHash || !commitHash.trim()) return res.status(400).json({ error: 'commitHash requis.' })
+  try {
+    await GitManager.rollback(projectId, userId, commitHash)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git rollback failed')
+    res.status(500).json({ error: err.message })
+  }
+}

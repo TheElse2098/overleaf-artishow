@@ -232,4 +232,26 @@ export async function checkout(projectId, userId, ref, gitInfo) {
   await disableBinaryConversion(repoPath)
   await git.raw(['checkout', 'HEAD', '--', '.'])
 }
+
+// Rollback DESTRUCTIF : déplace la branche courante sur un commit (reset --hard)
+// et nettoie le working tree. Les commits postérieurs sont abandonnés.
+export async function rollback(projectId, userId, commitHash) {
+  const git = getGitForProject(projectId, userId)
+
+  // Nettoyer le hash (tolère les anciens formats "hash|message" ou "hash date auteur")
+  let cleanHash = commitHash.trim()
+  if (cleanHash.includes('|')) cleanHash = cleanHash.split('|')[0]
+  cleanHash = cleanHash.split(/\s+/)[0]
+
+  if (!/^[a-f0-9]{4,40}$/i.test(cleanHash)) {
+    throw new Error(`Commit hash invalide : ${commitHash}`)
+  }
+
+  // Vérifier que le commit existe (lève une erreur sinon)
+  await git.show([cleanHash, '--format=format:', '--name-only'])
+
+  // Revenir à ce commit et nettoyer les fichiers non suivis
+  await git.reset(['--hard', cleanHash])
+  await git.clean('f')
+}
  
