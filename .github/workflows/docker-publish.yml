@@ -8,6 +8,7 @@ on:
       - template_integration
       - git_compilation
       - overleaf
+      - git-as-service
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
