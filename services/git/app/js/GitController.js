@@ -1,4 +1,5 @@
 import logger from '@overleaf/logger'
+import path from 'node:path'
 import * as GitManager from './GitManager.js'
 
 export async function commit(req, res) {
