@@ -194,3 +194,16 @@ export async function pull(projectId, userId, gitInfo) {
 
 
 }
+
+
+export async function add(projectId, userId, filePath, deleted) {
+  const git = getGitForProject(projectId, userId)
+  const repoPath = DATA_PATH + projectId + '-' + userId
+
+  if (deleted) {
+    const fullPath = path.join(repoPath, filePath)
+    if (await fs.pathExists(fullPath)) await fs.remove(fullPath)
+  }
+  await git.add(filePath)
+}
+ 

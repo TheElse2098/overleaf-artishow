@@ -15,7 +15,7 @@ export async function createServer() {
   app.post('/commit', commit)      // routes git
   app.post('/pull', pull)
   app.post('/push', push)
-  //app.post('/add', add)
+  app.post('/add', add)
   //app.post('/checkout', checkout)
 
   const server = http.createServer(app)

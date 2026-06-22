@@ -49,3 +49,24 @@ export async function pull(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+
+function isSafeRelativePath(filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return false
+  if (path.isAbsolute(filePath)) return false
+  return !filePath.split(/[/\\]+/).some(segment => segment === '..')
+}
+
+
+export async function add(req, res) {
+  const { projectId, userId, filePath, deleted } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  if (!isSafeRelativePath(filePath)) return res.status(400).json({ error: 'filePath invalide.' })
+  try {
+    await GitManager.add(projectId, userId, filePath, deleted === true)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git add failed')
+    res.status(500).json({ error: err.message })
+  }
+}
