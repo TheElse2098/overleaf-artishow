@@ -9,6 +9,7 @@ on:
       - git_compilation
       - overleaf
       - admin-panel
+      - ui-upgrade
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
