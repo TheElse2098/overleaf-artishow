@@ -83,7 +83,7 @@ jobs:
           docker images
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/_/g')
+          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
       
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       
