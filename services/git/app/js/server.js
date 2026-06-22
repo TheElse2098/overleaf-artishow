@@ -2,7 +2,7 @@ import http from 'node:http'
 import express from 'express'
 import logger from '@overleaf/logger'
 import metrics from '@overleaf/metrics'
-import { commit, pull, push } from './Features/Git/GitController.js'
+import { commit, pull, push } from './GitController.js'
 
 logger.initialize('git')           // nomme le service dans les logs
 
