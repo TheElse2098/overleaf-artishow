@@ -1414,25 +1414,17 @@ GitController = {
     console.log("switch branch to:", branchName)
 
     try {
-      move(projectId, userId)
-      await withRemoteAuth(projectId, userId, (remote) => git.fetch(remote))
-
-      // branchName est au format "origin/ma-branche", on extrait la partie locale
-      const [, localBranch] = branchName.split('/')
-      const localBranches = await git.branchLocal()
-
-      if (localBranches.all.includes(localBranch)) {
-        await git.checkout(localBranch)
-      } else {
-        await git.checkout(['-b', localBranch, branchName])
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, ref: branchName, gitInfo }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-      console.log("Switched to branch:", localBranch)
-
-      // Appliquer les attributs binaires et ré-extraire pour éviter la corruption des fichiers binaires
-      await disableBinaryConversion(projectPath)
-      const localGit = getGitForProject(projectId, userId)
-      await localGit.raw(['checkout', 'HEAD', '--', '.'])
-
+      // Le working tree a changé de branche → reconstruire l'éditeur Overleaf
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
       res.sendStatus(200)
