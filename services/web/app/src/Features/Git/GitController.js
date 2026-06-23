@@ -302,36 +302,6 @@ async function resyncHistory(projectId) {
   }
 }
 
-// Détecte si une erreur git est due à un conflit de merge
-function isConflictError(error) {
-  const msg = (error.git?.message || error.message || '').toLowerCase()
-  return (
-    msg.includes('conflict') ||
-    msg.includes('automatic merge failed') ||
-    msg.includes('unresolved conflict') ||
-    msg.includes('unfinished merge')
-  )
-}
-
-// Annule le merge en cours et retourne la liste des fichiers en conflit
-async function abortMergeAndGetConflicts(projectId, userId, knownConflicts) {
-  const localGit = getGitForProject(projectId, userId)
-  let conflictedFiles = [...knownConflicts]
-  if (conflictedFiles.length === 0) {
-    try {
-      const status = await localGit.status()
-      conflictedFiles = status.conflicted
-    } catch (_) {}
-  }
-  try {
-    await localGit.merge(['--abort'])
-    console.log(`Merge annulé pour le projet ${projectId}`)
-  } catch (abortErr) {
-    console.error("Impossible d'annuler le merge:", abortErr.message)
-  }
-  return conflictedFiles
-}
-
 // Formate le message d'erreur retourné à l'utilisateur en cas de conflit
 function formatConflictMessage(conflictedFiles) {
   if (conflictedFiles.length === 0) {
@@ -389,47 +359,6 @@ function move(projectId, userId) {
   git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
   git.addConfig('user.name', 'overleaf')
   git.addConfig('user.email', 'overleaf@overleaf.com')
-}
-
-function getStatus(){
-  return new Promise((resolve, reject) => {
-      git.status((err, statusSummary) => {
-          if (err) {
-              reject(err);
-              return;
-          }
-          else{
-              resolve(statusSummary);
-          }
-        });
-      });
-}
-async function safeGitCheckout(branchName) {
-  try {
-    if (fs.existsSync(lockFile)) {
-      console.warn('Lock file exists. Attempting to remove it...');
-      fs.unlinkSync(lockFile);
-      console.log('Lock file removed.');
-    }
-
-    await git.checkout(branchName);
-    console.log(`Checked out branch: ${branchName}`);
-  } catch (err) {
-    console.error('Git operation failed:', err.message);
-  }
-}
-
-async function getStaged(projectId, userId) {
-  const git = await getGitForProject(projectId, userId);
-    try {
-        const status = await git.status()
-        const stagedFiles = status.staged
-
-        return stagedFiles
-    } catch (error) {
-        console.error("Error fetching staged files:", error);
-        return []
-    }
 }
 
 async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet) {
@@ -544,115 +473,6 @@ function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
   }
 }
 
-// Exécute fn(remote, info) avec l'authentification :
-// - token disponible → URL HTTPS authentifiée (jamais loggée)
-// - pas de token     → clé SSH, remote = 'origin'
-async function withRemoteAuth(projectId, userId, fn) {
-  const info = await getGitInfo(projectId)
-  if (info?.token && info?.remoteUrl) {
-    const authUrl = buildAuthenticatedUrl(info.remoteUrl, info.token, info.tokenType)
-    return fn(authUrl, info)
-  }
-  return withSshKey(userId, () => fn('origin', info))
-}
-
-async function getBranches(projectId, userId) {
-  try {
-    move(projectId, userId)
-    return await withRemoteAuth(projectId, userId, async (remote) => {
-      await git.fetch(remote)
-      console.log("fetched")
-      const branches = await git.branch(['-r'])
-      console.log('Remote branches:', branches.all)
-      return branches.all
-    })
-  } catch (err) {
-    console.error("Error fetching branches:", err)
-    return []
-  }
-}
-
-async function getCurrentBranch(projectId, userId) {
-  try {
-    move(projectId, userId)
-    return await withRemoteAuth(projectId, userId, async (remote) => {
-      await git.fetch(remote)
-      const stat = await git.status()
-      console.log("Current Branch (status):", stat.current)
-      return `origin/${stat.current}`
-    })
-  } catch (err) {
-    console.error("Error fetching current branches:", err)
-    return ""
-  }
-}
-
-async function getModified() {
-
-    try {
-        const status = await git.status()
-        const modifiedFiles = status.modified
-
-        return modifiedFiles
-    } catch (error) {
-        console.error("Error fetching modified files:", error);
-        return []
-    }
-}
-
-// historique des commits
-async function getCommitHistory(limit = 10) {
-    try {
-        // Utilisation du format standard de simple-git
-        const log = await git.log([`-${limit}`])
-        return log.all.map(commit => ({
-            hash: commit.hash,
-            message: commit.message,
-            date: commit.date,
-            author: commit.author_name || 'Unknown'
-        }))
-    } catch (error) {
-        console.error("Error fetching commit history:", error);
-        return []
-    }
-}
-
-// effectuer un reset hard vers un commit spécifique
-async function resetToCommit(commitHash, projectId, ownerId) {
-    try {
-        // Extraire seulement le hash si c'est au format personnalisé
-        let cleanHash = commitHash.trim()
-        
-        // Si le hash contient des pipes (ancien format), extraire seulement le hash
-        if (cleanHash.includes('|')) {
-            cleanHash = cleanHash.split('|')[0]
-        }
-        
-        // Prendre seulement les premiers caractères si c'est un hash tronqué
-        cleanHash = cleanHash.split(/\s+/)[0]
-        
-        console.log(`Resetting to commit: ${cleanHash}`)
-        
-        // Vérifier que le commit existe
-        try {
-            await git.show([cleanHash, '--format=format:', '--name-only'])
-        } catch (error) {
-            throw new Error(`Commit ${cleanHash} not found in repository`)
-        }
-        
-        // Reset hard vers le commit
-        await git.reset(['--hard', cleanHash])
-        
-        // Nettoyage du workspace
-        await git.clean('f')
-        
-        console.log(`Reset to commit ${cleanHash} successful`)
-        return true
-    } catch (error) {
-        console.error("Error resetting to commit:", error);
-        throw error
-    }
-}
 async function rebuildProjectAfterRollback(projectPath, projectId, ownerId) {
     try {
         console.log("Starting project rebuild after rollback...")
