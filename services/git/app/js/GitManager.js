@@ -45,18 +45,19 @@ function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
 }
 
 
-// Exécute fn() avec GIT_SSH_COMMAND défini dans process.env
-// Contourne les validations simple-git sur GIT_SSH_COMMAND et core.sshCommand
-async function withSshKey(userId, fn) {
-  const key = await getKey(userId, 'private')
-  const prev = process.env.GIT_SSH_COMMAND
-  process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-  try {
-    return await fn()
-  } finally {
-    if (prev !== undefined) process.env.GIT_SSH_COMMAND = prev
-    else delete process.env.GIT_SSH_COMMAND
-  }
+// Masque les credentials (//user:pass@) dans un message d'erreur git
+function sanitizeGitError(err) {
+  const msg = err?.message || String(err)
+  return msg.replace(/\/\/[^@/\s]+:[^@/\s]+@/g, '//***:***@')
+}
+
+// Valide le schéma d'une URL git (anti transport ext::/file:// → exécution de commande)
+function isSafeGitUrl(url) {
+  if (typeof url !== 'string') return false
+  return /^git@[^:\s]+:.+$/.test(url) ||
+    /^https:\/\/\S+$/.test(url) ||
+    /^git:\/\/\S+$/.test(url) ||
+    /^ssh:\/\/\S+$/.test(url)
 }
 
 
@@ -104,15 +105,22 @@ async function getKey(userId, type) {
   return convertPemToOpenSSH(publicKeyPEM)
 }
 
-// Choisit le remote + les credentials selon gitInfo, puis exécute fn(remote)
-// - token dispo  → URL HTTPS authentifiée
-// - sinon        → clé SSH, remote = 'origin'
-async function withRemoteAuth(userId, gitInfo, fn) {
-  if (gitInfo?.token && gitInfo?.remoteUrl) {
-    const authUrl = buildAuthenticatedUrl(gitInfo.remoteUrl, gitInfo.token, gitInfo.tokenType)
-    return fn(authUrl)
+// Configure l'instance git fournie pour l'authentification distante, puis exécute fn(remote).
+// - token  → URL HTTPS authentifiée
+// - sinon  → clé SSH passée via l'env DE L'INSTANCE (pas process.env global → pas de race)
+// Les erreurs sont assainies pour ne jamais laisser fuiter le token.
+async function withRemoteAuth(git, userId, gitInfo, fn) {
+  try {
+    if (gitInfo?.token && gitInfo?.remoteUrl) {
+      const authUrl = buildAuthenticatedUrl(gitInfo.remoteUrl, gitInfo.token, gitInfo.tokenType)
+      return await fn(authUrl)
+    }
+    const key = await getKey(userId, 'private')
+    git.env({ ...process.env, GIT_SSH_COMMAND: `ssh -o StrictHostKeyChecking=no -i ${key}` })
+    return await fn('origin')
+  } catch (e) {
+    throw new Error(sanitizeGitError(e))
   }
-  return withSshKey(userId, () => fn('origin'))
 }
 
 // Empêche git de convertir les fins de ligne (corruption des fichiers binaires)
@@ -143,7 +151,7 @@ async function abortMergeAndGetConflicts(git, knownConflicts) {
 
 export async function push(projectId, userId, gitInfo) {
     const git = getGitForProject(projectId, userId)
-    await withRemoteAuth(userId, gitInfo, remote =>
+    await withRemoteAuth(git, userId, gitInfo, remote =>
       git.push(remote, gitInfo?.branch || null)
     )
 }
@@ -165,7 +173,7 @@ export async function pull(projectId, userId, gitInfo) {
 
     //pull
 
-    const result = await withRemoteAuth(userId, gitInfo, remote =>
+    const result = await withRemoteAuth(git, userId, gitInfo, remote =>
     git.pull(remote, gitInfo?.branch || null, { '--no-rebase': null })
     )
 
@@ -237,7 +245,7 @@ export async function checkout(projectId, userId, ref, gitInfo) {
   const repoPath = DATA_PATH + projectId + '-' + userId
 
   // Récupérer les refs distantes (auth token ou clé SSH)
-  await withRemoteAuth(userId, gitInfo, remote => git.fetch(remote))
+  await withRemoteAuth(git, userId, gitInfo, remote => git.fetch(remote))
 
   // Le working tree contient des modifications non commitées synchronisées depuis
   // l'éditeur (via gitUpdate) qui bloqueraient le changement de branche. On les écarte :
@@ -292,7 +300,7 @@ export async function rollback(projectId, userId, commitHash) {
 export async function createBranch(projectId, userId, newBranchName, gitInfo) {
   const git = getGitForProject(projectId, userId)
   await git.checkoutLocalBranch(newBranchName)
-  await withRemoteAuth(userId, gitInfo, remote =>
+  await withRemoteAuth(git, userId, gitInfo, remote =>
     git.push(remote, newBranchName, ['--set-upstream'])
   )
 }
@@ -316,7 +324,7 @@ export async function getCommitHistory(projectId, userId, limit = 10) {
 
 export async function getBranches(projectId, userId, gitInfo) {
   const git = getGitForProject(projectId, userId)
-  return withRemoteAuth(userId, gitInfo, async remote => {
+  return withRemoteAuth(git, userId, gitInfo, async remote => {
     await git.fetch(remote)
     const branches = await git.branch(['-r'])
     return branches.all
@@ -325,7 +333,7 @@ export async function getBranches(projectId, userId, gitInfo) {
 
 export async function getCurrentBranch(projectId, userId, gitInfo) {
   const git = getGitForProject(projectId, userId)
-  return withRemoteAuth(userId, gitInfo, async remote => {
+  return withRemoteAuth(git, userId, gitInfo, async remote => {
     await git.fetch(remote)
     const stat = await git.status()
     return `origin/${stat.current}`
@@ -386,6 +394,11 @@ export async function notStaged(projectId, userId) {
 }
 
 export async function gitClone(projectId, ownerId, link, branch, token, tokenType) {
+  // Refuser tout transport non standard (ext::, file://…) → anti exécution de commande
+  if (!isSafeGitUrl(link)) {
+    throw new Error('URL de dépôt non autorisée.')
+  }
+
   const repoPath = DATA_PATH + projectId + '-' + ownerId
   await fs.ensureDir(repoPath)
 
@@ -395,13 +408,21 @@ export async function gitClone(projectId, ownerId, link, branch, token, tokenTyp
 
   const newGit = () => simpleGit({ baseDir: DATA_PATH, config: ['core.autocrlf=false', 'core.eol=lf'] })
 
-  if (token) {
-    const authUrl = buildAuthenticatedUrl(link, token, tokenType)
-    await newGit().clone(authUrl, repoPath, cloneOptions)
-    console.log("Repository cloned via HTTPS token (no checkout)")
-  } else {
-    await withSshKey(ownerId, () => newGit().clone(link, repoPath, cloneOptions))
-    console.log("Repository cloned via SSH (no checkout)")
+  try {
+    if (token) {
+      const authUrl = buildAuthenticatedUrl(link, token, tokenType)
+      await newGit().clone(authUrl, repoPath, cloneOptions)
+      console.log("Repository cloned via HTTPS token (no checkout)")
+    } else {
+      // Clé SSH via l'env de l'instance (pas process.env global → pas de race)
+      const key = await getKey(ownerId, 'private')
+      await newGit()
+        .env({ ...process.env, GIT_SSH_COMMAND: `ssh -o StrictHostKeyChecking=no -i ${key}` })
+        .clone(link, repoPath, cloneOptions)
+      console.log("Repository cloned via SSH (no checkout)")
+    }
+  } catch (e) {
+    throw new Error(sanitizeGitError(e))
   }
 
   // Écrire les attributs binaires AVANT le checkout pour éviter la corruption des binaires
