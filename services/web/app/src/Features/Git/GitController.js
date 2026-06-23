@@ -1270,6 +1270,9 @@ GitController = {
         const text = await response.text().catch(() => '')
         return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
+      // Mémoriser la branche courante en base pour que push/pull ciblent la bonne branche
+      const localBranch = branchName.startsWith('origin/') ? branchName.slice('origin/'.length) : branchName
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': localBranch } }).exec()
       // Le working tree a changé de branche → reconstruire l'éditeur Overleaf
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
@@ -1293,6 +1296,8 @@ GitController = {
         const text = await response.text().catch(() => '')
         return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
+      // checkoutLocalBranch bascule sur la nouvelle branche → la mémoriser en base
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': newBranchName } }).exec()
       // Créer une branche ne change pas le contenu du working tree → pas de rebuild
       res.sendStatus(200)
     } catch (error) {

@@ -215,12 +215,20 @@ export async function checkout(projectId, userId, ref, gitInfo) {
   // Récupérer les refs distantes (auth token ou clé SSH)
   await withRemoteAuth(userId, gitInfo, remote => git.fetch(remote))
 
+  // Le working tree contient des modifications non commitées synchronisées depuis
+  // l'éditeur (via gitUpdate) qui bloqueraient le changement de branche. On les écarte :
+  // le contenu de l'éditeur reste dans Mongo, le working tree sera reconstruit ensuite.
+  await git.raw(['reset', '--hard', 'HEAD'])
+  await git.raw(['clean', '-fd'])
+
   if (ref.startsWith('origin/')) {
     // Cible = branche distante → checkout/crée la branche locale correspondante
     const localBranch = ref.slice('origin/'.length)
     const localBranches = await git.branchLocal()
     if (localBranches.all.includes(localBranch)) {
       await git.checkout(localBranch)
+      // S'aligner sur l'état distant (la branche locale peut être périmée)
+      await git.raw(['reset', '--hard', ref])
     } else {
       await git.checkout(['-b', localBranch, ref])
     }
