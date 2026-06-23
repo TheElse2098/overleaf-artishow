@@ -67,7 +67,7 @@ function GitInitPopup({
             <>
               <label style={labelStyle}>
                 Token d'accès
-                <span style={{ fontWeight: 400, color: 'var(--content-secondary, #aaa)', marginLeft: 6 }}>
+                <span style={{ fontWeight: 400, color: 'var(--content-secondary, #555)', marginLeft: 6 }}>
                   (optionnel — repo public)
                 </span>
               </label>
@@ -79,7 +79,7 @@ function GitInitPopup({
                 style={inputStyle}
               />
               {token && (
-                <div style={{ fontSize: 11, color: 'var(--content-secondary, #aaa)', marginBottom: 8, marginTop: -6 }}>
+                <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8, marginTop: -6 }}>
                   {"L'URL utilisée sera : https://<TOKEN>@github.com/…"}
                 </div>
               )}
@@ -87,7 +87,7 @@ function GitInitPopup({
           )}
 
           {!isHttps && remoteUrl.trim() && (
-            <div style={{ fontSize: 11, color: 'var(--content-secondary, #aaa)', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8 }}>
               URL SSH détectée — aucun token requis, la clé SSH du serveur sera utilisée.
             </div>
           )}
@@ -149,7 +149,7 @@ function GitSetRemotePopup({
         <>
           <label style={labelStyle}>
             Token d'accès
-            <span style={{ fontWeight: 400, color: 'var(--content-secondary, #aaa)', marginLeft: 6 }}>
+            <span style={{ fontWeight: 400, color: 'var(--content-secondary, #555)', marginLeft: 6 }}>
               (optionnel — repo public)
             </span>
           </label>
@@ -161,7 +161,7 @@ function GitSetRemotePopup({
             style={inputStyle}
           />
           {token && (
-            <div style={{ fontSize: 11, color: 'var(--content-secondary, #aaa)', marginBottom: 8, marginTop: -6 }}>
+            <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8, marginTop: -6 }}>
               {"L'URL utilisée sera : https://<TOKEN>@github.com/…"}
             </div>
           )}
@@ -169,7 +169,7 @@ function GitSetRemotePopup({
       )}
 
       {!isHttps && remoteUrl.trim() && (
-        <div style={{ fontSize: 11, color: 'var(--content-secondary, #aaa)', marginBottom: 8 }}>
+        <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8 }}>
           URL SSH détectée — aucun token requis, la clé SSH du serveur sera utilisée.
         </div>
       )}
@@ -190,33 +190,34 @@ function GitSetRemotePopup({
 
 // ── Styles partagés ───────────────────────────────────────────────────────────
 const popupStyle: React.CSSProperties = {
-  background: 'var(--bg-dark-secondary, #2c2c2c)',
-  border: '1px solid var(--border-primary, #444)',
+  background: 'var(--bg-light-primary, #fff)',
+  border: '1px solid var(--border-primary, #ddd)',
   borderRadius: 6,
   padding: '12px 14px',
-  color: 'var(--content-primary, #eee)',
+  color: 'var(--content-primary, #1a1a1a)',
   fontSize: 13,
+  boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
 }
 const subtitleStyle: React.CSSProperties = {
   marginBottom: 10,
   lineHeight: 1.5,
-  color: 'var(--content-secondary, #aaa)',
+  color: 'var(--content-secondary, #555)',
 }
 const labelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: 11,
   fontWeight: 600,
   marginBottom: 3,
-  color: 'var(--content-secondary, #aaa)',
+  color: 'var(--content-secondary, #555)',
 }
 const inputStyle: React.CSSProperties = {
   width: '100%',
   marginBottom: 10,
   padding: '5px 8px',
   borderRadius: 4,
-  border: '1px solid var(--border-primary, #555)',
-  background: 'var(--bg-dark-primary, #1e1e1e)',
-  color: 'var(--content-primary, #eee)',
+  border: '1px solid var(--border-primary, #ccc)',
+  background: 'var(--bg-light-secondary, #f5f5f5)',
+  color: 'var(--content-primary, #1a1a1a)',
   fontSize: 12,
   boxSizing: 'border-box',
 }
