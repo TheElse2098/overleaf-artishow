@@ -374,7 +374,9 @@ async function assertRemoteNotAlreadyLinked(remoteUrl, excludeProjectId = null) 
   for (const p of projects) {
     if (excludeProjectId && String(p._id) === String(excludeProjectId)) continue
     if (normalizeRemoteUrl(p.git?.remoteUrl) === norm) {
-      throw new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+      const err = new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+      err.code = 'REMOTE_ALREADY_LINKED'
+      throw err
     }
   }
 }
