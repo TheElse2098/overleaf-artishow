@@ -1314,43 +1314,35 @@ GitController = {
   },
 
   // Route pour effectuer un rollback
-  rollback(req, res) {
+  async rollback(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const commitHash = req.body.commitHash
     const projectPath = dataPath + projectId + "-" + userId
 
     console.log(`Rolling back to commit ${commitHash}`)
-    console.log(`Project path: ${projectPath}`)
-    
     if (!commitHash || !commitHash.trim()) {
-        console.error("No commit hash provided")
-        res.status(400).json({ error: "No commit hash provided" })
-        return
+      return res.status(400).json({ error: "No commit hash provided" })
     }
 
-    move(projectId, userId)
-
-    resetToCommit(commitHash, projectId, userId)
-      .then(() => {
-        console.log("Rollback successful, rebuilding project")
-        return rebuildProjectAfterRollback(projectPath, projectId, userId)
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, commitHash }),
       })
-      .then(() => {
-        console.log('Rollback and rebuild successful')
-        res.json({ 
-          success: true, 
-          message: 'Rollback and rebuild successful' 
-        })
-      })
-      .catch(error => {
-        console.error("Error during rollback:", error)
-      res.status(500).json({ 
-        success: false,
-        error: error.message || 'Rollback failed'
-      })
-    })
-},
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return res.status(500).json({ success: false, error: text || `git service: ${response.status}` })
+      }
+      // reset --hard a changé le working tree → reconstruire l'éditeur "from scratch"
+      await rebuildProjectAfterRollback(projectPath, projectId, userId)
+      res.json({ success: true, message: 'Rollback and rebuild successful' })
+    } catch (error) {
+      console.error("Error during rollback:", error)
+      res.status(500).json({ success: false, error: error.message || 'Rollback failed' })
+    }
+  },
 
   stagedFiles(req, res) {
     const { projectId, userId } = req.query
