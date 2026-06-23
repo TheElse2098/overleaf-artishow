@@ -1275,25 +1275,25 @@ GitController = {
   },
 
   async push(req, res) {
-    const projectId = req.body.projectId
-    const userId = req.body.userId
-    const gitInfo = await getGitInfo(projectId)
+    const { projectId, userId } = req.body
     console.log("Pushing")
     try {
-    const response = await fetch(`${GIT_SERVICE_URL}/push`, {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/push`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, userId, gitInfo}),
-    })
-    if (!response.ok) {
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) {
         const text = await response.text().catch(() => '')
         return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
-    }
-    res.sendStatus(200)
+      }
+      res.sendStatus(200)
     } catch (err) {
-    HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
-  },
+  }
+
 
   // Route pour obtenir l'historique des commits
   commitHistory(req, res) {
