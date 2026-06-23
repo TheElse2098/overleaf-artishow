@@ -514,45 +514,25 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
     fs.mkdirSync(repoPath)
   }
 
-  // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
-  const cloneOptions = ['--no-checkout']
-  if (branch) cloneOptions.push('--branch', branch)
-
-  if (token) {
-    const authUrl = buildAuthenticatedUrl(link, token, tokenType)
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(authUrl, repoPath, cloneOptions)
-      console.log("Repository cloned via HTTPS token (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (token):', error)
-      throw error
+  try {
+      const response = await fetch(`${GIT_SERVICE_URL}/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      result = await response.json() 
+    } catch (err) {
+      return HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
-  } else {
-    const key = await getKey(ownerId, 'private')
-    const prevSSH = process.env.GIT_SSH_COMMAND
-    process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
-      console.log("Repository cloned via SSH (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (SSH):', error)
-      throw error
-    } finally {
-      if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
-      else delete process.env.GIT_SSH_COMMAND
-    }
-  }
 
   // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
-  await disableBinaryConversion(repoPath)
-  const localGit = getGitForProject(projectId, ownerId)
-  try {
-    await localGit.raw(['checkout', 'HEAD', '--', '.'])
-    console.log("Initial checkout done with binary attributes applied")
-  } catch (checkoutErr) {
-    console.error("Initial checkout failed:", checkoutErr.message)
-    throw checkoutErr
-  }
+    await disableBinaryConversion(repoPath)
+
+  
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
   await saveGitLink(projectId, link, branch, token, tokenType)
 

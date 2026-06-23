@@ -118,7 +118,6 @@ export async function createBranch(req, res) {
   }
 }
 
-
 export async function staged(req, res) {
   const { projectId, userId } = req.body
   if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
@@ -170,6 +169,17 @@ export async function commitHistory(req, res) {
     res.json(await GitManager.getCommitHistory(projectId, userId, parseInt(limit) || 10))
   } catch (err) {
     logger.error({ err, projectId }, 'git commitHistory failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function gitClone(req, res) {
+  const {projectId, ownerId, link, branch, token, tokenType} = req.body
+  try {
+    await GitManager.gitClone(projectId, ownerId, link, branch, token, tokenType)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'gitClone failed')
     res.status(500).json({ error: err.message })
   }
 }
