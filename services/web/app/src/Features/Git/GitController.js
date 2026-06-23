@@ -713,8 +713,25 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
       console.log(`Branche "${defaultBranch}" poussée sur origin`)
       remoteLinked = true
     } catch (pushErr) {
-      console.error('Push initial échoué (le remote est configuré mais pas synchronisé):', pushErr.message)
-      // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
+      console.error('Push initial échoué, tentative de merge avec le remote:', pushErr.message)
+      // Le remote n'est pas vide (ex: README créé sur GitHub) : on fusionne les historiques
+      try {
+        if (token) {
+          const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+          await localGit.raw(['pull', authUrl, defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+        } else {
+          await withSshKey(ownerId, async () => {
+            await localGit.raw(['pull', 'origin', defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+            await localGit.push(['-u', 'origin', defaultBranch])
+          })
+        }
+        console.log(`Branche "${defaultBranch}" synchronisée et poussée sur origin (merge unrelated histories)`)
+        remoteLinked = true
+      } catch (mergeErr) {
+        console.error('Push initial échoué après tentative de merge:', mergeErr.message)
+        // Le repo local reste valide, le lien remote est sauvegardé pour un push manuel ultérieur
+      }
     }
   }
 
