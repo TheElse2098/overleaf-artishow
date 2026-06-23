@@ -129,7 +129,7 @@ function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props
           {/* Champs token optionnels */}
           <hr style={{ margin: '18px 0 14px' }} />
           <p style={{ fontWeight: 500, marginBottom: '10px' }}>
-            Authentification par token <span style={{ fontWeight: 400, color: 'gray', fontSize: '13px' }}>(optionnel — laissez vide pour utiliser SSH)</span>
+            Authentification par token <span className="git-form-hint" style={{ fontWeight: 400, fontSize: '13px' }}>(optionnel — laissez vide pour utiliser SSH)</span>
           </p>
 
           <div style={{ marginBottom: '10px' }}>
