@@ -81,13 +81,7 @@ async function injectGitOwner(req, res, next) {
   }
 }
 
-const gitOptions = {
-  baseDir: dataPath,
-  privateKey: ""
-}
 const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stdout', 'output.stderr', 'output.synctex.gz', 'output.synctex(busy)', '.project-sync-state'];
-
-var git = simpleGit(gitOptions)
 
 function getRootId(projectId) {
   let decimalValue = BigInt('0x' + projectId)
@@ -390,13 +384,6 @@ async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType
   if (tokenType) fields['git.tokenType'] = tokenType
   await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
-}
-
-function move(projectId, userId) {
-  const fullPath = dataPath + projectId + "-" + userId
-  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
-  git.addConfig('user.name', 'overleaf')
-  git.addConfig('user.email', 'overleaf@overleaf.com')
 }
 
 async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet) {
