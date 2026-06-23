@@ -281,6 +281,44 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
   }
 }
 
+// Supprime de l'éditeur Overleaf les fichiers/docs absents du working tree git (ex. après
+// un changement de branche). L'upsert n'enlève rien tout seul, d'où les fichiers fantômes.
+async function syncDeletionsWithWorkingTree(projectId, ownerId, gitDir) {
+  // Chemins présents dans le working tree, au format "/chemin" (comme les entités Overleaf)
+  const present = new Set()
+  async function recurse(dir) {
+    let items
+    try { items = await fs.readdir(dir) } catch (_) { return }
+    for (const item of items) {
+      if (item === '.git') continue
+      const fullPath = path.join(dir, item)
+      let stat
+      try { stat = await fs.stat(fullPath) } catch (_) { continue }
+      if (stat.isDirectory()) await recurse(fullPath)
+      else present.add('/' + path.relative(gitDir, fullPath).replace(/\\/g, '/'))
+    }
+  }
+  await recurse(gitDir)
+
+  let entities
+  try {
+    entities = await ProjectEntityHandler.promises.getAllEntities(projectId)
+  } catch (e) {
+    console.log('syncDeletions: getAllEntities échoué:', e.message)
+    return
+  }
+  for (const { path: entityPath } of [...entities.docs, ...entities.files]) {
+    if (!present.has(entityPath)) {
+      try {
+        await EditorController.promises.deleteEntityWithPath(projectId, entityPath, 'editor', ownerId)
+        console.log('Entité supprimée après changement de branche:', entityPath)
+      } catch (e) {
+        console.log('Échec suppression', entityPath, ':', e.message)
+      }
+    }
+  }
+}
+
 // Resynchronise l'historique Overleaf avec l'état réel du projet après un pull/clone git.
 // Séquence en deux étapes pour gérer les projets dont l'état project-history est corrompu :
 //   1. Supprimer l'état project-history (file Redis, record d'erreur MongoDB, état de resync)
@@ -1255,6 +1293,8 @@ GitController = {
       await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': localBranch } }).exec()
       // Le working tree a changé de branche → reconstruire l'éditeur Overleaf
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      // Retirer les fichiers de l'ancienne branche absents de la nouvelle
+      await syncDeletionsWithWorkingTree(projectId, userId, projectPath)
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
       res.sendStatus(200)
     } catch (error) {
