@@ -10,10 +10,12 @@ const OUTPUT_PATH = '/var/lib/overleaf/data/compiles/'
 const BANNED_FILES = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stderr', 'output.synctex.gz', '.project-sync-state']
 
 function getGitForProject(projectId, userId) {
-  const repoPath = DATA_PATH + projectId + '-' + userId  // middleware via le web 
+  const repoPath = DATA_PATH + projectId + '-' + userId  // middleware via le web
   return simpleGit({
     baseDir: repoPath,
     config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+    // Autorise GIT_SSH_COMMAND via l'env de l'instance (valeur contrôlée par le serveur, pas l'utilisateur)
+    unsafe: { allowUnsafeSshCommand: true },
   })
 }
 
@@ -406,7 +408,7 @@ export async function gitClone(projectId, ownerId, link, branch, token, tokenTyp
   const cloneOptions = ['--no-checkout']
   if (branch) cloneOptions.push('--branch', branch)
 
-  const newGit = () => simpleGit({ baseDir: DATA_PATH, config: ['core.autocrlf=false', 'core.eol=lf'] })
+  const newGit = () => simpleGit({ baseDir: DATA_PATH, config: ['core.autocrlf=false', 'core.eol=lf'], unsafe: { allowUnsafeSshCommand: true } })
 
   try {
     if (token) {
