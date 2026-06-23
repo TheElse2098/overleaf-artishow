@@ -1277,30 +1277,40 @@ GitController = {
     const userId = req.body.userId
     const filePath = req.body.filePath
     const deleted = req.body.deleted === true
-    try {
-    await compileProject(projectId, userId)
-    console.log("Compilation réussie avant le add")
-    } catch (compileError) {
-    console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: 'filePath invalide.' })
     }
-    try {
-    await gitUpdate(projectId, userId, [filePath])
-    } catch(error) {
-    console.log("error when syncing in git add", error)
+    if (!deleted) {
+      try {
+        await compileProject(projectId, userId)
+        console.log("Compilation réussie avant le add")
+      } catch (compileError) {
+        console.log("Compilation échouée avant add, on utilise le dernier état compilé:", compileError.message)
+      }
+      try {
+        await gitUpdate(projectId, userId, [filePath])
+      } catch (error) {
+        console.log("error when syncing in git add", error)
+      }
     }
+
     try {
-    const response = await fetch(`${GIT_SERVICE_URL}/add`, {
+      const response = await fetch(`${GIT_SERVICE_URL}/add`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId, userId, filePath, deleted }),
-    })
-    if (!response.ok) {
+      })
+      if (!response.ok) {
         const text = await response.text().catch(() => '')
         return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
-    }
-    res.sendStatus(200)
+      }
+      // Suppression indexée avec succès : la retirer des suppressions en attente.
+      if (deleted) {
+        await Project.updateOne({ _id: projectId }, { $pull: { 'git.pendingDeletions': filePath } }).catch(() => {})
+      }
+      res.sendStatus(200)
     } catch (err) {
-    HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
   },
 
