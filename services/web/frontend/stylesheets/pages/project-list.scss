@@ -870,11 +870,11 @@ form.project-search {
   }
 }
 
-// Template bookmark button is hidden until the user hovers over the row.
-// :focus-within ensures keyboard navigation keeps it visible.
+// Copy and template bookmark buttons are hidden until the user hovers over the
+// row. :focus-within ensures keyboard navigation keeps them visible.
 .project-dash-table {
   tbody tr:not(:hover):not(:focus-within) {
-    .template-action-btn-wrapper {
+    .hover-only-action-btn {
       visibility: hidden;
     }
   }

@@ -149,7 +149,7 @@ const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip(
   return (
     <TemplateProjectButton project={project}>
       {(_, handleOpenModal) => (
-        <span className="template-action-btn-wrapper">
+        <span className="hover-only-action-btn">
           <OLTooltip
             key={`tooltip-template-project-${project.id}`}
             id={`template-project-${project.id}`}
