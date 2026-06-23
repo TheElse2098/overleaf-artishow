@@ -305,6 +305,11 @@ module.exports = {
         projectBlobs: process.env.OVERLEAF_EDITOR_PROJECT_BLOBS_BUCKET,
       },
     },
+    
+    gitService: {
+      url: `http://${process.env.GIT_SERVICE_HOST || '127.0.0.1'}:3099`,
+    },
+
 
     // For legacy reasons, we need to populate the below objects.
     v1: {},
