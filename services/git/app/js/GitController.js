@@ -183,3 +183,15 @@ export async function gitClone(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+export async function addAll(req, res) {
+  const { projectId, userId, deletedFiles } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    await GitManager.addAll(projectId, userId, Array.isArray(deletedFiles) ? deletedFiles : [])
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git addAll failed')
+    res.status(500).json({ error: err.message })
+  }
+}

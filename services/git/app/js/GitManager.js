@@ -218,6 +218,20 @@ export async function add(projectId, userId, filePath, deleted) {
   await git.add(filePath)
 }
 
+// Indexe tout : retire du working tree les fichiers supprimés dans Overleaf, puis git add .
+export async function addAll(projectId, userId, deletedFiles = []) {
+  const git = getGitForProject(projectId, userId)
+  const repoPath = DATA_PATH + projectId + '-' + userId
+
+  for (const f of deletedFiles) {
+    // confiné au dépôt (anti path traversal)
+    if (typeof f !== 'string' || path.isAbsolute(f) || f.split(/[/\\]+/).includes('..')) continue
+    const fullPath = path.join(repoPath, f)
+    try { if (await fs.pathExists(fullPath)) await fs.remove(fullPath) } catch (_) {}
+  }
+  await git.add('.')
+}
+
 export async function checkout(projectId, userId, ref, gitInfo) {
   const git = getGitForProject(projectId, userId)
   const repoPath = DATA_PATH + projectId + '-' + userId

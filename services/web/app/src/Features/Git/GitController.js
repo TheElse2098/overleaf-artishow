@@ -1336,8 +1336,8 @@ GitController = {
   async addAll(req, res) {
     const { projectId, userId } = req.body
     if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
-    move(projectId, userId)
     try {
+      // Matérialiser le contenu de l'éditeur sur le working tree avant de tout indexer
       try {
         await compileProject(projectId, userId)
         console.log("Compilation réussie avant addAll")
@@ -1346,16 +1346,17 @@ GitController = {
       }
       const { notStaged: newFiles, deleted: deletedFiles } = await getNotStaged(projectId, userId)
       await gitUpdate(projectId, userId, newFiles)
-      // Supprimer du working tree les fichiers supprimés dans Overleaf
-      const repoPath = dataPath + projectId + "-" + userId
-      for (const f of deletedFiles) {
-        if (!isSafeRelativePath(f)) continue // ignore tout chemin non confiné au dépôt
-        const fullPath = path.join(repoPath, f)
-        try {
-          if (await fs.pathExists(fullPath)) await fs.remove(fullPath)
-        } catch (_) {}
+
+      // Le service retire les fichiers supprimés du working tree puis fait git add .
+      const response = await fetch(`${GIT_SERVICE_URL}/add-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, deletedFiles }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-      await git.add('.')
       if (deletedFiles.length > 0) {
         await Project.updateOne({ _id: projectId }, { $set: { 'git.pendingDeletions': [] } }).catch(() => {})
       }

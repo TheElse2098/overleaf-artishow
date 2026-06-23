@@ -2,7 +2,7 @@ import http from 'node:http'
 import express from 'express'
 import logger from '@overleaf/logger'
 import metrics from '@overleaf/metrics'
-import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone } from './GitController.js'
+import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone, addAll } from './GitController.js'
 
 logger.initialize('git')           // nomme le service dans les logs
 
@@ -25,6 +25,7 @@ export async function createServer() {
   app.post('/current-branch', currentBranch)
   app.post('/commits', commitHistory)
   app.post('/gitClone', gitClone)
+  app.post('/add-all', addAll)
 
   const server = http.createServer(app)
   return { app, server }
