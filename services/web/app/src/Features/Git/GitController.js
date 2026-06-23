@@ -455,7 +455,7 @@ async function getNotStaged(projectId, userId) {
 
     // Suppressions en attente enregistrées par markDeleted
     const project = await Project.findById(projectId, 'git.pendingDeletions').lean().exec()
-    const deletedFiles = (project?.git?.pendingDeletions || []).filter(file => !notStagedFiles.includes(file))
+    const deletedFiles = project?.git?.pendingDeletions || []
 
     console.log('notStaged:', notStagedFiles, 'deleted:', deletedFiles)
     return { notStaged: notStagedFiles, deleted: deletedFiles }
