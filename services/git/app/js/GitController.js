@@ -104,3 +104,16 @@ export async function rollback(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+export async function createBranch(req, res) {
+  const { projectId, userId, newBranchName, gitInfo } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  if (!isSafeRef(newBranchName)) return res.status(400).json({ error: 'newBranchName invalide.' })
+  try {
+    await GitManager.createBranch(projectId, userId, newBranchName, gitInfo)
+    res.sendStatus(200)
+  } catch (err) {
+    logger.error({ err, projectId }, 'git createBranch failed')
+    res.status(500).json({ error: err.message })
+  }
+}

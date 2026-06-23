@@ -254,4 +254,13 @@ export async function rollback(projectId, userId, commitHash) {
   await git.reset(['--hard', cleanHash])
   await git.clean('f')
 }
+
+// Crée une nouvelle branche locale à partir de HEAD et la pousse sur le remote.
+export async function createBranch(projectId, userId, newBranchName, gitInfo) {
+  const git = getGitForProject(projectId, userId)
+  await git.checkoutLocalBranch(newBranchName)
+  await withRemoteAuth(userId, gitInfo, remote =>
+    git.push(remote, newBranchName, ['--set-upstream'])
+  )
+}
  
