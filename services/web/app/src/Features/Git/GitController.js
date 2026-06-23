@@ -1427,27 +1427,25 @@ GitController = {
   },
 
   async createBranch(req, res) {
-    console.log("Here at create Branch");
-    const { projectId, userId, newBranchName } = req.body;
-    const projectPath = dataPath + projectId + "-" + userId;
+    const { projectId, userId, newBranchName } = req.body
     try {
-      move(projectId, userId);
-      const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
-      console.log("created new branch: ", newBranchName)
-
-      await withRemoteAuth(projectId, userId, (remote) =>
-        git.push(remote, newBranchName, ['--set-upstream'])
-      )
-      console.log(`Branch '${newBranchName}' pushed to origin`)
-
-      res.sendStatus(200);
-
-      } catch (error) {
-        console.error("Create branch failed:", error);
-        await buildProject(projectPath, projectId, userId, getRootId(projectId));
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/create-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, newBranchName, gitInfo }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-    },
+      // Créer une branche ne change pas le contenu du working tree → pas de rebuild
+      res.sendStatus(200)
+    } catch (error) {
+      console.error("Create branch failed:", error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
 
   getKey(req, res) {
     // La clé SSH est propre à l'utilisateur : on dérive l'identité de la session,
