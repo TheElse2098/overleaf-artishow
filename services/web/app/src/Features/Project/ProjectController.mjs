@@ -327,6 +327,17 @@ const _ProjectController = {
     const fromTemplate =
       (template === 'example' || template === 'from_template') && templateId
 
+    // Import git : on borne le lien SSH et le token pour éviter qu'un body
+    // énorme ne soit transmis au service git.
+    if (template === 'git') {
+      if ((projectName != null && projectName.length > 255) ||
+          (token != null && String(token).length > 255)) {
+        return res.status(400).json({
+          message: 'Le lien du dépôt ou le token est trop long (255 caractères maximum).',
+        })
+      }
+    }
+
     if (fromTemplate) {
       // Creating a project from a template duplicates an existing project by
       // id. "General" templates can be used by anyone; "Personnel" templates
