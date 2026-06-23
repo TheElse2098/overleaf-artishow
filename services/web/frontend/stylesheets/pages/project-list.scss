@@ -917,6 +917,35 @@ body[data-theme='default']:has(#project-list-root) {
     .btn-close {
       filter: invert(1) grayscale(1);
     }
+
+    // The design-system's dark-input mixin only wires up CSS variables for
+    // [type='text'] and [type='search']. Apply the same tokens to the other
+    // input types and native <select> elements used in our modals.
+    select.form-control,
+    input.form-control[type='password'],
+    input.form-control[type='email'],
+    input.form-control[type='url'],
+    input.form-control[type='number'] {
+      color: var(--input-field-color);
+      background-color: var(--input-field-bg);
+      border-color: var(--input-field-border-color);
+
+      &::placeholder {
+        color: var(--input-placeholder-content);
+      }
+
+      &:focus,
+      &:focus-visible {
+        color: var(--input-field-color);
+        background-color: var(--input-field-bg);
+        border-color: var(--input-border-hover);
+      }
+    }
+
+    // Labels and helper text that use inline `color: gray` or text-muted
+    label {
+      color: var(--content-secondary-dark);
+    }
   }
 
   // Uppy "Upload Zipped Project" dropzone — override Uppy's built-in light theme.
