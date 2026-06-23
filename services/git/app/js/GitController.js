@@ -117,3 +117,59 @@ export async function createBranch(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+
+export async function staged(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    res.json(await GitManager.getStaged(projectId, userId))
+  } catch (err) {
+    logger.error({ err, projectId }, 'git staged failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function notStaged(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    res.json(await GitManager.notStaged(projectId, userId))
+  } catch (err) {
+    logger.error({ err, projectId }, 'git notStaged failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function branches(req, res) {
+  const { projectId, userId, gitInfo } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    res.json(await GitManager.getBranches(projectId, userId, gitInfo))
+  } catch (err) {
+    logger.error({ err, projectId }, 'git branches failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function currentBranch(req, res) {
+  const { projectId, userId, gitInfo } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    res.json(await GitManager.getCurrentBranch(projectId, userId, gitInfo))
+  } catch (err) {
+    logger.error({ err, projectId }, 'git currentBranch failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function commitHistory(req, res) {
+  const { projectId, userId, limit } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    res.json(await GitManager.getCommitHistory(projectId, userId, parseInt(limit) || 10))
+  } catch (err) {
+    logger.error({ err, projectId }, 'git commitHistory failed')
+    res.status(500).json({ error: err.message })
+  }
+}

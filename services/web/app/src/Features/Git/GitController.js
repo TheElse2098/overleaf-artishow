@@ -1292,25 +1292,24 @@ GitController = {
     } catch (err) {
       HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
-  }
-
+  },
 
   // Route pour obtenir l'historique des commits
-  commitHistory(req, res) {
+  async commitHistory(req, res) {
     const { projectId, userId } = req.query
     const limit = req.query.limit || 10
-
-    move(projectId, userId)
-
-    getCommitHistory(parseInt(limit))
-      .then(commits => {
-        res.json(commits)
-        console.log("Commit history fetched successfully")
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/commits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, limit }),
       })
-      .catch(error => {
-        console.error("Error fetching commit history:", error)
-        res.json([])
-      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching commit history:", error)
+      res.json([])
+    }
   },
 
   // Route pour effectuer un rollback
@@ -1344,60 +1343,95 @@ GitController = {
     }
   },
 
-  stagedFiles(req, res) {
+  async stagedFiles(req, res) {
     const { projectId, userId } = req.query
-
-    move(projectId, userId)
-
-    getStaged(projectId,userId)
-    .then(stagedFilesList => {
-      res.json(stagedFilesList)
-    })
-    .catch(error => {
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/staged`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
       console.error("Error:", error)
       res.json([])
-    })
+    }
   },
 
-  notStagedFiles(req, res) {
+  // Hybride : le service renvoie la partie git (modifiés/non suivis + nouveaux fichiers
+  // de compiles/ + liste des fichiers suivis) ; web y ajoute les entités Overleaf non
+  // suivies (docstore/filestore) et les suppressions en attente (Mongo).
+  async notStagedFiles(req, res) {
     const { projectId, userId } = req.query
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/not-staged`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json({ notStaged: [], deleted: [] })
+      const { notStaged, tracked } = await response.json()
+      const trackedSet = new Set(tracked || [])
+      const listed = new Set(notStaged)
 
-    move(projectId, userId)
+      // Entités Overleaf (docs + binaires) non suivies par git et pas déjà listées
+      try {
+        const { docs, files } = await ProjectEntityHandler.promises.getAllEntities(projectId)
+        for (const { path: filePath } of [...docs, ...files]) {
+          const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+          if (!trackedSet.has(normalized) && !listed.has(normalized)) {
+            notStaged.push(normalized)
+            listed.add(normalized)
+          }
+        }
+      } catch (e) {
+        console.log('getAllEntities échoué:', e.message)
+      }
 
-    getNotStaged(projectId,userId)
-    .then(result => {
-      res.json(result)
-    })
-    .catch(error => {
+      // Suppressions en attente
+      const project = await Project.findById(projectId, 'git.pendingDeletions').lean().exec()
+      const deleted = project?.git?.pendingDeletions || []
+
+      res.json({ notStaged, deleted })
+    } catch (error) {
       console.error("Error:", error)
+      res.json({ notStaged: [], deleted: [] })
+    }
+  },
+
+  async currentBranch(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/current-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) return res.json("")
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching current Branch:", error)
+      res.json("")
+    }
+  },
+
+  async branches(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/branches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching branches:", error)
       res.json([])
-    })
-  },
-
-  currentBranch(req, res) {
-    const { projectId, userId } = req.query
-    move(projectId, userId)
-    getCurrentBranch(projectId, userId)
-      .then(currBranch=> {
-        res.json(currBranch)
-      })
-      .catch(error => {
-        console.error("Error fetching current Branch:", error)
-        res.json("")
-      })
-  },
-
-  branches(req, res) {
-    const { projectId, userId } = req.query
-    move(projectId, userId)
-    getBranches(projectId, userId)
-      .then(branchList => {
-        res.json(branchList)
-      })
-      .catch(error => {
-        console.error("Error fetching branches:", error)
-        res.json([])
-      })
+    }
   },
 
   async switch_branch(req, res) {

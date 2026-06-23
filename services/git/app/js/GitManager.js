@@ -6,6 +6,7 @@ import path from 'node:path'
 
 
 const DATA_PATH = '/var/lib/overleaf/data/git/'
+const OUTPUT_PATH = '/var/lib/overleaf/data/compiles/'
 const BANNED_FILES = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stderr', 'output.synctex.gz', '.project-sync-state']
 
 function getGitForProject(projectId, userId) {
@@ -262,5 +263,94 @@ export async function createBranch(projectId, userId, newBranchName, gitInfo) {
   await withRemoteAuth(userId, gitInfo, remote =>
     git.push(remote, newBranchName, ['--set-upstream'])
   )
+}
+
+
+export async function getStaged(projectId, userId) {
+  const git = getGitForProject(projectId, userId)
+  const status = await git.status()
+  return status.staged
+}
+
+export async function getCommitHistory(projectId, userId, limit = 10) {
+  const git = getGitForProject(projectId, userId)
+  const log = await git.log([`-${limit}`])
+  return log.all.map(c => ({
+    hash: c.hash,
+    message: c.message,
+    date: c.date,
+    author: c.author_name || 'Unknown',
+  }))
+}
+
+export async function getBranches(projectId, userId, gitInfo) {
+  const git = getGitForProject(projectId, userId)
+  return withRemoteAuth(userId, gitInfo, async remote => {
+    await git.fetch(remote)
+    const branches = await git.branch(['-r'])
+    return branches.all
+  })
+}
+
+export async function getCurrentBranch(projectId, userId, gitInfo) {
+  const git = getGitForProject(projectId, userId)
+  return withRemoteAuth(userId, gitInfo, async remote => {
+    await git.fetch(remote)
+    const stat = await git.status()
+    return `origin/${stat.current}`
+  })
+}
+
+// Parcourt compiles/ et retourne les fichiers absents du working tree git et non suivis
+async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet) {
+  const result = []
+  async function recurse(dir) {
+    let items
+    try { items = await fs.readdir(dir) } catch (_) { return }
+    for (const item of items) {
+      if (item === '.git') continue
+      const fullPath = path.join(dir, item)
+      let stat
+      try { stat = await fs.stat(fullPath) } catch (_) { continue }
+      const relPath = path.relative(compilesDir, fullPath).replace(/\\/g, '/')
+      if (stat.isDirectory()) {
+        await recurse(fullPath)
+      } else {
+        if (BANNED_FILES.includes(item)) continue
+        if (trackedSet.has(relPath) || gitStatusSet.has(relPath)) continue
+        const gitFilePath = path.join(gitDir, relPath)
+        if (!(await fs.pathExists(gitFilePath))) result.push(relPath)
+      }
+    }
+  }
+  await recurse(compilesDir)
+  return result
+}
+
+// Partie GIT du "non indexé" : fichiers modifiés/non suivis + nouveaux fichiers de compiles/.
+// Renvoie aussi la liste des fichiers suivis, pour que web filtre les entités Overleaf.
+export async function notStaged(projectId, userId) {
+  const git = getGitForProject(projectId, userId)
+  const gitDir = DATA_PATH + projectId + '-' + userId
+  const compilesDir = OUTPUT_PATH + projectId + '-' + userId
+
+  const status = await git.status(['-uall'])
+  const modifiedFiles = status.files.filter(f => f.working_dir !== ' ' && f.working_dir !== 'D' && f.index === ' ').map(f => f.path)
+  const untrackedFiles = status.files.filter(f => f.working_dir === '?' && f.index === '?').map(f => f.path)
+  const gitStatusSet = new Set([...modifiedFiles, ...untrackedFiles])
+
+  let tracked = []
+  try {
+    const result = await git.raw(['ls-files'])
+    tracked = result.split('\n').filter(f => f.trim())
+  } catch (_) {}
+  const trackedSet = new Set(tracked)
+
+  let overleafOnlyFiles = []
+  if (await fs.pathExists(compilesDir)) {
+    overleafOnlyFiles = await scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet)
+  }
+
+  return { notStaged: [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles], tracked }
 }
  
