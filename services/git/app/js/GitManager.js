@@ -121,6 +121,16 @@ async function disableBinaryConversion(repoPath) {
   await fs.writeFile(path.join(repoPath, '.git', 'info', 'attributes'), '* -text\n', 'utf8')
 }
 
+// Ré-extrait les fichiers de HEAD (pour appliquer les attributs binaires).
+// Tolère une branche/dépôt sans fichier (commit initial vide) : rien à ré-extraire.
+async function recheckoutHead(git) {
+  try {
+    await git.raw(['checkout', 'HEAD', '--', '.'])
+  } catch (e) {
+    if (!/did not match any file/i.test(e?.message || '')) throw e
+  }
+}
+
 // Annule le merge en cours et retourne la liste des fichiers en conflit
 async function abortMergeAndGetConflicts(git, knownConflicts) {
   let conflicted = [...knownConflicts]
@@ -170,8 +180,8 @@ export async function pull(projectId, userId, gitInfo) {
     }
 
     //checkout HEAD
-    
-    await git.raw(['checkout', 'HEAD', '--', '.'])
+
+    await recheckoutHead(git)
 
     //pop stash
 
@@ -239,7 +249,7 @@ export async function checkout(projectId, userId, ref, gitInfo) {
 
   // Réappliquer les attributs binaires puis ré-extraire pour éviter la corruption des binaires
   await disableBinaryConversion(repoPath)
-  await git.raw(['checkout', 'HEAD', '--', '.'])
+  await recheckoutHead(git)
 }
 
 // Rollback DESTRUCTIF : déplace la branche courante sur un commit (reset --hard)
@@ -391,11 +401,6 @@ export async function gitClone(projectId, ownerId, link, branch, token, tokenTyp
     }
   }
   
-  try {
-    await localGit.raw(['checkout', 'HEAD', '--', '.'])
-    console.log("Initial checkout done with binary attributes applied")
-  } catch (checkoutErr) {
-    console.error("Initial checkout failed:", checkoutErr.message)
-    throw checkoutErr
-  }
+  await recheckoutHead(localGit)
+  console.log("Initial checkout done with binary attributes applied")
 }
