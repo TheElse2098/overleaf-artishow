@@ -25,6 +25,11 @@ const GIT_SERVICE_URL =
   (Settings.apis && Settings.apis.gitService && Settings.apis.gitService.url) ||
   `http://${process.env.GIT_SERVICE_HOST || '127.0.0.1'}:3099`
 
+// Secret partagé avec le service git (authentification inter-services).
+// Envoyé en en-tête Authorization sur chaque appel au service.
+const GIT_SERVICE_SECRET =
+  process.env.GIT_SERVICE_SECRET || process.env.WEB_API_PASSWORD || 'password'
+
 // Valide un identifiant Mongo (24 caractères hexadécimaux)
 function isValidObjectId(id) {
   return typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)
@@ -542,7 +547,7 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
   // Déléguer le clone git au service (gitClone n'est pas un handler HTTP : on lève en cas d'erreur)
   const response = await fetch(`${GIT_SERVICE_URL}/gitClone`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
     body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
   })
   if (!response.ok) {
@@ -961,7 +966,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/pull`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
@@ -1054,7 +1059,7 @@ GitController = {
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/add`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, filePath, deleted }),
       })
       if (!response.ok) {
@@ -1079,7 +1084,7 @@ GitController = {
     try {
     const response = await fetch(`${GIT_SERVICE_URL}/commit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, message: message.trim() }),
     })
     if (!response.ok) {
@@ -1099,7 +1104,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/push`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
@@ -1119,7 +1124,7 @@ GitController = {
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/commits`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, limit }),
       })
       if (!response.ok) return res.json([])
@@ -1145,7 +1150,7 @@ GitController = {
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/rollback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, commitHash }),
       })
       if (!response.ok) {
@@ -1166,7 +1171,7 @@ GitController = {
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/staged`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId }),
       })
       if (!response.ok) return res.json([])
@@ -1185,7 +1190,7 @@ GitController = {
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/not-staged`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId }),
       })
       if (!response.ok) return res.json({ notStaged: [], deleted: [] })
@@ -1224,7 +1229,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/current-branch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) return res.json("")
@@ -1241,7 +1246,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/branches`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) return res.json([])
@@ -1261,7 +1266,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/checkout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, ref: branchName, gitInfo }),
       })
       if (!response.ok) {
@@ -1289,7 +1294,7 @@ GitController = {
       const gitInfo = await getGitInfo(projectId)
       const response = await fetch(`${GIT_SERVICE_URL}/create-branch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, newBranchName, gitInfo }),
       })
       if (!response.ok) {
@@ -1337,7 +1342,7 @@ GitController = {
       // Le service retire les fichiers supprimés du working tree puis fait git add .
       const response = await fetch(`${GIT_SERVICE_URL}/add-all`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
         body: JSON.stringify({ projectId, userId, deletedFiles }),
       })
       if (!response.ok) {
