@@ -552,25 +552,18 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
     fs.mkdirSync(repoPath)
   }
 
-  try {
-      const response = await fetch(`${GIT_SERVICE_URL}/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
-      })
-      if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
-      }
-      result = await response.json() 
-    } catch (err) {
-      return HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
-    }
+  // Déléguer le clone git au service (gitClone n'est pas un handler HTTP : on lève en cas d'erreur)
+  const response = await fetch(`${GIT_SERVICE_URL}/gitClone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(text || `git service clone failed: ${response.status}`)
+  }
 
-  // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
-    await disableBinaryConversion(repoPath)
-
-  
+  // Reconstruire le projet Overleaf depuis le working tree cloné, puis sauvegarder le lien git
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
   await saveGitLink(projectId, link, branch, token, tokenType)
 

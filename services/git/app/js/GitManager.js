@@ -372,35 +372,26 @@ export async function notStaged(projectId, userId) {
 }
 
 export async function gitClone(projectId, ownerId, link, branch, token, tokenType) {
-  const cloneOptions = ['--no-checkout']
-  const localGit = getGitForProject(projectId, ownerId)
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  await fs.ensureDir(repoPath)
 
+  // --no-checkout : cloner sans extraire les fichiers pour écrire les attributs binaires d'abord
+  const cloneOptions = ['--no-checkout']
   if (branch) cloneOptions.push('--branch', branch)
+
+  const newGit = () => simpleGit({ baseDir: DATA_PATH, config: ['core.autocrlf=false', 'core.eol=lf'] })
+
   if (token) {
     const authUrl = buildAuthenticatedUrl(link, token, tokenType)
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(authUrl, repoPath, cloneOptions)
-      console.log("Repository cloned via HTTPS token (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (token):', error)
-      throw error
-    }
+    await newGit().clone(authUrl, repoPath, cloneOptions)
+    console.log("Repository cloned via HTTPS token (no checkout)")
   } else {
-    const key = await getKey(ownerId, 'private')
-    const prevSSH = process.env.GIT_SSH_COMMAND
-    process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
-      console.log("Repository cloned via SSH (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (SSH):', error)
-      throw error
-    } finally {
-      if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
-      else delete process.env.GIT_SSH_COMMAND
-    }
+    await withSshKey(ownerId, () => newGit().clone(link, repoPath, cloneOptions))
+    console.log("Repository cloned via SSH (no checkout)")
   }
-  
-  await recheckoutHead(localGit)
+
+  // Écrire les attributs binaires AVANT le checkout pour éviter la corruption des binaires
+  await disableBinaryConversion(repoPath)
+  await recheckoutHead(getGitForProject(projectId, ownerId))
   console.log("Initial checkout done with binary attributes applied")
 }
