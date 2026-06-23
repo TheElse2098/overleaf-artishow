@@ -1335,22 +1335,25 @@ GitController = {
     }
   },
 
-  push(req, res) {
+  async push(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
+    const gitInfo = await getGitInfo(projectId)
     console.log("Pushing")
-    move(projectId, userId)
-    withRemoteAuth(projectId, userId, (remote, info) =>
-      git.push(remote, info?.branch || null)
-    )
-      .then(() => {
-        console.log('Push successful')
-        res.sendStatus(200)
-      })
-      .catch(error => {
-        console.error("Error:", error)
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
-      })
+    try {
+    const response = await fetch(`${GIT_SERVICE_URL}/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId, userId, gitInfo}),
+    })
+    if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+    }
+    res.sendStatus(200)
+    } catch (err) {
+    HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
   },
 
   // Route pour obtenir l'historique des commits
