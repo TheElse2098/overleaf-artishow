@@ -12,6 +12,7 @@ on:
       - git-as-service
       - admin-panel
       - ui-upgrade
+      - Fit-add
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
