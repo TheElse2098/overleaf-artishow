@@ -9,6 +9,7 @@ on:
       - git_compilation
       - overleaf
       - git-as-service
+      - admin-panel
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -64,6 +65,8 @@ jobs:
             TAG="overleaf"
           elif [ "$BRANCH_NAME" = "git-as-service" ]; then
             TAG="git-service"
+          elif [ "$BRANCH_NAME" = "admin-panel" ]; then
+            TAG="admin"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
