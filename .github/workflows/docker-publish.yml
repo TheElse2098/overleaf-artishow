@@ -130,8 +130,10 @@ jobs:
           - history-v1
           - chat
           - notifications
-          - references
           - real-time
+          # NB : "references" est volontairement exclu. Son Dockerfile (npm + node 20)
+          # attend un package-lock.json et un dossier patches/ à la racine, ce monorepo
+          # est en yarn → Dockerfile incompatible. À régénérer avant de l'ajouter.
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
