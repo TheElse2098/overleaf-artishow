@@ -30,6 +30,17 @@ const GIT_SERVICE_URL =
 const GIT_SERVICE_SECRET =
   process.env.GIT_SERVICE_SECRET || process.env.WEB_API_PASSWORD || 'password'
 
+// Le service git répond { error: "<message lisible>" } en cas d'échec. On en
+// extrait juste le message pour l'UI ; sinon on retombe sur le texte brut.
+async function gitServiceErrorMessage(response) {
+  const text = await response.text().catch(() => '')
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed.error === 'string') return parsed.error
+  } catch (_) {}
+  return text || `git service: ${response.status}`
+}
+
 // Valide un identifiant Mongo (24 caractères hexadécimaux)
 function isValidObjectId(id) {
   return typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)
@@ -553,8 +564,7 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
     body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
   })
   if (!response.ok) {
-    const text = await response.text().catch(() => '')
-    throw new Error(text || `git service clone failed: ${response.status}`)
+    throw new Error(await gitServiceErrorMessage(response))
   }
 
   // Reconstruire le projet Overleaf depuis le working tree cloné, puis sauvegarder le lien git
@@ -1059,8 +1069,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       result = await response.json() // { status: 'ok' | 'conflict' | 'stash-conflict', conflicts? }
     } catch (err) {
@@ -1152,8 +1162,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, filePath, deleted }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       // Suppression indexée avec succès : la retirer des suppressions en attente.
       if (deleted) {
@@ -1177,8 +1187,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, message: message.trim() }),
     })
     if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
     }
     res.sendStatus(200)
     } catch (err) {
@@ -1197,8 +1207,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       res.sendStatus(200)
     } catch (err) {
@@ -1243,8 +1253,7 @@ GitController = {
         body: JSON.stringify({ projectId, userId, commitHash }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return res.status(500).json({ success: false, error: text || `git service: ${response.status}` })
+        return res.status(500).json({ success: false, error: await gitServiceErrorMessage(response) })
       }
       // reset --hard a changé le working tree → reconstruire l'éditeur "from scratch"
       await rebuildProjectAfterRollback(projectPath, projectId, userId)
@@ -1359,8 +1368,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, ref: branchName, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       // Mémoriser la branche courante en base pour que push/pull ciblent la bonne branche
       const localBranch = branchName.startsWith('origin/') ? branchName.slice('origin/'.length) : branchName
@@ -1387,8 +1396,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, newBranchName, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       // checkoutLocalBranch bascule sur la nouvelle branche → la mémoriser en base
       await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': newBranchName } }).exec()
@@ -1435,8 +1444,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, deletedFiles }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        const message = await gitServiceErrorMessage(response)
+        return HttpErrorHandler.gitMethodError(req, res, message)
       }
       if (deletedFiles.length > 0) {
         await Project.updateOne({ _id: projectId }, { $set: { 'git.pendingDeletions': [] } }).catch(() => {})
