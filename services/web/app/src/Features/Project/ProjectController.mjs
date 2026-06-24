@@ -327,6 +327,17 @@ const _ProjectController = {
     const fromTemplate =
       (template === 'example' || template === 'from_template') && templateId
 
+    // Import git : on borne le lien SSH et le token pour éviter qu'un body
+    // énorme ne soit transmis au service git.
+    if (template === 'git') {
+      if ((projectName != null && projectName.length > 255) ||
+          (token != null && String(token).length > 255)) {
+        return res.status(400).json({
+          message: 'Le lien du dépôt ou le token est trop long (255 caractères maximum).',
+        })
+      }
+    }
+
     if (fromTemplate) {
       // Creating a project from a template duplicates an existing project by
       // id. "General" templates can be used by anyone; "Personnel" templates
@@ -341,15 +352,27 @@ const _ProjectController = {
       }
     }
 
-    const project = await (
-      fromTemplate
-        ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
-        : (template === 'example')
-          ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
-          : (template === 'git')
-            ? ProjectCreationHandler.promises.createGitProject(userId, projectName, null, token || null, tokenType || null)
-            : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
-    )
+    let project
+    try {
+      project = await (
+        fromTemplate
+          ? ProjectDuplicator.promises.duplicate(currentUser, templateId, projectName, [])
+          : (template === 'example')
+            ? ProjectCreationHandler.promises.createExampleProject(userId, projectName)
+            : (template === 'git')
+              ? ProjectCreationHandler.promises.createGitProject(userId, projectName, null, token || null, tokenType || null)
+              : ProjectCreationHandler.promises.createBasicProject(userId, projectName)
+      )
+    } catch (err) {
+      // Dépôt déjà lié à un autre projet : message explicite pour l'utilisateur
+      if (err && err.code === 'REMOTE_ALREADY_LINKED') {
+        return res.status(400).json({
+          message:
+            "Ce git est peut-être déjà utilisé, n'oubliez pas de vérifier vos projets mis dans la corbeille.",
+        })
+      }
+      throw err
+    }
 
     ProjectAuditLogHandler.addEntryIfManagedInBackground(
       project._id,
