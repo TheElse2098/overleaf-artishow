@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { postJSON } from '../../../infrastructure/fetch-json'
 import { GitNotif } from './GitFeedback'
 
+// Signale au file tree (autre arbre React) que l'état Git des fichiers a changé,
+// pour qu'il rafraîchisse les marqueurs "M". Voir git-modified-files.tsx.
+function notifyGitFilesChanged() {
+  window.dispatchEvent(new Event('git:files-changed'))
+}
+
 var BTN_BASE = {
   padding: '8px 14px',
   border: 'none',
@@ -113,6 +119,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       })
       setCommitMessage('')
       await onRefresh()
+      notifyGitFilesChanged()
       showNotif('success', 'Commit effectué avec succès.')
     } catch (err) {
       showNotif('error', 'Echec du commit : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
@@ -149,6 +156,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
         return next
       })
       await onRefresh()
+      notifyGitFilesChanged()
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
@@ -168,6 +176,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       }
       setSelected({})
       await onRefresh()
+      notifyGitFilesChanged()
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
@@ -183,6 +192,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       })
       setSelected({})
       await onRefresh()
+      notifyGitFilesChanged()
       showNotif('success', 'Tous les fichiers ont ete ajoutés au staging.')
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))

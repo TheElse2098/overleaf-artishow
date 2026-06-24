@@ -515,6 +515,30 @@
         right: 0;
       }
 
+      // Discreet "M" marker for files modified according to Git. Sits just left
+      // of the (absolutely positioned) action menu, vertically centred.
+      .file-tree-modified-badge {
+        position: absolute;
+        right: var(--spacing-06);
+        top: 0;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        font-size: var(--font-size-01);
+        font-weight: 700;
+        line-height: 1;
+        color: var(--content-secondary);
+        opacity: 0.7;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      // When the action menu is shown (selected row), shift the marker left so
+      // it doesn't sit under the menu button.
+      &.selected .file-tree-modified-badge {
+        right: var(--spacing-09);
+      }
+
       .rename-input {
         display: block;
         position: absolute;
