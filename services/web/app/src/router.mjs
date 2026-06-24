@@ -402,12 +402,24 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     ...gitWrite,
     GitController.pull
   )
+  
+  webRouter.post(
+    '/git-init',
+    AuthenticationController.requireLogin(),
+    GitController.init
+  )
 
   webRouter.post(
     '/git-commit',
     AuthenticationController.requireLogin(),
     ...gitWrite,
     GitController.commit
+  )
+
+  webRouter.post(
+    '/git-set-remote',
+    AuthenticationController.requireLogin(),
+    GitController.setRemote
   )
 
   webRouter.get(

@@ -772,6 +772,8 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
   await fs.ensureDir(repoPath)
 
   const alreadyRepo = await isGitRepo(projectId, ownerId)
+
+  
   if (alreadyRepo) {
     console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
     return { created: false, remoteLinked: false }
@@ -782,16 +784,17 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
     baseDir: repoPath,
     config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf']
   })
+
   await localGit.init()
   await localGit.addConfig('user.name', 'overleaf')
   await localGit.addConfig('user.email', 'overleaf@overleaf.com')
- 
+
   // Écrire les attributs binaires pour éviter toute conversion de fins de ligne
   await disableBinaryConversion(repoPath)
- 
+  
   // Commit initial vide pour que la branche existe
   await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
- 
+
   // Renommer la branche par défaut si besoin (git init crée "master" par défaut)
   try {
     await localGit.raw(['branch', '-M', defaultBranch])
@@ -804,6 +807,7 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
   // Lier le remote et pousser si une URL est fournie
   let remoteLinked = false
   if (remoteUrl) {
+    console.log(`debute le remote "origin" avec url ${repoPath} (branche: ${defaultBranch})`)
     await localGit.addRemote('origin', remoteUrl)
     console.log(`Remote "origin" configuré sur ${remoteUrl}`)
     try {
@@ -818,13 +822,74 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
       console.log(`Branche "${defaultBranch}" poussée sur origin`)
       remoteLinked = true
     } catch (pushErr) {
-      console.error('Push initial échoué (le remote est configuré mais pas synchronisé):', pushErr.message)
-      // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
+      console.error('Push initial échoué, tentative de merge avec le remote:', pushErr.message)
+      // Le remote n'est pas vide (ex: README créé sur GitHub) : on fusionne les historiques
+      try {
+        if (token) {
+          const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+          await localGit.raw(['pull', authUrl, defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+        } else {
+          await withSshKey(ownerId, async () => {
+            await localGit.raw(['pull', 'origin', defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+            await localGit.push(['-u', 'origin', defaultBranch])
+          })
+        }
+        console.log(`Branche "${defaultBranch}" synchronisée et poussée sur origin (merge unrelated histories)`)
+        remoteLinked = true
+      } catch (mergeErr) {
+        console.error('Push initial échoué après tentative de merge:', mergeErr.message)
+        // Le repo local reste valide, le lien remote est sauvegardé pour un push manuel ultérieur
+      }
     }
   }
 
   await saveGitLink(projectId, remoteUrl, defaultBranch, token, tokenType)
   return { created: true, remoteLinked }
+}
+
+// Lie un remote à un repo git local existant et tente un push initial.
+async function gitSetRemote(projectId, ownerId, remoteUrl, branch = 'main', token = null, tokenType = null) {
+  const repoPath = dataPath + projectId + '-' + ownerId
+  const localGit = simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
+
+  // Supprimer lancien remote sil existe
+  try { await localGit.removeRemote('origin') } catch (_) {}
+
+  await localGit.addRemote('origin', remoteUrl)
+  console.log(`Remote "origin" configuré sur ${remoteUrl}`)
+
+  let remoteLinked = false
+  try {
+    if (token) {
+      const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+      await localGit.push(authUrl, branch, ['--set-upstream'])
+    } else {
+      await withSshKey(ownerId, () => localGit.push(['-u', 'origin', branch]))
+    }
+    console.log(`Branche "${branch}" poussée sur origin`)
+    remoteLinked = true
+  } catch (pushErr) {
+    console.error('Push échoué, tentative merge unrelated histories:', pushErr.message)
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.raw(['pull', authUrl, branch, '--allow-unrelated-histories', '--no-rebase'])
+        await localGit.push(authUrl, branch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, async () => {
+          await localGit.raw(['pull', 'origin', branch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(['-u', 'origin', branch])
+        })
+      }
+      remoteLinked = true
+    } catch (mergeErr) {
+      console.error('Push échoué après merge:', mergeErr.message)
+    }
+  }
+
+  await saveGitLink(projectId, remoteUrl, branch, token, tokenType)
+  return { remoteLinked }
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -1113,10 +1178,47 @@ GitController = {
     }
   },
 
+  async setRemote(req, res) {
+    const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
+    if (!projectId || !userId || !remoteUrl) {
+      return res.status(400).json({ error: 'projectId, userId et remoteUrl sont requis.' })
+    }
+    const repoExists = await isGitRepo(projectId, userId)
+    if (!repoExists) {
+      return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
+    }
+    try {
+      const result = await gitSetRemote(projectId, userId, remoteUrl, branch, token, tokenType)
+      const message = result.remoteLinked
+        ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
+        : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué (vérifiez l'URL et les droits).`
+      return res.status(200).json({ ...result, message })
+    } catch (error) {
+      console.error('Erreur dans gitSetRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+
   async pull(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const projectPath = dataPath + projectId + "-" + userId
+
+
+    // Vérifier en amont si un repo git existe pour ce projet.
+    // Si non, on retourne un signal explicite au lieu de laisser getGitForProject crasher.
+    const repoExists = await isGitRepo(projectId, userId)
+    if (!repoExists) {
+      console.log(`Pas de repo git pour le projet ${projectId}, pull annulé.`)
+      return res.status(200).json({ notInitialized: true })
+    }
+
+    const gitInfo = await getGitInfo(projectId)
+    if (!gitInfo?.remoteUrl) {
+      console.log(`Repo git local sans remote pour le projet ${projectId}, pull annulé.`)
+      return res.status(200).json({ noRemote: true })
+    }
 
     console.log("Pulling")
     move(projectId, userId)
