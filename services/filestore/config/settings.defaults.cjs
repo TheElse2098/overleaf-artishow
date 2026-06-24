@@ -40,13 +40,6 @@ const settings = {
     // gcs - Google Cloud Storage
     backend: process.env.BACKEND,
 
-    // Store fs-backend files in nested sub-directories (a/b/hash) instead of
-    // flattened with underscores (a_b_hash). MUST match how the blobs are laid
-    // out on disk. The monolith (server-ce/config/production.json) sets this to
-    // true; keep it consistent here when BACKEND=fs serves history blobs,
-    // otherwise reads use sub-dirs while writes go flat → 404 on /history/.../hash.
-    useSubdirectories: process.env.USE_SUB_DIRECTORIES === 'true',
-
     gcs: {
       endpoint: process.env.GCS_API_ENDPOINT
         ? {
