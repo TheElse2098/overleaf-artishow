@@ -44,12 +44,12 @@ jobs:
           # NB : "references" est volontairement exclu. Son Dockerfile (npm + node 20)
           # attend un package-lock.json et un dossier patches/ à la racine, ce monorepo
           # est en yarn → Dockerfile incompatible. À régénérer avant de l'ajouter.
-        include:
-          # clsi DOIT embarquer TeXLive pour compiler (étape "with-texlive" du Dockerfile).
-          # Build lourd (image multi-Go, plus long) ; retire ce bloc pour revenir à
-          # l'étape légère "app" (sans compilation LaTeX).
-          - service: clsi
-            target: with-texlive
+          #
+          # NB : clsi est buildé en étape LÉGÈRE (target par défaut, sans TeXLive).
+          # Comme Overleaf en production, la compilation LaTeX est déléguée à des
+          # conteneurs texlive-full séparés (et non embarquée dans l'image clsi).
+          # L'étape "with-texlive" du Dockerfile auto-généré n'est PAS utilisable ici :
+          # son "apt-get install texlive-full" échoue sur la base node:24 (Debian Trixie).
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -80,7 +80,6 @@ jobs:
         with:
           context: .
           file: services/${{ matrix.service }}/Dockerfile
-          target: ${{ matrix.target }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ghcr.io/theelse2098/overleaf-artishow-${{ matrix.service }}:${{ env.TAG }}
