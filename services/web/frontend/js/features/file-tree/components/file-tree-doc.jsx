@@ -52,10 +52,6 @@ export const FileTreeIcon = ({ isLinkedFile, name }) => {
 
   return (
     <>
-      &nbsp;
-      <MaterialIcon type="open_in_new"
-          className="linked-file-highlight"
-          accessibilityLabel="Modified file"/>
       <MaterialIcon type={iconTypeFromName(name)} fw className={className} />
       {isLinkedFile && (
         <MaterialIcon

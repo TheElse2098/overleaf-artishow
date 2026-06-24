@@ -19,6 +19,7 @@ import { useDragLayer } from 'react-dnd'
 import classnames from 'classnames'
 import { pathInFolder } from '@/features/file-tree/util/path'
 import { FileTreeFindResult } from '@/features/ide-react/types/file-tree'
+import { GitModifiedFilesProvider } from '../contexts/git-modified-files'
 
 const FileTreeRoot = React.memo<{
   onSelect: () => void
@@ -98,11 +99,13 @@ const FileTreeRoot = React.memo<{
           fileTreeContainer={fileTreeContainer}
         >
           {isConnected ? null : <div className="disconnected-overlay" />}
-          <FileTreeToolbar />
-          <FileTreeContextMenu />
-          <FileTreeInner>
-            <FileTreeRootFolder onDelete={onDelete} />
-          </FileTreeInner>
+          <GitModifiedFilesProvider>
+            <FileTreeToolbar />
+            <FileTreeContextMenu />
+            <FileTreeInner>
+              <FileTreeRootFolder onDelete={onDelete} />
+            </FileTreeInner>
+          </GitModifiedFilesProvider>
           <FileTreeModalDelete />
           <FileTreeModalCreateFile />
           <FileTreeModalCreateFolder />

@@ -1,8 +1,27 @@
+// Couleurs pilotées par les variables --git-* de la modale Git (dark mode).
+// Le fallback garde la palette claire d'origine quand ces variables ne sont pas
+// définies (ex. notif rendue hors de la modale, dans GitPullButton).
 var PALETTE = {
-  success: { bg: '#d4edda', border: '#c3e6cb', text: '#155724' },
-  error:   { bg: '#f8d7da', border: '#f5c6cb', text: '#721c24' },
-  warning: { bg: '#fff3cd', border: '#ffeeba', text: '#856404' },
-  info:    { bg: '#d1ecf1', border: '#bee5eb', text: '#0c5460' },
+  success: {
+    bg: 'var(--git-success-bg, #d4edda)',
+    border: 'var(--git-success-border, #c3e6cb)',
+    text: 'var(--git-success-text, #155724)',
+  },
+  error: {
+    bg: 'var(--git-danger-bg, #f8d7da)',
+    border: 'var(--git-danger-border, #f5c6cb)',
+    text: 'var(--git-danger-text, #721c24)',
+  },
+  warning: {
+    bg: 'var(--git-warning-bg, #fff3cd)',
+    border: 'var(--git-warning-border, #ffeeba)',
+    text: 'var(--git-warning-text, #856404)',
+  },
+  info: {
+    bg: 'var(--git-info-bg, #d1ecf1)',
+    border: 'var(--git-info-border, #bee5eb)',
+    text: 'var(--git-info-text, #0c5460)',
+  },
 }
 
 export function GitNotif({ type, message, onDismiss }) {
@@ -53,15 +72,15 @@ export function GitConfirm({ message, detail, onConfirm, onCancel, confirmLabel,
         padding: '12px 14px',
         marginTop: '12px',
         borderRadius: '5px',
-        backgroundColor: '#fff8e1',
-        border: '1px solid #ffe082',
+        backgroundColor: 'var(--git-warning-bg, #fff8e1)',
+        border: '1px solid var(--git-warning-border, #ffe082)',
       }}
     >
-      <div style={{ color: '#5d4037', fontWeight: '500', marginBottom: '6px', fontSize: '13px' }}>
+      <div style={{ color: 'var(--git-warning-text, #5d4037)', fontWeight: '500', marginBottom: '6px', fontSize: '13px' }}>
         {message}
       </div>
       {detail && (
-        <div style={{ color: '#6d4c41', fontSize: '12px', marginBottom: '12px', lineHeight: '1.5' }}>
+        <div style={{ color: 'var(--git-warning-text, #6d4c41)', fontSize: '12px', marginBottom: '12px', lineHeight: '1.5' }}>
           {detail}
         </div>
       )}
