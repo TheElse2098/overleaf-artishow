@@ -69,6 +69,9 @@ services:
 
       # ENABLE_CRON_RESOURCE_DELETION: true
 
+      # Nightly recompute of the admin "User Statistics" page snapshot.
+      # ENABLE_CRON_USER_STATS: true
+
       ################
       ## Server Pro ##
       ################

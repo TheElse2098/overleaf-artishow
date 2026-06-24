@@ -90,7 +90,6 @@ jobs:
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
-      
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       
           echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"

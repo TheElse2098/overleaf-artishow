@@ -1100,6 +1100,7 @@ module.exports = {
     'launchpad',
     'server-ce-scripts',
     'user-activate',
+    'admin-user-stats',
     'symbol-palette',
     'sandboxed-compiles',
     'track-changes',
