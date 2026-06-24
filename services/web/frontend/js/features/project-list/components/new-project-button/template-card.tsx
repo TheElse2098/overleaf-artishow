@@ -94,21 +94,21 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
         <h5 className="card-title">{template.name}</h5>
         
         {template.description && (
-          <p className="card-text text-muted small flex-grow-1">
+          <p className="card-text small flex-grow-1 template-card-description">
             {template.description}
           </p>
         )}
-        
+
         {template.category && (
           <div className="mb-2">
-            <span className="badge badge-secondary">{template.category}</span>
+            <span className="template-card-category">{template.category}</span>
           </div>
         )}
-        
+
         {template.tags && template.tags.length > 0 && (
           <div className="template-tags mb-2">
             {template.tags.map(tag => (
-              <span key={tag} className="badge badge-light mr-1">
+              <span key={tag} className="template-card-tag">
                 {tag}
               </span>
             ))}

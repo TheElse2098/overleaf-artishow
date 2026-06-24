@@ -779,3 +779,263 @@ form.project-search {
     inset: 0;
   }
 }
+
+// "Import from template" modal — higher-contrast, theme-aware cards.
+// The default Bootstrap-4 badge/`text-muted` classes were broken in BS5 and
+// did not adapt to dark mode; these styles use the design-system tokens so the
+// modal looks right in both light and dark themes.
+#import-from-template-modal {
+  .templates-list .text-muted {
+    color: var(--content-secondary);
+  }
+
+  .template-card {
+    background-color: var(--white);
+    border: 1px solid var(--border-divider);
+    border-radius: var(--border-radius-base);
+    transition:
+      border-color 0.15s ease-in-out,
+      box-shadow 0.15s ease-in-out;
+
+    &:hover {
+      border-color: var(--border-active);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+    }
+
+    .card-title {
+      color: var(--content-primary);
+      font-weight: 600;
+    }
+
+    .template-card-description {
+      color: var(--content-secondary);
+    }
+
+    .template-card-category,
+    .template-card-tag {
+      display: inline-block;
+      padding: var(--spacing-01) var(--spacing-03);
+      border-radius: 50rem;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .template-card-category {
+      font-weight: 600;
+      background-color: var(--neutral-20);
+      color: var(--content-primary);
+    }
+
+    .template-card-tag {
+      margin-right: var(--spacing-02);
+      background-color: var(--neutral-10);
+      color: var(--content-secondary);
+    }
+  }
+}
+
+@include theme('default') {
+  #import-from-template-modal {
+    .templates-list .text-muted {
+      color: var(--content-secondary-dark);
+    }
+
+    .template-card {
+      background-color: var(--bg-dark-secondary);
+      border-color: var(--border-divider-dark);
+
+      &:hover {
+        border-color: var(--border-active-dark);
+        box-shadow: 0 2px 8px rgb(0 0 0 / 40%);
+      }
+
+      .card-title {
+        color: var(--content-primary-dark);
+      }
+
+      .template-card-description {
+        color: var(--content-secondary-dark);
+      }
+
+      .template-card-category {
+        background-color: var(--neutral-70);
+        color: var(--content-primary-dark);
+      }
+
+      .template-card-tag {
+        background-color: var(--neutral-80);
+        color: var(--content-secondary-dark);
+      }
+    }
+  }
+}
+
+// Copy and template bookmark buttons are hidden until the user hovers over the
+// row. :focus-within ensures keyboard navigation keeps them visible.
+.project-dash-table {
+  tbody tr:not(:hover):not(:focus-within) {
+    .hover-only-action-btn {
+      visibility: hidden;
+    }
+  }
+}
+
+// Git import form helper text. Light value matches the previous inline `gray`;
+// the dark override lives in the dashboard dark block below.
+#git-project-modal .git-form-hint {
+  color: var(--content-secondary);
+}
+
+// Dark "version" of the project-dashboard modals. Upstream deliberately forces
+// every modal to the light theme (see components/modal.scss: "Until we add a
+// dark modal version…"); this provides that dark version, but scoped to the
+// dashboard via :has(#project-list-root) so editor/other modals are untouched.
+body[data-theme='default']:has(#project-list-root) {
+  .modal {
+    @include dark-dropdown-menu;
+    @include form-check-dark;
+    @include dark-notification;
+    @include dark-input;
+    @include dark-buttons;
+
+    // Inputs one shade lighter than the modal base so they read as surfaces.
+    --input-field-bg: var(--bg-dark-secondary);
+  }
+
+  .modal-content {
+    background-color: var(--bg-dark-primary);
+    color: var(--content-primary-dark);
+    border: 1px solid var(--border-divider-dark);
+
+    .modal-header {
+      border-bottom-color: var(--border-divider-dark);
+    }
+
+    .modal-title {
+      color: var(--content-primary-dark);
+    }
+
+    .modal-footer {
+      border-top-color: var(--border-divider-dark);
+    }
+
+    // The close (×) glyph is a dark SVG by default — invert it to stay visible.
+    .btn-close {
+      filter: invert(1) grayscale(1);
+    }
+
+    // The design-system's dark-input mixin only wires up CSS variables for
+    // [type='text'] and [type='search']. Apply the same tokens to the other
+    // input types and native <select> elements used in our modals.
+    select.form-control,
+    input.form-control[type='password'],
+    input.form-control[type='email'],
+    input.form-control[type='url'],
+    input.form-control[type='number'] {
+      color: var(--input-field-color);
+      background-color: var(--input-field-bg);
+      border-color: var(--input-field-border-color);
+
+      &::placeholder {
+        color: var(--input-placeholder-content);
+      }
+
+      &:focus,
+      &:focus-visible {
+        color: var(--input-field-color);
+        background-color: var(--input-field-bg);
+        border-color: var(--input-border-hover);
+      }
+    }
+
+    // Browser autofill overrides our background-color — the only reliable fix
+    // is a large inset box-shadow that "paints over" the browser's yellow/blue
+    // autofill tint. Covers all input types including [type='text'].
+    input.form-control {
+      &:-webkit-autofill,
+      &:-webkit-autofill:hover,
+      &:-webkit-autofill:focus,
+      &:-webkit-autofill:active {
+        -webkit-text-fill-color: var(--input-field-color);
+        // stylelint-disable-next-line property-no-vendor-prefix
+        -webkit-box-shadow: 0 0 0 1000px var(--input-field-bg) inset;
+        box-shadow: 0 0 0 1000px var(--input-field-bg) inset;
+        border-color: var(--input-field-border-color);
+      }
+    }
+
+    // Labels and helper text that use inline `color: gray` or text-muted
+    label,
+    .git-form-hint {
+      color: var(--content-secondary-dark);
+    }
+
+    // Separators and inline <code> snippets (e.g. the git import form)
+    hr {
+      border-top-color: var(--border-divider-dark);
+      opacity: 1;
+    }
+
+    code {
+      background-color: var(--bg-dark-tertiary);
+      color: var(--content-primary-dark);
+    }
+
+    // react-bootstrap Alerts (bsStyle="success"/"danger") used in the git modal.
+    // Keep the semantic hue but on a dark, readable surface.
+    .alert {
+      border-width: 1px;
+      border-style: solid;
+    }
+
+    .alert-success {
+      background-color: var(--green-70);
+      border-color: var(--green-50);
+      color: var(--content-primary-dark);
+
+      a {
+        color: var(--content-positive-dark);
+      }
+    }
+
+    .alert-danger {
+      background-color: var(--red-70);
+      border-color: var(--red-50);
+      color: var(--content-primary-dark);
+
+      a {
+        color: var(--content-danger-dark);
+      }
+    }
+  }
+
+  // Uppy "Upload Zipped Project" dropzone — override Uppy's built-in light theme.
+  .uppy-Dashboard-inner {
+    background-color: var(--bg-dark-secondary);
+    border-color: var(--border-divider-dark);
+  }
+
+  .uppy-Dashboard-AddFiles {
+    background-color: var(--bg-dark-secondary);
+
+    .uppy-Dashboard-AddFiles-title {
+      color: var(--content-primary-dark);
+    }
+
+    .uppy-Dashboard-AddFiles-info {
+      color: var(--content-secondary-dark);
+    }
+
+    // Dashed drop-target border
+    .uppy-Dashboard-dropFilesHereHint {
+      color: var(--content-secondary-dark);
+      border-color: var(--border-divider-dark);
+    }
+  }
+
+  // Uppy note text ("or drag a .zip file")
+  .uppy-DashboardTab-name,
+  .uppy-Dashboard-note {
+    color: var(--content-secondary-dark);
+  }
+}

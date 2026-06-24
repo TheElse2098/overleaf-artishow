@@ -37,6 +37,20 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
         <MaterialIcon type="more_vert" accessibilityLabel={t('actions')} />
       </DropdownToggle>
       <DropdownMenu flip={false}>
+        <TemplateProjectButton project={project}>
+          {(text, handleOpenModal) => (
+            <li role="none">
+              <DropdownItem
+                as="button"
+                tabIndex={-1}
+                onClick={handleOpenModal}
+                leadingIcon="bookmark"
+              >
+                {text}
+              </DropdownItem>
+            </li>
+          )}
+        </TemplateProjectButton>
         <RenameProjectButton project={project}>
           {(text, handleOpenModal) => (
             <li role="none">
@@ -189,20 +203,6 @@ function ActionsDropdown({ project }: ActionDropdownProps) {
             </li>
           )}
         </DeleteProjectButton>
-        <TemplateProjectButton project={project}>
-          {(text, handleOpenModal) => (
-            <li role="none">
-              <DropdownItem
-                as="button"
-                tabIndex={-1}
-                onClick={handleOpenModal}
-                leadingIcon="bookmark"
-              >
-                {text}
-              </DropdownItem>
-            </li>
-          )}
-        </TemplateProjectButton>
       </DropdownMenu>
     </Dropdown>
   )

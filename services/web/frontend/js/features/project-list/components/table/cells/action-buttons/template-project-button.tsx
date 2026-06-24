@@ -149,22 +149,24 @@ const TemplateProjectButtonTooltip = memo(function TemplateProjectButtonTooltip(
   return (
     <TemplateProjectButton project={project}>
       {(_, handleOpenModal) => (
-        <OLTooltip
-          key={`tooltip-template-project-${project.id}`}
-          id={`template-project-${project.id}`}
-          description={text}
-          overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
-        >
-          <span>
-            <OLIconButton
-              onClick={handleOpenModal}
-              variant="link"
-              accessibilityLabel={text}
-              className="action-btn"
-              icon="bookmark"
-            />
-          </span>
-        </OLTooltip>
+        <span className="hover-only-action-btn">
+          <OLTooltip
+            key={`tooltip-template-project-${project.id}`}
+            id={`template-project-${project.id}`}
+            description={text}
+            overlayProps={{ placement: 'top', trigger: ['hover', 'focus'] }}
+          >
+            <span>
+              <OLIconButton
+                onClick={handleOpenModal}
+                variant="link"
+                accessibilityLabel={text}
+                className="action-btn"
+                icon="bookmark"
+              />
+            </span>
+          </OLTooltip>
+        </span>
       )}
     </TemplateProjectButton>
   )
