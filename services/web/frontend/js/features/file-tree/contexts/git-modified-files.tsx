@@ -4,12 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   FC,
 } from 'react'
 import { useProjectContext } from '@/shared/context/project-context'
 import { useUserContext } from '@/shared/context/user-context'
 import { useFileTreeData } from '@/shared/context/file-tree-data-context'
+import { useDetachCompileContext } from '@/shared/context/detach-compile-context'
 import { getJSON } from '@/infrastructure/fetch-json'
 import { findEntityByPath } from '../util/path'
 
@@ -18,6 +20,10 @@ import { findEntityByPath } from '../util/path'
  * shows as "not staged"), exposed as a Set of entity IDs so the file tree can
  * cheaply flag each row. The backend returns relative paths, which we resolve
  * to entity IDs against the current tree.
+ *
+ * Everything is gated on the project actually having a linked Git remote
+ * (queried once via /git-info): on non-Git projects we never query or show
+ * markers.
  */
 type GitModifiedFilesContextValue = {
   modifiedFileIds: Set<string>
@@ -32,38 +38,72 @@ export const GitModifiedFilesProvider: FC = ({ children }) => {
   const { projectId } = useProjectContext()
   const { id: userId } = useUserContext()
   const { fileTreeData } = useFileTreeData()
+  const { compiling } = useDetachCompileContext()
   const [modifiedPaths, setModifiedPaths] = useState<string[]>([])
+  // null = not yet known, true/false once /git-info answered.
+  const [isGitLinked, setIsGitLinked] = useState<boolean | null>(null)
+
+  // Determine once whether the project is linked to a Git remote.
+  useEffect(() => {
+    if (!projectId || !userId) return
+    let cancelled = false
+    getJSON(`/git-info?projectId=${projectId}`)
+      .then((info: { remoteUrl?: string | null }) => {
+        if (!cancelled) setIsGitLinked(Boolean(info?.remoteUrl))
+      })
+      .catch(() => {
+        if (!cancelled) setIsGitLinked(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [projectId, userId])
 
   const refreshModifiedFiles = useCallback(() => {
-    if (!projectId || !userId) return
+    // Never query the git service for non-Git projects.
+    if (!projectId || !userId || !isGitLinked) {
+      setModifiedPaths([])
+      return
+    }
     getJSON(`/git-notstaged?projectId=${projectId}&userId=${userId}`)
       .then((res: { notStaged?: string[]; deleted?: string[] }) => {
         setModifiedPaths([...(res?.notStaged || []), ...(res?.deleted || [])])
       })
       .catch(() => {
-        // Not a git project, or git service unavailable: just show no markers.
+        // Git service unavailable: just show no markers.
         setModifiedPaths([])
       })
-  }, [projectId, userId])
+  }, [projectId, userId, isGitLinked])
 
-  // Load once when the tree is ready.
+  // Load once we know the project is Git-linked.
   useEffect(() => {
-    refreshModifiedFiles()
-  }, [refreshModifiedFiles])
+    if (isGitLinked) refreshModifiedFiles()
+  }, [isGitLinked, refreshModifiedFiles])
 
   // The Git menu (commit/push) lives in a separate React tree, so it signals
   // changes via a window event rather than through this context.
   useEffect(() => {
+    if (!isGitLinked) return
     window.addEventListener('git:files-changed', refreshModifiedFiles)
     return () =>
       window.removeEventListener('git:files-changed', refreshModifiedFiles)
-  }, [refreshModifiedFiles])
+  }, [isGitLinked, refreshModifiedFiles])
+
+  // Refresh on every finished compilation (compiling goes true -> false): the
+  // user has likely just edited files, so the Git status may have changed.
+  const wasCompiling = useRef(false)
+  useEffect(() => {
+    if (wasCompiling.current && !compiling && isGitLinked) {
+      refreshModifiedFiles()
+    }
+    wasCompiling.current = compiling
+  }, [compiling, isGitLinked, refreshModifiedFiles])
 
   // Resolve paths -> entity IDs against the current tree. Recomputed when either
   // the modified list or the tree changes (e.g. a file is added/renamed).
   const modifiedFileIds = useMemo(() => {
     const ids = new Set<string>()
-    if (!fileTreeData) return ids
+    if (!isGitLinked || !fileTreeData) return ids
     for (const path of modifiedPaths) {
       const found = findEntityByPath(fileTreeData, path)
       if (found && found.type !== 'folder') {
@@ -71,7 +111,7 @@ export const GitModifiedFilesProvider: FC = ({ children }) => {
       }
     }
     return ids
-  }, [modifiedPaths, fileTreeData])
+  }, [isGitLinked, modifiedPaths, fileTreeData])
 
   const value = useMemo(
     () => ({ modifiedFileIds, refreshModifiedFiles }),

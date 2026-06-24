@@ -533,10 +533,13 @@
         user-select: none;
       }
 
-      // When the action menu is shown (selected row), shift the marker left so
-      // it doesn't sit under the menu button.
+      // On a selected row: shift the marker left so it doesn't sit under the
+      // action menu, and inherit the selected row's text colour so it stays
+      // legible on the coloured/dark selection background.
       &.selected .file-tree-modified-badge {
         right: var(--spacing-09);
+        color: var(--file-tree-item-selected-color);
+        opacity: 0.85;
       }
 
       .rename-input {
