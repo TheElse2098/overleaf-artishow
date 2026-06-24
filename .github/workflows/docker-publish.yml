@@ -4,14 +4,7 @@ on:
   push:
     branches:
       - main
-      - git_integration
-      - template_integration
-      - git_compilation
-      - overleaf
-      - ginit_ui
       - git-as-service
-      - admin-panel
-      - ui-upgrade
       - k8s
     tags: [ 'v*.*.*' ]
   pull_request:
@@ -19,97 +12,14 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
-
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Login into ${{ env.REGISTRY }}
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build container
-        run: |
-          export GITHUB_RUN_ID=${{ github.run_id }}
-          echo ${DOCKER_CONFIG}
-          cd server-ce/
-          make build-base
-          make build-community
-
-      - name: List Docker images
-        run: docker images
-
-      - name: Set image tag based on branch
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-      
-          if [ "$BRANCH_NAME" = "main" ]; then
-            TAG="latest"
-          elif [ "$BRANCH_NAME" = "git_integration" ]; then
-            TAG="git"
-          elif [ "$BRANCH_NAME" = "template_integration" ]; then
-            TAG="template"
-          elif [ "$BRANCH_NAME" = "git_compilation" ]; then
-            TAG="git-compilation"
-          elif [ "$BRANCH_NAME" = "overleaf" ]; then
-            TAG="overleaf"
-          elif [ "$BRANCH_NAME" = "ginit_ui" ]; then
-            TAG="ginit_ui"
-          elif [ "$BRANCH_NAME" = "git-as-service" ]; then
-            TAG="git-service"
-          elif [ "$BRANCH_NAME" = "admin-panel" ]; then
-            TAG="admin"
-          elif [ "$BRANCH_NAME" = "ui-upgrade" ]; then
-            TAG="ui-upgrade"
-          else
-            CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
-            TAG=$CLEAN_BRANCH
-          fi
-      
-          echo "TAG=$TAG" >> $GITHUB_ENV
-  
-
-      - name: Publish
-        run: |
-          set -e
-      
-          ghcr_registry="ghcr.io/theelse2098/overleaf-artishow"
-      
-          echo "Using TAG=$TAG"
-      
-          docker images
-      
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
-          SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
-      
-          echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"
-      
-          docker tag $SOURCE_IMAGE ${ghcr_registry}:${TAG}
-          docker tag $SOURCE_IMAGE ${ghcr_registry}:${{ github.sha }}
-      
-          docker push ${ghcr_registry}:${TAG}
-
   # ---------------------------------------------------------------------------
   # Images PAR SERVICE (déploiement Kubernetes microservices).
   # Construit chaque services/<svc>/Dockerfile et le pousse en
   # ghcr.io/theelse2098/overleaf-artishow-<svc>:<TAG>.
-  # Le monolithe (job "build" ci-dessus) reste produit pour l'Overleaf Toolkit.
-  # NB : build assez lourd (12 images, dont web/webpack). Ajoute un filtre de
-  # branche si besoin de limiter la conso CI.
+  # NB : build assez lourd (web/webpack). Ajoute/retire des branches ci-dessus
+  # pour maîtriser la conso CI.
   # ---------------------------------------------------------------------------
   build-services:
     runs-on: ubuntu-latest
