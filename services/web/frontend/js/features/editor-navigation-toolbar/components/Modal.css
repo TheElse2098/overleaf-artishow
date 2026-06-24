@@ -172,6 +172,32 @@
   font-weight: 600;
 }
 
+/*
+ * Documentation tab: h4/h5/p/li/strong/em have no inline colour and otherwise
+ * fall back to a dark user-agent/Bootstrap colour, which is invisible on the
+ * dark background. Force them to inherit the menu text colour.
+ */
+.modal-content h4,
+.modal-content h5,
+.modal-content h6,
+.modal-content p,
+.modal-content ul,
+.modal-content ol,
+.modal-content li,
+.modal-content strong,
+.modal-content em {
+  color: var(--git-text);
+}
+
+.modal-content code {
+  color: var(--git-text-strong);
+  background-color: var(--git-surface-alt);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
 .modal-content label {
   display: block;
   margin-bottom: 5px;
