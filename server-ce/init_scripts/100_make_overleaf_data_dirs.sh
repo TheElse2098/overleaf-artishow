@@ -43,3 +43,11 @@ chown www-data:www-data /var/lib/overleaf/tmp/uploads
 
 mkdir -p /var/lib/overleaf/tmp/dumpFolder
 chown www-data:www-data /var/lib/overleaf/tmp/dumpFolder
+
+# git init
+
+mkdir -p /var/www/.ssh
+ssh-keyscan github.com >> /var/www/.ssh/known_hosts
+chown -R www-data:www-data /var/www/.ssh
+chmod 700 /var/www/.ssh
+chmod 644 /var/www/.ssh/known_hosts
