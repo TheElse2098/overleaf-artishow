@@ -65,8 +65,10 @@ def parse_args():
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--mongo-url",
                    default=os.environ.get("MONGO_URL",
-                                          "mongodb://localhost:27017/sharelatex"),
-                   help="Mongo connection string (default: $MONGO_URL or localhost)")
+                                          "mongodb://mongo/sharelatex"),
+                   help="Mongo connection string (default: $MONGO_URL, else "
+                        "mongodb://mongo/sharelatex — the host inside the "
+                        "Overleaf container network)")
     p.add_argument("--target-gb", type=float, default=10.0,
                    help="Total doc content to create, in GB (default: 10)")
     p.add_argument("--users", type=int, default=500,
@@ -119,7 +121,18 @@ def human(n):
 
 def connect(mongo_url):
     MongoClient, _, _ = _require_pymongo()
-    client = MongoClient(mongo_url)
+    # Fail fast with a short timeout instead of preparing ~5000 ops and only
+    # discovering 30s later (mid-insert) that the host is wrong.
+    client = MongoClient(mongo_url, serverSelectionTimeoutMS=5000)
+    try:
+        client.admin.command("ping")
+    except Exception as err:
+        sys.exit(
+            f"Cannot reach Mongo at {mongo_url!r}: {err}\n"
+            "From inside an Overleaf container, Mongo is the host 'mongo', not "
+            "localhost. Pass --mongo-url mongodb://mongo/sharelatex (or set "
+            "MONGO_URL)."
+        )
     db = client.get_default_database()
     if db is None:
         db = client["sharelatex"]
