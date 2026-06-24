@@ -345,7 +345,7 @@ export async function getCommitHistory(projectId, userId, limit = 10) {
 export async function getBranches(projectId, userId, gitInfo) {
   const git = getGitForProject(projectId, userId)
   return withRemoteAuth(git, userId, gitInfo, async remote => {
-    await git.fetch(remote)
+    await git.fetch(remote, ['+refs/heads/*:refs/remotes/origin/*', '--prune'])
     const branches = await git.branch(['-r'])
     return branches.all
   })
