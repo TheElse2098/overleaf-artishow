@@ -49,9 +49,22 @@ COPY services/clsi/ /overleaf/services/clsi/
 
 FROM app AS with-texlive
 
+# NB (fork Artishow) : divergence ASSUMÉE par rapport au Dockerfile auto-généré.
+# L'upstream installait TeXLive via
+#   apt-cache depends texlive-full | grep Depends | ... | xargs apt-get install
+# Cette tuyauterie échoue sur la base node:24 (Debian Bookworm) : la liste générée
+# contient des paquets virtuels/alternatives qu'apt-get ne résout pas, un paquet
+# échoue et xargs renvoie 123 (→ "dpkg returned an error code (1)").
+# On installe donc texlive-full directement : apt résout l'arbre de dépendances
+# proprement. Image plus lourde mais build fiable.
+# Si bin/update_build_scripts est un jour relancé, REPORTER ce correctif.
 RUN apt-get update \
-    && apt-cache depends texlive-full | grep "Depends: " | grep -v -- "-doc" | grep -v -- "-lang-" | sed 's/Depends: //' | xargs apt-get install -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends fontconfig inkscape python3-pygments qpdf \
+    && apt-get install -y --no-install-recommends \
+        texlive-full \
+        fontconfig \
+        inkscape \
+        python3-pygments \
+        qpdf \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p cache compiles output \
