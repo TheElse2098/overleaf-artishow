@@ -1,0 +1,2 @@
+15 3 * * 1-6  root  /overleaf/cron/recompute-user-stats.sh >> /var/log/overleaf/cron-recompute-user-stats.log 2>&1
+0 4 * * 0     root  /overleaf/cron/recompute-user-stats.sh --full >> /var/log/overleaf/cron-recompute-user-stats.log 2>&1
