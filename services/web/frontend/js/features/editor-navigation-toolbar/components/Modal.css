@@ -39,6 +39,25 @@
   --git-info-bg: #f0f8ff;
   --git-info-border: #bee3f8;
   --git-info-text: #2c5282;
+
+  /* Success box (green) */
+  --git-success-bg: #d4edda;
+  --git-success-border: #c3e6cb;
+  --git-success-text: #155724;
+
+  /* Danger / deleted (red) */
+  --git-danger-bg: #ffebee;
+  --git-danger-border: #ef9a9a;
+  --git-danger-text: #c62828;
+  --git-danger-row-bg: #fff5f5;
+
+  /* Add pill (green, lighter than accent) */
+  --git-add-text-strong: #2e7d32;
+
+  /* Active branch badge (blue) */
+  --git-badge-bg: #e3f2fd;
+  --git-badge-border: #90caf9;
+  --git-badge-text: #1976d2;
 }
 
 .modal-content.git-menu-dark {
@@ -69,6 +88,25 @@
   --git-info-bg: #1c2a3a;
   --git-info-border: #2c4866;
   --git-info-text: #9ec5f0;
+
+  /* Success box (green) — darker surfaces, light text */
+  --git-success-bg: #18331f;
+  --git-success-border: #2c5e38;
+  --git-success-text: #8fd89a;
+
+  /* Danger / deleted (red) */
+  --git-danger-bg: #3a1f22;
+  --git-danger-border: #6e3036;
+  --git-danger-text: #f08a8a;
+  --git-danger-row-bg: #2e1c1f;
+
+  /* Add pill (green) */
+  --git-add-text-strong: #7fce85;
+
+  /* Active branch badge (blue) */
+  --git-badge-bg: #1e2f44;
+  --git-badge-border: #2f5180;
+  --git-badge-text: #7db4f0;
 }
 
 .modal-overlay {

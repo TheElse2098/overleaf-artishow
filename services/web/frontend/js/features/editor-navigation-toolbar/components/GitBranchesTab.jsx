@@ -160,9 +160,9 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
                     <span
                       style={{
                         fontSize: '11px',
-                        color: '#1976d2',
-                        backgroundColor: '#e3f2fd',
-                        border: '1px solid #90caf9',
+                        color: 'var(--git-badge-text)',
+                        backgroundColor: 'var(--git-badge-bg)',
+                        border: '1px solid var(--git-badge-border)',
                         borderRadius: '10px',
                         padding: '1px 7px',
                       }}

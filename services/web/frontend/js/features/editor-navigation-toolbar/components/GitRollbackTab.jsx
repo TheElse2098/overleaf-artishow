@@ -87,7 +87,7 @@ function GitRollbackTab({ projectId, userId, commitHistory, onClose }) {
                     backgroundColor: isSelected ? 'var(--git-selected-bg)' : 'var(--git-surface)',
                   }}
                 >
-                  <div style={{ fontWeight: 'bold', color: '#007bff', fontSize: '12px', fontFamily: 'monospace' }}>
+                  <div style={{ fontWeight: 'bold', color: 'var(--git-accent-blue)', fontSize: '12px', fontFamily: 'monospace' }}>
                     {commit.hash.substring(0, 7)}
                   </div>
                   <div style={{ color: 'var(--git-text-strong)', marginTop: '4px', fontWeight: '500', fontSize: '13px' }}>

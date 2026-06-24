@@ -114,9 +114,9 @@ function GitTokenTab({ projectId }) {
           padding: '10px 14px',
           marginBottom: '20px',
           borderRadius: '5px',
-          backgroundColor: hasExistingToken ? '#d4edda' : '#fff3cd',
-          border: '1px solid ' + (hasExistingToken ? '#c3e6cb' : '#ffeeba'),
-          color: hasExistingToken ? '#155724' : '#856404',
+          backgroundColor: hasExistingToken ? 'var(--git-success-bg)' : 'var(--git-warning-bg)',
+          border: '1px solid ' + (hasExistingToken ? 'var(--git-success-border)' : 'var(--git-warning-border)'),
+          color: hasExistingToken ? 'var(--git-success-text)' : 'var(--git-warning-text)',
         }}
       >
         {hasExistingToken ? (

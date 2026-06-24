@@ -27,7 +27,7 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
         gap: '8px',
         padding: '5px 6px',
         borderRadius: '4px',
-        backgroundColor: checked ? '#f0faf0' : 'transparent',
+        backgroundColor: checked ? 'var(--git-row-checked-bg)' : 'transparent',
         marginBottom: '2px',
       }}
     >
@@ -47,9 +47,9 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
         style={Object.assign({}, BTN_BASE, {
           padding: '3px 8px',
           fontSize: '12px',
-          backgroundColor: isAdding ? '#ccc' : '#e8f5e9',
-          color: '#2e7d32',
-          border: '1px solid #a5d6a7',
+          backgroundColor: isAdding ? '#ccc' : 'var(--git-add-bg)',
+          color: 'var(--git-add-text)',
+          border: '1px solid var(--git-add-border)',
           cursor: isAdding ? 'not-allowed' : 'pointer',
           fontWeight: '400',
           flexShrink: 0,
@@ -329,7 +329,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     gap: '8px',
                     padding: '5px 6px',
                     borderRadius: '4px',
-                    backgroundColor: selected[file] ? '#fff5f5' : 'transparent',
+                    backgroundColor: selected[file] ? 'var(--git-danger-row-bg)' : 'transparent',
                     marginBottom: '2px',
                   }}
                 >
@@ -339,8 +339,8 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     onChange={function() { toggleFile(file) }}
                     style={{ cursor: 'pointer', flexShrink: 0 }}
                   />
-                  <span style={{ color: '#c62828', fontWeight: 'bold', fontSize: '11px', flexShrink: 0 }}>D</span>
-                  <span style={{ color: '#c62828', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all', textDecoration: 'line-through' }}>
+                  <span style={{ color: 'var(--git-danger-text)', fontWeight: 'bold', fontSize: '11px', flexShrink: 0 }}>D</span>
+                  <span style={{ color: 'var(--git-danger-text)', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all', textDecoration: 'line-through' }}>
                     {file}
                   </span>
                   <button
@@ -350,9 +350,9 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     style={Object.assign({}, BTN_BASE, {
                       padding: '3px 8px',
                       fontSize: '12px',
-                      backgroundColor: (addingFile === file || addingFile === '__selected__') ? '#ccc' : '#ffebee',
-                      color: '#c62828',
-                      border: '1px solid #ef9a9a',
+                      backgroundColor: (addingFile === file || addingFile === '__selected__') ? '#ccc' : 'var(--git-danger-bg)',
+                      color: 'var(--git-danger-text)',
+                      border: '1px solid var(--git-danger-border)',
                       cursor: (addingFile === file || addingFile === '__selected__') ? 'not-allowed' : 'pointer',
                       fontWeight: '400',
                       flexShrink: 0,
@@ -388,10 +388,10 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                   key={index}
                   style={{
                     padding: '4px 6px',
-                    color: '#2e7d32',
+                    color: 'var(--git-add-text-strong)',
                     fontSize: '13px',
                     fontFamily: 'monospace',
-                    borderLeft: '3px solid #45a444',
+                    borderLeft: '3px solid var(--git-accent)',
                     marginBottom: '2px',
                   }}
                 >
