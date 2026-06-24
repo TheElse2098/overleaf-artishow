@@ -447,3 +447,154 @@ export async function gitClone(projectId, ownerId, link, branch, token, tokenTyp
   await recheckoutHead(getGitForProject(projectId, ownerId))
   console.log("Initial checkout done with binary attributes applied")
 }
+
+// ── Fonctions liées à l'initialisation ───────────────────────────────────────
+// Project (modèle Mongoose) est passé en paramètre pour éviter de dépendre
+// directement de la couche web depuis GitManager.
+
+function normalizeRemoteUrl(url) {
+  if (!url) return null
+  const s = url.trim()
+  const sshMatch = s.match(/^git@([^:]+):(.+?)(?:\.git)?$/)
+  if (sshMatch) return `${sshMatch[1]}/${sshMatch[2]}`.toLowerCase()
+  try {
+    const u = new URL(s)
+    u.username = ''
+    u.password = ''
+    u.hash = ''
+    return (u.host + u.pathname.replace(/\.git$/, '')).toLowerCase()
+  } catch { return s.toLowerCase() }
+}
+
+export async function assertRemoteNotAlreadyLinked(Project, remoteUrl, excludeProjectId = null) {
+  if (!remoteUrl) return
+  const norm = normalizeRemoteUrl(remoteUrl)
+  const projects = await Project.find(
+    { 'git.remoteUrl': { $exists: true, $ne: null }, deletedAt: { $exists: false } },
+    { _id: 1, name: 1, 'git.remoteUrl': 1 }
+  ).lean().exec()
+  for (const p of projects) {
+    if (excludeProjectId && String(p._id) === String(excludeProjectId)) continue
+    if (normalizeRemoteUrl(p.git?.remoteUrl) === norm) {
+      throw new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+    }
+  }
+}
+
+export async function isGitRepo(Project, projectId, ownerId) {
+  const project = await Project.findById(projectId, 'git').lean().exec()
+  if (project?.git?.linkedAt) return true
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  return fs.pathExists(path.join(repoPath, '.git'))
+}
+
+export async function getGitInfo(Project, projectId) {
+  const project = await Project.findById(projectId, 'git').lean().exec()
+  return project?.git || null
+}
+
+export async function saveGitLink(Project, projectId, remoteUrl, branch, token = null, tokenType = null) {
+  const fields = {
+    'git.remoteUrl': remoteUrl || null,
+    'git.branch': branch || 'main',
+    'git.linkedAt': new Date(),
+  }
+  if (token) fields['git.token'] = token
+  if (tokenType) fields['git.tokenType'] = tokenType
+  await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+}
+
+export async function gitInit(Project, projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
+  await assertRemoteNotAlreadyLinked(Project, remoteUrl, projectId)
+
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  await fs.ensureDir(repoPath)
+
+  const alreadyRepo = await isGitRepo(Project, projectId, ownerId)
+  if (alreadyRepo) return { created: false, remoteLinked: false }
+
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+  })
+
+  await localGit.init()
+  await localGit.addConfig('user.name', 'overleaf')
+  await localGit.addConfig('user.email', 'overleaf@overleaf.com')
+  await disableBinaryConversion(repoPath)
+  await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
+  try { await localGit.raw(['branch', '-M', defaultBranch]) } catch (_) {}
+
+  let remoteLinked = false
+  if (remoteUrl) {
+    await localGit.addRemote('origin', remoteUrl)
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, () => localGit.push(['-u', 'origin', defaultBranch]))
+      }
+      remoteLinked = true
+    } catch (pushErr) {
+      // Remote non vide : fusionner les historiques puis repousser
+      try {
+        if (token) {
+          const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+          await localGit.raw(['pull', authUrl, defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+        } else {
+          await withSshKey(ownerId, async () => {
+            await localGit.raw(['pull', 'origin', defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+            await localGit.push(['-u', 'origin', defaultBranch])
+          })
+        }
+        remoteLinked = true
+      } catch (mergeErr) {
+        // Le repo local reste valide, remote sauvegardé pour push ultérieur
+      }
+    }
+  }
+
+  await saveGitLink(Project, projectId, remoteUrl, defaultBranch, token, tokenType)
+  return { created: true, remoteLinked }
+}
+
+export async function gitSetRemote(Project, projectId, ownerId, remoteUrl, branch = 'main', token = null, tokenType = null) {
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+  })
+
+  try { await localGit.removeRemote('origin') } catch (_) {}
+  await localGit.addRemote('origin', remoteUrl)
+
+  let remoteLinked = false
+  try {
+    if (token) {
+      const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+      await localGit.push(authUrl, branch, ['--set-upstream'])
+    } else {
+      await withSshKey(ownerId, () => localGit.push(['-u', 'origin', branch]))
+    }
+    remoteLinked = true
+  } catch (pushErr) {
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.raw(['pull', authUrl, branch, '--allow-unrelated-histories', '--no-rebase'])
+        await localGit.push(authUrl, branch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, async () => {
+          await localGit.raw(['pull', 'origin', branch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(['-u', 'origin', branch])
+        })
+      }
+      remoteLinked = true
+    } catch (_) {}
+  }
+
+  await saveGitLink(Project, projectId, remoteUrl, branch, token, tokenType)
+  return { remoteLinked }
+}
