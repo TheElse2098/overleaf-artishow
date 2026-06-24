@@ -8,6 +8,7 @@ on:
       - template_integration
       - git_compilation
       - overleaf
+      - git-as-service
       - admin-panel
     tags: [ 'v*.*.*' ]
   pull_request:
@@ -62,6 +63,8 @@ jobs:
             TAG="git-compilation"
           elif [ "$BRANCH_NAME" = "overleaf" ]; then
             TAG="overleaf"
+          elif [ "$BRANCH_NAME" = "git-as-service" ]; then
+            TAG="git-service"
           elif [ "$BRANCH_NAME" = "admin-panel" ]; then
             TAG="admin"
           else
@@ -83,7 +86,7 @@ jobs:
           docker images
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/_/g')
+          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
       
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       

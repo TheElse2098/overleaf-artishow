@@ -124,6 +124,7 @@ function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props
             placeholder={'git@example.com:author/project.git'}
             onChange={handleChangeName}
             value={projectName}
+            maxLength={255}
           />
 
           {/* Champs token optionnels */}
@@ -160,6 +161,7 @@ function ModalContentNewGithubProjectForm({ onCancel, template = 'none' }: Props
                 placeholder={'ghp_xxxxxxxxxxxxxxxxxxxx'}
                 value={token}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setToken(e.target.value)}
+                maxLength={255}
               />
               <button
                 type="button"
