@@ -4,9 +4,8 @@ import TemplatesManager from './TemplatesManager.mjs'
 import ProjectHelper from '../Project/ProjectHelper.mjs'
 import logger from '@overleaf/logger'
 import { expressify } from '@overleaf/promise-utils'
-import { Project } from '../../models/Project.mjs'
-import { User } from '../../models/User.mjs'
-
+import Errors from '../Errors/Errors.js'
+import { ObjectId } from 'mongodb'
 
 const TemplatesController = {
   async getV1Template(req, res) {
@@ -38,33 +37,49 @@ const TemplatesController = {
   },
 
   async getLocalTemplates(req, res) {
-    const projects = await Project.find(
-      { isTemplate: true },
-      { name: 1, templateDescription: 1 }
-    ).lean()
-    const templates = projects.map(p => ({
-      id: p._id.toString(),
-      name: p.name,
-      description: p.templateDescription || '',
-    }))
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const templates = await TemplatesManager.promises.getVisibleTemplates(userId)
     res.json({ templates })
+  },
+
+  async removeTemplate(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    try {
+      await TemplatesManager.promises.removeTemplate({ projectId, userId })
+    } catch (err) {
+      if (err instanceof Errors.ForbiddenError) {
+        return res.sendStatus(403)
+      }
+      throw err
+    }
+    res.json({ ok: true })
   },
 
   async setTemplateStatus(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
-    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
-    if (!user?.isAdmin) {
-      return res.sendStatus(403)
-    }
     const { projectId } = req.params
-    const { isTemplate, templateDescription } = req.body
-    await Project.updateOne(
-      { _id: projectId },
-      {
-        isTemplate: Boolean(isTemplate),
-        templateDescription: templateDescription || '',
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    const { isTemplate, templateDescription, isGeneral } = req.body
+    try {
+      await TemplatesManager.promises.setTemplateStatus({
+        projectId,
+        userId,
+        isTemplate,
+        templateDescription,
+        isGeneral,
+      })
+    } catch (err) {
+      if (err instanceof Errors.ForbiddenError) {
+        return res.sendStatus(403)
       }
-    )
+      throw err
+    }
     res.json({ ok: true })
   },
 
@@ -95,4 +110,5 @@ export default {
   ),
   getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
   setTemplateStatus: expressify(TemplatesController.setTemplateStatus),
+  removeTemplate: expressify(TemplatesController.removeTemplate),
 }

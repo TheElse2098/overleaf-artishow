@@ -22,6 +22,7 @@ function Modal({
   isOpen,
   onClose,
   notStagedFiles,
+  deletedFiles,
   stagedFiles,
   commitHistory,
   branches,
@@ -125,6 +126,7 @@ function Modal({
               projectId={projectId}
               userId={userId}
               notStagedFiles={notStagedFiles}
+              deletedFiles={deletedFiles}
               stagedFiles={stagedFiles}
               onRefresh={onRefresh}
             />
@@ -225,6 +227,7 @@ function GitToggleButton() {
   const { projectId } = useProjectContext()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [notStagedFiles, setNotStagedFiles] = useState([])
+  const [deletedFiles, setDeletedFiles] = useState([])
   const [stagedFiles, setStagedFiles] = useState([])
   const [commitHistory, setCommitHistory] = useState([])
   const [branches, setBranches] = useState([])
@@ -252,7 +255,8 @@ function GitToggleButton() {
         getJSON(`/git-currentbranch?projectId=${projectId}&userId=${userId}`)
       ])
       
-      setNotStagedFiles(notStaged)
+      setNotStagedFiles(notStaged.notStaged || [])
+      setDeletedFiles(notStaged.deleted || [])
       setStagedFiles(staged)
       setCommitHistory(commits)
       setBranches(branchesData)
@@ -282,6 +286,7 @@ function GitToggleButton() {
           isOpen={isModalOpen}
           onClose={handleCloseModal}
           notStagedFiles={notStagedFiles}
+          deletedFiles={deletedFiles}
           stagedFiles={stagedFiles}
           commitHistory={commitHistory}
           branches={branches}

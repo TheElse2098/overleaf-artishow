@@ -103,6 +103,11 @@ async function getDetails(ip, callback) {
  * @returns {Promise<{currencyCode: CurrencyCode, countryCode: string|undefined}>}
  */
 async function getCurrencyCode(ip) {
+  // In CE the geo-IP lookup service is not configured (settings.apis.geoIpLookup
+  // is undefined). Skip the lookup and default the currency rather than throwing.
+  if (!settings.apis.geoIpLookup?.url) {
+    return { currencyCode: DEFAULT_CURRENCY_CODE, countryCode: undefined }
+  }
   let ipDetails
   try {
     ipDetails = await getDetails(ip)

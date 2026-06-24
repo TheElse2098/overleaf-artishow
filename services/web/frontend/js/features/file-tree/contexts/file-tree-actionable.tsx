@@ -324,10 +324,10 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
           found.type !== 'folder' ? getFullPath(fileTreeData, id).slice(1) : null
         return syncDelete(projectId, found.type, found.entity._id)
           .then(() => {
-            // Auto-stage deletion in git (fire-and-forget, errors are silenced)
+            // Enregistre la suppression comme en attente dans le git menu
             if (filePath) {
-              postJSON('/git-add', {
-                body: { projectId, userId, filePath, deleted: true },
+              postJSON('/git-mark-deleted', {
+                body: { projectId, userId, filePath },
               }).catch(() => {})
             }
           })

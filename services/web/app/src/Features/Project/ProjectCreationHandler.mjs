@@ -199,7 +199,12 @@ async function createGitProject(ownerId, projectLink, branch = null, token = nul
     AnalyticsManager.recordEventForUser(ownerId, 'project-created', {
       projectId: project._id,
     })
-    await gitClone(project._id, ownerId, projectLink, branch, token, tokenType)
+    try {
+      await gitClone(project._id, ownerId, projectLink, branch, token, tokenType)
+    } catch (err) {
+      await Project.deleteOne({ _id: project._id }).exec().catch(() => {})
+      throw err
+    }
 
     return project
   } else {

@@ -61,7 +61,7 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
   )
 }
 
-function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefresh }) {
+function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], stagedFiles, onRefresh }) {
   var [commitMessage, setCommitMessage] = useState('')
   var [isCommitting, setIsCommitting] = useState(false)
   var [isPushing, setIsPushing] = useState(false)
@@ -70,6 +70,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
   var [isAddingAll, setIsAddingAll] = useState(false)
   var [notification, setNotification] = useState(null)
 
+  var allPendingFiles = [...notStagedFiles, ...deletedFiles]
   var selectedCount = Object.values(selected).filter(Boolean).length
 
   function showNotif(type, message) {
@@ -89,12 +90,12 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
   }
 
   function toggleAll() {
-    var allChecked = notStagedFiles.length > 0 && notStagedFiles.every(function(f) { return selected[f] })
+    var allChecked = allPendingFiles.length > 0 && allPendingFiles.every(function(f) { return selected[f] })
     if (allChecked) {
       setSelected({})
     } else {
       var next = {}
-      notStagedFiles.forEach(function(f) { next[f] = true })
+      allPendingFiles.forEach(function(f) { next[f] = true })
       setSelected(next)
     }
   }
@@ -137,9 +138,10 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
 
   async function handleAddOne(filePath) {
     setAddingFile(filePath)
+    var isDeleted = deletedFiles.includes(filePath)
     try {
       await postJSON('/git-add', {
-        body: { projectId: projectId, userId: userId, filePath: filePath, deleted: false },
+        body: { projectId: projectId, userId: userId, filePath: filePath, deleted: isDeleted },
       })
       setSelected(function(prev) {
         var next = Object.assign({}, prev)
@@ -155,13 +157,13 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
   }
 
   async function handleAddSelected() {
-    var files = notStagedFiles.filter(function(f) { return selected[f] })
+    var files = allPendingFiles.filter(function(f) { return selected[f] })
     if (files.length === 0) return
     setAddingFile('__selected__')
     try {
       for (var i = 0; i < files.length; i++) {
         await postJSON('/git-add', {
-          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: false },
+          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: deletedFiles.includes(files[i]) },
         })
       }
       setSelected({})
@@ -189,7 +191,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
     }
   }
 
-  var allChecked = notStagedFiles.length > 0 && notStagedFiles.every(function(f) { return selected[f] })
+  var allChecked = allPendingFiles.length > 0 && allPendingFiles.every(function(f) { return selected[f] })
   var isStagingBusy = addingFile !== null || isAddingAll
 
   return (
@@ -252,15 +254,15 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
               type="checkbox"
               checked={allChecked}
               onChange={toggleAll}
-              disabled={notStagedFiles.length === 0}
+              disabled={allPendingFiles.length === 0}
               style={{ cursor: 'pointer' }}
               title="Tout selectionner"
             />
             <h3 style={{ margin: 0, fontSize: '14px', color: 'black' }}>
               Fichiers non indexes
-              {notStagedFiles.length > 0 && (
+              {allPendingFiles.length > 0 && (
                 <span style={{ color: 'gray', fontWeight: 'normal', marginLeft: '6px' }}>
-                  ({notStagedFiles.length})
+                  ({allPendingFiles.length})
                 </span>
               )}
             </h3>
@@ -284,13 +286,13 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
             )}
             <button
               onClick={handleAddAll}
-              disabled={isStagingBusy || notStagedFiles.length === 0}
+              disabled={isStagingBusy || allPendingFiles.length === 0}
               style={Object.assign({}, BTN_BASE, {
                 padding: '5px 10px',
                 fontSize: '12px',
-                backgroundColor: (isStagingBusy || notStagedFiles.length === 0) ? '#ccc' : '#1976d2',
+                backgroundColor: (isStagingBusy || allPendingFiles.length === 0) ? '#ccc' : '#1976d2',
                 color: 'white',
-                cursor: (isStagingBusy || notStagedFiles.length === 0) ? 'not-allowed' : 'pointer',
+                cursor: (isStagingBusy || allPendingFiles.length === 0) ? 'not-allowed' : 'pointer',
               })}
             >
               {isAddingAll ? 'Ajout...' : 'Tout ajouter'}
@@ -298,7 +300,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
           </div>
         </div>
 
-        {notStagedFiles.length === 0 ? (
+        {allPendingFiles.length === 0 ? (
           <p style={{ color: 'gray', fontSize: '13px', fontStyle: 'italic', margin: '8px 0' }}>
             Aucun fichier modifie.
           </p>
@@ -307,13 +309,57 @@ function GitCommitTab({ projectId, userId, notStagedFiles, stagedFiles, onRefres
             {notStagedFiles.map(function(file, index) {
               return (
                 <FileRow
-                  key={index}
+                  key={'m-' + index}
                   filePath={file}
                   checked={!!selected[file]}
                   onToggle={toggleFile}
                   onAddOne={handleAddOne}
                   isAdding={addingFile === file || addingFile === '__selected__'}
                 />
+              )
+            })}
+            {deletedFiles.map(function(file, index) {
+              return (
+                <li
+                  key={'d-' + index}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '5px 6px',
+                    borderRadius: '4px',
+                    backgroundColor: selected[file] ? '#fff5f5' : 'transparent',
+                    marginBottom: '2px',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!selected[file]}
+                    onChange={function() { toggleFile(file) }}
+                    style={{ cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <span style={{ color: '#c62828', fontWeight: 'bold', fontSize: '11px', flexShrink: 0 }}>D</span>
+                  <span style={{ color: '#c62828', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all', textDecoration: 'line-through' }}>
+                    {file}
+                  </span>
+                  <button
+                    onClick={function() { handleAddOne(file) }}
+                    disabled={addingFile === file || addingFile === '__selected__'}
+                    title="Indexer cette suppression"
+                    style={Object.assign({}, BTN_BASE, {
+                      padding: '3px 8px',
+                      fontSize: '12px',
+                      backgroundColor: (addingFile === file || addingFile === '__selected__') ? '#ccc' : '#ffebee',
+                      color: '#c62828',
+                      border: '1px solid #ef9a9a',
+                      cursor: (addingFile === file || addingFile === '__selected__') ? 'not-allowed' : 'pointer',
+                      fontWeight: '400',
+                      flexShrink: 0,
+                    })}
+                  >
+                    + Add
+                  </button>
+                </li>
               )
             })}
           </ul>
