@@ -19,13 +19,26 @@ WORKDIR /overleaf/services/git
 # --- Étape app : dépendances puis code source ---
 FROM base AS app
 
-# 1. D'abord les package.json (cache : on ne réinstalle que s'ils changent)
+# 1. D'abord les package.json (cache : on ne réinstalle que s'ils changent).
+# yarn workspaces focus résout le graphe COMPLET du workspace racine "overleaf"
+# (qui référence @overleaf/eslint-plugin, etc.) → tous les package.json des
+# libraries doivent être présents, sinon "Workspace not found".
 COPY package.json yarn.lock .yarnrc.yml /overleaf/
+COPY libraries/access-token-encryptor/package.json /overleaf/libraries/access-token-encryptor/package.json
+COPY libraries/eslint-plugin/package.json /overleaf/libraries/eslint-plugin/package.json
 COPY libraries/fetch-utils/package.json /overleaf/libraries/fetch-utils/package.json
 COPY libraries/logger/package.json /overleaf/libraries/logger/package.json
 COPY libraries/metrics/package.json /overleaf/libraries/metrics/package.json
+COPY libraries/mongo-utils/package.json /overleaf/libraries/mongo-utils/package.json
 COPY libraries/o-error/package.json /overleaf/libraries/o-error/package.json
+COPY libraries/object-persistor/package.json /overleaf/libraries/object-persistor/package.json
+COPY libraries/overleaf-editor-core/package.json /overleaf/libraries/overleaf-editor-core/package.json
+COPY libraries/promise-utils/package.json /overleaf/libraries/promise-utils/package.json
+COPY libraries/ranges-tracker/package.json /overleaf/libraries/ranges-tracker/package.json
+COPY libraries/redis-wrapper/package.json /overleaf/libraries/redis-wrapper/package.json
 COPY libraries/settings/package.json /overleaf/libraries/settings/package.json
+COPY libraries/stream-utils/package.json /overleaf/libraries/stream-utils/package.json
+COPY libraries/validation-tools/package.json /overleaf/libraries/validation-tools/package.json
 COPY services/git/package.json /overleaf/services/git/package.json
 COPY .yarn/patches/ /overleaf/.yarn/patches/
 
