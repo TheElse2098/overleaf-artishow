@@ -345,7 +345,10 @@ export async function getCommitHistory(projectId, userId, limit = 10) {
 export async function getBranches(projectId, userId, gitInfo) {
   const git = getGitForProject(projectId, userId)
   return withRemoteAuth(git, userId, gitInfo, async remote => {
-    await git.fetch(remote, ['+refs/heads/*:refs/remotes/origin/*', '--prune'])
+    // git.raw : ordre explicite des arguments. Indispensable quand `remote` est une
+    // URL authentifiée (token) — git.fetch(remote, [refspec]) de simple-git mélange
+    // l'ordre et git prend le refspec pour le dépôt.
+    await git.raw(['fetch', remote, '+refs/heads/*:refs/remotes/origin/*', '--prune'])
     const branches = await git.branch(['-r'])
     return branches.all
   })
