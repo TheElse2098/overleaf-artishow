@@ -61,12 +61,12 @@ function GitRollbackTab({ projectId, userId, commitHistory, onClose }) {
       )}
 
       <div style={{ marginBottom: '12px' }}>
-        <h3 style={{ color: 'black', marginBottom: '10px', fontSize: '14px' }}>Commits recents</h3>
+        <h3 style={{ color: 'var(--git-text-strong)', marginBottom: '10px', fontSize: '14px' }}>Commits recents</h3>
         <div
           style={{
             maxHeight: '280px',
             overflowY: 'auto',
-            border: '1px solid #ddd',
+            border: '1px solid var(--git-border)',
             padding: '8px',
             borderRadius: '4px',
           }}
@@ -81,25 +81,25 @@ function GitRollbackTab({ projectId, userId, commitHistory, onClose }) {
                   style={{
                     marginBottom: '8px',
                     padding: '10px',
-                    border: isSelected ? '2px solid #007bff' : '1px solid #eee',
+                    border: isSelected ? '2px solid var(--git-accent-blue)' : '1px solid var(--git-border-subtle)',
                     borderRadius: '5px',
                     cursor: 'pointer',
-                    backgroundColor: isSelected ? '#f0f8ff' : 'white',
+                    backgroundColor: isSelected ? 'var(--git-selected-bg)' : 'var(--git-surface)',
                   }}
                 >
                   <div style={{ fontWeight: 'bold', color: '#007bff', fontSize: '12px', fontFamily: 'monospace' }}>
                     {commit.hash.substring(0, 7)}
                   </div>
-                  <div style={{ color: 'black', marginTop: '4px', fontWeight: '500', fontSize: '13px' }}>
+                  <div style={{ color: 'var(--git-text-strong)', marginTop: '4px', fontWeight: '500', fontSize: '13px' }}>
                     {commit.message || 'No commit message'}
                   </div>
                   {commit.author && (
-                    <div style={{ color: 'gray', fontSize: '11px', marginTop: '2px' }}>
+                    <div style={{ color: 'var(--git-text-muted)', fontSize: '11px', marginTop: '2px' }}>
                       by {commit.author}
                     </div>
                   )}
                   {commit.date && (
-                    <div style={{ color: 'gray', fontSize: '11px', marginTop: '2px' }}>
+                    <div style={{ color: 'var(--git-text-muted)', fontSize: '11px', marginTop: '2px' }}>
                       {new Date(commit.date).toLocaleString()}
                     </div>
                   )}
@@ -107,7 +107,7 @@ function GitRollbackTab({ projectId, userId, commitHistory, onClose }) {
               )
             })
           ) : (
-            <div style={{ color: 'gray', textAlign: 'center', padding: '20px', fontSize: '13px' }}>
+            <div style={{ color: 'var(--git-text-muted)', textAlign: 'center', padding: '20px', fontSize: '13px' }}>
               Aucun commit disponible
             </div>
           )}

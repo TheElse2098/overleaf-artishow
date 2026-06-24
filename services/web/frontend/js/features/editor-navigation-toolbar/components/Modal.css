@@ -1,10 +1,83 @@
+/*
+ * Git Menu styles.
+ *
+ * Colours are driven by CSS variables defined on .modal-content so the whole
+ * menu can switch to a dark palette by adding the `.git-menu-dark` class
+ * (applied by git-toggle-button.jsx based on the active Overleaf theme).
+ * Inline styles in the tab components also read these same variables via
+ * var(--git-*), so light/dark stays in one place.
+ */
+
+.modal-content {
+  /* Light palette (default) */
+  --git-bg: #ffffff;
+  --git-surface: #ffffff;
+  --git-surface-alt: #f8f9fa;
+  --git-text: #333333;
+  --git-text-strong: #000000;
+  --git-text-muted: #666666;
+  --git-border: #dddddd;
+  --git-border-subtle: #eeeeee;
+  --git-accent: #45a444;
+  --git-accent-blue: #007bff;
+  --git-selected-bg: #f0f8ff;
+  --git-overlay: rgba(0, 0, 0, 0.5);
+  --git-shadow: rgba(0, 0, 0, 0.2);
+
+  /* Add-file pill (green) */
+  --git-add-bg: #e8f5e9;
+  --git-add-text: #2e7d32;
+  --git-add-border: #a5d6a7;
+  --git-row-checked-bg: #f0faf0;
+
+  /* Warning box */
+  --git-warning-bg: #fff3cd;
+  --git-warning-border: #ffeaa7;
+  --git-warning-text: #856404;
+
+  /* Info box (blue) */
+  --git-info-bg: #f0f8ff;
+  --git-info-border: #bee3f8;
+  --git-info-text: #2c5282;
+}
+
+.modal-content.git-menu-dark {
+  /* Dark palette — tuned to Overleaf's overleaf_dark editor surfaces */
+  --git-bg: #1b1f23;
+  --git-surface: #25292e;
+  --git-surface-alt: #2d3239;
+  --git-text: #d6d9dc;
+  --git-text-strong: #f5f6f7;
+  --git-text-muted: #9aa0a6;
+  --git-border: #3a3f44;
+  --git-border-subtle: #33373c;
+  --git-accent: #56ab56;
+  --git-accent-blue: #4a9eff;
+  --git-selected-bg: #1e2a38;
+  --git-overlay: rgba(0, 0, 0, 0.65);
+  --git-shadow: rgba(0, 0, 0, 0.6);
+
+  --git-add-bg: #1f3a26;
+  --git-add-text: #7fce85;
+  --git-add-border: #2f5e3a;
+  --git-row-checked-bg: #23312a;
+
+  --git-warning-bg: #3a3320;
+  --git-warning-border: #5c5026;
+  --git-warning-text: #e6cf86;
+
+  --git-info-bg: #1c2a3a;
+  --git-info-border: #2c4866;
+  --git-info-text: #9ec5f0;
+}
+
 .modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--git-overlay, rgba(0, 0, 0, 0.5));
   display: flex;
   justify-content: center;
   align-items: center;
@@ -12,7 +85,8 @@
 }
 
 .modal-content {
-  background: white;
+  background: var(--git-bg);
+  color: var(--git-text);
   border-radius: 8px;
   padding: 30px;
   max-width: 600px;
@@ -20,7 +94,7 @@
   max-height: 80vh;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 30px var(--git-shadow);
 }
 
 .modal-close-button {
@@ -31,7 +105,7 @@
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #666;
+  color: var(--git-text-muted);
   width: 30px;
   height: 30px;
   display: flex;
@@ -42,19 +116,19 @@
 }
 
 .modal-close-button:hover {
-  background-color: #f0f0f0;
-  color: #333;
+  background-color: var(--git-surface-alt);
+  color: var(--git-text);
 }
 
 .modal-content h2 {
   margin-top: 0;
   margin-bottom: 20px;
-  color: #333;
+  color: var(--git-text);
   text-align: center;
 }
 
 .modal-content h3 {
-  color: #333;
+  color: var(--git-text);
   margin-bottom: 10px;
   font-size: 16px;
   font-weight: 600;
@@ -64,28 +138,30 @@
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
-  color: #333;
+  color: var(--git-text);
 }
 
 .modal-content textarea {
   width: 100%;
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--git-border);
   border-radius: 4px;
   resize: vertical;
   font-family: inherit;
   box-sizing: border-box;
+  background-color: var(--git-surface);
+  color: var(--git-text);
 }
 
 .modal-content textarea:focus {
   outline: none;
-  border-color: #007bff;
+  border-color: var(--git-accent-blue);
   box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
 .modal-content button {
   padding: 10px 20px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--git-border);
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
@@ -94,8 +170,8 @@
 }
 
 .modal-content button:hover {
-  background-color: #f8f9fa;
-  border-color: #adb5bd;
+  background-color: var(--git-surface-alt);
+  border-color: var(--git-border);
 }
 
 .modal-content button:focus {
@@ -114,51 +190,51 @@
 }
 
 .tab-button.active {
-  background-color: #007bff;
+  background-color: var(--git-accent-blue);
   color: white;
-  border-bottom-color: #007bff;
+  border-bottom-color: var(--git-accent-blue);
 }
 
 .tab-button:hover:not(.active) {
-  background-color: #f8f9fa;
+  background-color: var(--git-surface-alt);
 }
 
 /* Styles pour la liste des commits */
 .commit-item {
   margin-bottom: 10px;
   padding: 12px;
-  border: 1px solid #eee;
+  border: 1px solid var(--git-border-subtle);
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
-  background-color: white;
+  background-color: var(--git-surface);
 }
 
 .commit-item:hover {
-  border-color: #007bff;
+  border-color: var(--git-accent-blue);
   box-shadow: 0 2px 4px rgba(0, 123, 255, 0.1);
 }
 
 .commit-item.selected {
-  border: 2px solid #007bff;
-  background-color: #f0f8ff;
+  border: 2px solid var(--git-accent-blue);
+  background-color: var(--git-selected-bg);
 }
 
 .commit-hash {
   font-weight: bold;
-  color: #333;
+  color: var(--git-text);
   font-size: 12px;
   font-family: 'Courier New', monospace;
 }
 
 .commit-message {
-  color: #333;
+  color: var(--git-text);
   margin-top: 5px;
   line-height: 1.4;
 }
 
 .commit-date {
-  color: #666;
+  color: var(--git-text-muted);
   font-size: 11px;
   margin-top: 5px;
 }
@@ -166,19 +242,19 @@
 /* Styles pour les alertes */
 .warning-box {
   padding: 12px;
-  background-color: #fff3cd;
-  border: 1px solid #ffeaa7;
+  background-color: var(--git-warning-bg);
+  border: 1px solid var(--git-warning-border);
   border-radius: 6px;
   margin-bottom: 15px;
 }
 
 .warning-title {
-  color: #856404;
+  color: var(--git-warning-text);
   font-weight: bold;
 }
 
 .warning-text {
-  color: #856404;
+  color: var(--git-warning-text);
   margin-top: 5px;
   line-height: 1.4;
 }
@@ -211,7 +287,7 @@
 .file-list {
   max-height: 150px;
   overflow-y: auto;
-  border: 1px solid #eee;
+  border: 1px solid var(--git-border-subtle);
   border-radius: 4px;
   padding: 10px;
 }
@@ -224,20 +300,20 @@
 
 .file-list li {
   padding: 4px 0;
-  color: #333;
+  color: var(--git-text);
   font-family: 'Courier New', monospace;
   font-size: 13px;
 }
 
 .file-list li:not(:last-child) {
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--git-border-subtle);
 }
 
 /* Styles pour le scroll de l'historique des commits */
 .commit-history-container {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid #ddd;
+  border: 1px solid var(--git-border);
   border-radius: 6px;
   padding: 10px;
 }
@@ -247,22 +323,22 @@
 }
 
 .commit-history-container::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--git-surface-alt);
   border-radius: 3px;
 }
 
 .commit-history-container::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
+  background: var(--git-border);
   border-radius: 3px;
 }
 
 .commit-history-container::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+  background: var(--git-text-muted);
 }
 
 /* Message pour historique vide */
 .empty-history {
-  color: #666;
+  color: var(--git-text-muted);
   text-align: center;
   padding: 20px;
   font-style: italic;

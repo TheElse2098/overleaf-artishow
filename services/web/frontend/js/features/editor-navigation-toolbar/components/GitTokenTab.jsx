@@ -106,7 +106,7 @@ function GitTokenTab({ projectId }) {
   const gitlabInfo = 'GitLab : User Settings > Access Tokens. Permissions : read_repository, write_repository.'
 
   return (
-    <div style={{ color: 'black', fontFamily: 'sans-serif' }}>
+    <div style={{ color: 'var(--git-text-strong)', fontFamily: 'sans-serif' }}>
       <h3 style={{ marginBottom: '15px' }}>Authentification par Token</h3>
 
       <div
@@ -151,8 +151,9 @@ function GitTokenTab({ projectId }) {
           style={{
             width: '100%',
             padding: '7px',
-            color: 'dimgray',
-            border: '1px solid #ccc',
+            color: 'var(--git-text)',
+            backgroundColor: 'var(--git-surface)',
+            border: '1px solid var(--git-border)',
             borderRadius: '4px',
           }}
         >
@@ -179,8 +180,9 @@ function GitTokenTab({ projectId }) {
             style={{
               flex: 1,
               padding: '7px',
-              color: 'dimgray',
-              border: '1px solid #ccc',
+              color: 'var(--git-text)',
+              backgroundColor: 'var(--git-surface)',
+              border: '1px solid var(--git-border)',
               borderRadius: '4px',
             }}
           />
@@ -188,11 +190,11 @@ function GitTokenTab({ projectId }) {
             onClick={function() { setShowToken(function(v) { return !v }) }}
             style={{
               padding: '7px 10px',
-              border: '1px solid #ccc',
+              border: '1px solid var(--git-border)',
               borderRadius: '4px',
-              backgroundColor: '#f8f9fa',
+              backgroundColor: 'var(--git-surface-alt)',
               cursor: 'pointer',
-              color: 'black',
+              color: 'var(--git-text-strong)',
               fontSize: '12px',
             }}
           >
@@ -205,11 +207,11 @@ function GitTokenTab({ projectId }) {
         style={{
           padding: '10px',
           marginBottom: '18px',
-          backgroundColor: '#f0f8ff',
-          border: '1px solid #bee3f8',
+          backgroundColor: 'var(--git-info-bg)',
+          border: '1px solid var(--git-info-border)',
           borderRadius: '4px',
           fontSize: '12px',
-          color: '#2c5282',
+          color: 'var(--git-info-text)',
         }}
       >
         {tokenType === 'github' ? githubInfo : gitlabInfo}
