@@ -102,3 +102,67 @@ jobs:
           docker tag $SOURCE_IMAGE ${ghcr_registry}:${{ github.sha }}
       
           docker push ${ghcr_registry}:${TAG}
+
+  # ---------------------------------------------------------------------------
+  # Images PAR SERVICE (déploiement Kubernetes microservices).
+  # Construit chaque services/<svc>/Dockerfile et le pousse en
+  # ghcr.io/theelse2098/overleaf-artishow-<svc>:<TAG>.
+  # Le monolithe (job "build" ci-dessus) reste produit pour l'Overleaf Toolkit.
+  # NB : build assez lourd (12 images, dont web/webpack). Ajoute un filtre de
+  # branche si besoin de limiter la conso CI.
+  # ---------------------------------------------------------------------------
+  build-services:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - web
+          - git
+          - clsi
+          - docstore
+          - filestore
+          - document-updater
+          - project-history
+          - history-v1
+          - chat
+          - notifications
+          - references
+          - real-time
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login into ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set image tag based on branch
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          if [ "$BRANCH_NAME" = "main" ]; then
+            TAG="latest"
+          else
+            TAG=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9]/-/g')
+          fi
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Build & push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: services/${{ matrix.service }}/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ghcr.io/theelse2098/overleaf-artishow-${{ matrix.service }}:${{ env.TAG }}
+            ghcr.io/theelse2098/overleaf-artishow-${{ matrix.service }}:${{ github.sha }}
