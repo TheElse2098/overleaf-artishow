@@ -17,6 +17,9 @@ import { pipeline } from 'node:stream/promises'
 import ClsiCacheManager from '../Compile/ClsiCacheManager.mjs'
 import Path from 'node:path'
 import OError from '@overleaf/o-error'
+import TemplatesPolicy from './TemplatesPolicy.mjs'
+import { Project } from '../../models/Project.mjs'
+import { User } from '../../models/User.mjs'
 
 const { promises: ProjectRootDocManager } = ProjectRootDocManagerModule
 const { promises: ProjectOptionsHandler } = ProjectOptionsHandlerModule
@@ -141,6 +144,76 @@ const TemplatesManager = {
         throw err
       }
     }
+  },
+
+  // The templates a user is allowed to see: every "General" template plus their
+  // own. Returns plain objects ready for the API.
+  async getVisibleTemplates(userId) {
+    const projects = await Project.find(TemplatesPolicy.visibleFilter(userId), {
+      name: 1,
+      templateDescription: 1,
+      templateCategory: 1,
+    }).lean()
+    return projects.map(p => ({
+      id: p._id.toString(),
+      name: p.name,
+      description: p.templateDescription || '',
+      category:
+        p.templateCategory === TemplatesPolicy.GENERAL
+          ? TemplatesPolicy.GENERAL
+          : TemplatesPolicy.PERSONNEL,
+    }))
+  },
+
+  // (Un)mark a project as a template. Only the owner may do this — admins
+  // included — so nobody can publish another user's private project.
+  async setTemplateStatus({
+    projectId,
+    userId,
+    isTemplate,
+    templateDescription,
+    isGeneral,
+  }) {
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1 }
+    ).lean()
+    if (!TemplatesPolicy.canMark(project, userId)) {
+      throw new Errors.ForbiddenError('not allowed to mark project as template')
+    }
+
+    const wantsTemplate = Boolean(isTemplate)
+    const category = TemplatesPolicy.categoryForMarking({
+      isAdmin: user?.isAdmin,
+      isGeneral,
+    })
+    await Project.updateOne(
+      { _id: projectId },
+      {
+        isTemplate: wantsTemplate,
+        templateDescription: wantsTemplate ? templateDescription || '' : '',
+        templateCategory: wantsTemplate ? category : '',
+      }
+    )
+  },
+
+  // Clear a project's template status. The owner can always do so; an admin can
+  // additionally remove a shared "General" template, but never someone else's
+  // Personnel one.
+  async removeTemplate({ projectId, userId }) {
+    const user = await User.findOne({ _id: userId }, { isAdmin: 1 }).lean()
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1, templateCategory: 1, isTemplate: 1 }
+    ).lean()
+    if (!project || !TemplatesPolicy.canRemove(project, userId, user?.isAdmin)) {
+      throw new Errors.ForbiddenError('not allowed to remove template')
+    }
+    await Project.updateOne(
+      { _id: projectId },
+      { isTemplate: false, templateDescription: '', templateCategory: '' }
+    )
   },
 }
 

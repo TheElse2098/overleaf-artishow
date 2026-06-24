@@ -18,6 +18,17 @@ const sshpk = require('sshpk')
 const { Project } = require('../../models/Project.mjs')
 const SessionManager = require('../Authentication/SessionManager.mjs').default
 const ProjectGetter = require('../Project/ProjectGetter.mjs').default
+const Settings = require('@overleaf/settings')
+
+// URL du service git (résiliente : marche même sans entrée dans settings.defaults)
+const GIT_SERVICE_URL =
+  (Settings.apis && Settings.apis.gitService && Settings.apis.gitService.url) ||
+  `http://${process.env.GIT_SERVICE_HOST || '127.0.0.1'}:3099`
+
+// Secret partagé avec le service git (authentification inter-services).
+// Envoyé en en-tête Authorization sur chaque appel au service.
+const GIT_SERVICE_SECRET =
+  process.env.GIT_SERVICE_SECRET || process.env.WEB_API_PASSWORD || 'password'
 
 // Valide un identifiant Mongo (24 caractères hexadécimaux)
 function isValidObjectId(id) {
@@ -75,13 +86,7 @@ async function injectGitOwner(req, res, next) {
   }
 }
 
-const gitOptions = {
-  baseDir: dataPath,
-  privateKey: ""
-}
 const bannedFiles = ['output.aux', 'output.fdb_latexmk', 'output.fls', 'output.log', 'output.pdf', 'output.stdout', 'output.stdout', 'output.stderr', 'output.synctex.gz', 'output.synctex(busy)', '.project-sync-state'];
-
-var git = simpleGit(gitOptions)
 
 function getRootId(projectId) {
   let decimalValue = BigInt('0x' + projectId)
@@ -275,6 +280,44 @@ async function buildProject(currentPath, projectId, ownerId, parentId, rollbacke
   }
 }
 
+// Supprime de l'éditeur Overleaf les fichiers/docs absents du working tree git (ex. après
+// un changement de branche). L'upsert n'enlève rien tout seul, d'où les fichiers fantômes.
+async function syncDeletionsWithWorkingTree(projectId, ownerId, gitDir) {
+  // Chemins présents dans le working tree, au format "/chemin" (comme les entités Overleaf)
+  const present = new Set()
+  async function recurse(dir) {
+    let items
+    try { items = await fs.readdir(dir) } catch (_) { return }
+    for (const item of items) {
+      if (item === '.git') continue
+      const fullPath = path.join(dir, item)
+      let stat
+      try { stat = await fs.stat(fullPath) } catch (_) { continue }
+      if (stat.isDirectory()) await recurse(fullPath)
+      else present.add('/' + path.relative(gitDir, fullPath).replace(/\\/g, '/'))
+    }
+  }
+  await recurse(gitDir)
+
+  let entities
+  try {
+    entities = await ProjectEntityHandler.promises.getAllEntities(projectId)
+  } catch (e) {
+    console.log('syncDeletions: getAllEntities échoué:', e.message)
+    return
+  }
+  for (const { path: entityPath } of [...entities.docs, ...entities.files]) {
+    if (!present.has(entityPath)) {
+      try {
+        await EditorController.promises.deleteEntityWithPath(projectId, entityPath, 'editor', ownerId)
+        console.log('Entité supprimée après changement de branche:', entityPath)
+      } catch (e) {
+        console.log('Échec suppression', entityPath, ':', e.message)
+      }
+    }
+  }
+}
+
 // Resynchronise l'historique Overleaf avec l'état réel du projet après un pull/clone git.
 // Séquence en deux étapes pour gérer les projets dont l'état project-history est corrompu :
 //   1. Supprimer l'état project-history (file Redis, record d'erreur MongoDB, état de resync)
@@ -294,36 +337,6 @@ async function resyncHistory(projectId) {
   } catch (err) {
     console.error(`Échec de la resynchronisation de l'historique pour ${projectId}:`, err.message)
   }
-}
-
-// Détecte si une erreur git est due à un conflit de merge
-function isConflictError(error) {
-  const msg = (error.git?.message || error.message || '').toLowerCase()
-  return (
-    msg.includes('conflict') ||
-    msg.includes('automatic merge failed') ||
-    msg.includes('unresolved conflict') ||
-    msg.includes('unfinished merge')
-  )
-}
-
-// Annule le merge en cours et retourne la liste des fichiers en conflit
-async function abortMergeAndGetConflicts(projectId, userId, knownConflicts) {
-  const localGit = getGitForProject(projectId, userId)
-  let conflictedFiles = [...knownConflicts]
-  if (conflictedFiles.length === 0) {
-    try {
-      const status = await localGit.status()
-      conflictedFiles = status.conflicted
-    } catch (_) {}
-  }
-  try {
-    await localGit.merge(['--abort'])
-    console.log(`Merge annulé pour le projet ${projectId}`)
-  } catch (abortErr) {
-    console.error("Impossible d'annuler le merge:", abortErr.message)
-  }
-  return conflictedFiles
 }
 
 // Formate le message d'erreur retourné à l'utilisateur en cas de conflit
@@ -361,7 +374,9 @@ async function assertRemoteNotAlreadyLinked(remoteUrl, excludeProjectId = null) 
   for (const p of projects) {
     if (excludeProjectId && String(p._id) === String(excludeProjectId)) continue
     if (normalizeRemoteUrl(p.git?.remoteUrl) === norm) {
-      throw new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+      const err = new Error(`Ce dépôt est déjà lié au projet "${p.name}". Un dépôt ne peut être lié qu'à un seul projet à la fois.`)
+      err.code = 'REMOTE_ALREADY_LINKED'
+      throw err
     }
   }
 }
@@ -376,54 +391,6 @@ async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType
   if (tokenType) fields['git.tokenType'] = tokenType
   await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
-}
-
-function move(projectId, userId) {
-  const fullPath = dataPath + projectId + "-" + userId
-  git = simpleGit({ baseDir: fullPath, config: [`safe.directory=${fullPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
-  git.addConfig('user.name', 'overleaf')
-  git.addConfig('user.email', 'overleaf@overleaf.com')
-}
-
-function getStatus(){
-  return new Promise((resolve, reject) => {
-      git.status((err, statusSummary) => {
-          if (err) {
-              reject(err);
-              return;
-          }
-          else{
-              resolve(statusSummary);
-          }
-        });
-      });
-}
-async function safeGitCheckout(branchName) {
-  try {
-    if (fs.existsSync(lockFile)) {
-      console.warn('Lock file exists. Attempting to remove it...');
-      fs.unlinkSync(lockFile);
-      console.log('Lock file removed.');
-    }
-
-    await git.checkout(branchName);
-    console.log(`Checked out branch: ${branchName}`);
-  } catch (err) {
-    console.error('Git operation failed:', err.message);
-  }
-}
-
-async function getStaged(projectId, userId) {
-  const git = await getGitForProject(projectId, userId);
-    try {
-        const status = await git.status()
-        const stagedFiles = status.staged
-
-        return stagedFiles
-    } catch (error) {
-        console.error("Error fetching staged files:", error);
-        return []
-    }
 }
 
 async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitStatusSet) {
@@ -538,115 +505,6 @@ function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
   }
 }
 
-// Exécute fn(remote, info) avec l'authentification :
-// - token disponible → URL HTTPS authentifiée (jamais loggée)
-// - pas de token     → clé SSH, remote = 'origin'
-async function withRemoteAuth(projectId, userId, fn) {
-  const info = await getGitInfo(projectId)
-  if (info?.token && info?.remoteUrl) {
-    const authUrl = buildAuthenticatedUrl(info.remoteUrl, info.token, info.tokenType)
-    return fn(authUrl, info)
-  }
-  return withSshKey(userId, () => fn('origin', info))
-}
-
-async function getBranches(projectId, userId) {
-  try {
-    move(projectId, userId)
-    return await withRemoteAuth(projectId, userId, async (remote) => {
-      await git.fetch(remote)
-      console.log("fetched")
-      const branches = await git.branch(['-r'])
-      console.log('Remote branches:', branches.all)
-      return branches.all
-    })
-  } catch (err) {
-    console.error("Error fetching branches:", err)
-    return []
-  }
-}
-
-async function getCurrentBranch(projectId, userId) {
-  try {
-    move(projectId, userId)
-    return await withRemoteAuth(projectId, userId, async (remote) => {
-      await git.fetch(remote)
-      const stat = await git.status()
-      console.log("Current Branch (status):", stat.current)
-      return `origin/${stat.current}`
-    })
-  } catch (err) {
-    console.error("Error fetching current branches:", err)
-    return ""
-  }
-}
-
-async function getModified() {
-
-    try {
-        const status = await git.status()
-        const modifiedFiles = status.modified
-
-        return modifiedFiles
-    } catch (error) {
-        console.error("Error fetching modified files:", error);
-        return []
-    }
-}
-
-// historique des commits
-async function getCommitHistory(limit = 10) {
-    try {
-        // Utilisation du format standard de simple-git
-        const log = await git.log([`-${limit}`])
-        return log.all.map(commit => ({
-            hash: commit.hash,
-            message: commit.message,
-            date: commit.date,
-            author: commit.author_name || 'Unknown'
-        }))
-    } catch (error) {
-        console.error("Error fetching commit history:", error);
-        return []
-    }
-}
-
-// effectuer un reset hard vers un commit spécifique
-async function resetToCommit(commitHash, projectId, ownerId) {
-    try {
-        // Extraire seulement le hash si c'est au format personnalisé
-        let cleanHash = commitHash.trim()
-        
-        // Si le hash contient des pipes (ancien format), extraire seulement le hash
-        if (cleanHash.includes('|')) {
-            cleanHash = cleanHash.split('|')[0]
-        }
-        
-        // Prendre seulement les premiers caractères si c'est un hash tronqué
-        cleanHash = cleanHash.split(/\s+/)[0]
-        
-        console.log(`Resetting to commit: ${cleanHash}`)
-        
-        // Vérifier que le commit existe
-        try {
-            await git.show([cleanHash, '--format=format:', '--name-only'])
-        } catch (error) {
-            throw new Error(`Commit ${cleanHash} not found in repository`)
-        }
-        
-        // Reset hard vers le commit
-        await git.reset(['--hard', cleanHash])
-        
-        // Nettoyage du workspace
-        await git.clean('f')
-        
-        console.log(`Reset to commit ${cleanHash} successful`)
-        return true
-    } catch (error) {
-        console.error("Error resetting to commit:", error);
-        throw error
-    }
-}
 async function rebuildProjectAfterRollback(projectPath, projectId, ownerId) {
     try {
         console.log("Starting project rebuild after rollback...")
@@ -688,45 +546,18 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
     fs.mkdirSync(repoPath)
   }
 
-  // --no-checkout : cloner sans extraire les fichiers pour pouvoir écrire les attributs en premier
-  const cloneOptions = ['--no-checkout']
-  if (branch) cloneOptions.push('--branch', branch)
-
-  if (token) {
-    const authUrl = buildAuthenticatedUrl(link, token, tokenType)
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(authUrl, repoPath, cloneOptions)
-      console.log("Repository cloned via HTTPS token (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (token):', error)
-      throw error
-    }
-  } else {
-    const key = await getKey(ownerId, 'private')
-    const prevSSH = process.env.GIT_SSH_COMMAND
-    process.env.GIT_SSH_COMMAND = `ssh -o StrictHostKeyChecking=no -i ${key}`
-    try {
-      await simpleGit({ baseDir: dataPath, config: ['core.autocrlf=false', 'core.eol=lf'] }).clone(link, repoPath, cloneOptions)
-      console.log("Repository cloned via SSH (no checkout) successfully!")
-    } catch (error) {
-      console.error('Error when cloning (SSH):', error)
-      throw error
-    } finally {
-      if (prevSSH !== undefined) process.env.GIT_SSH_COMMAND = prevSSH
-      else delete process.env.GIT_SSH_COMMAND
-    }
+  // Déléguer le clone git au service (gitClone n'est pas un handler HTTP : on lève en cas d'erreur)
+  const response = await fetch(`${GIT_SERVICE_URL}/gitClone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+    body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
+  })
+  if (!response.ok) {
+    const text = await response.text().catch(() => '')
+    throw new Error(text || `git service clone failed: ${response.status}`)
   }
 
-  // Écrire les attributs AVANT le checkout pour que git n'applique jamais de conversion de texte aux fichiers binaires
-  await disableBinaryConversion(repoPath)
-  const localGit = getGitForProject(projectId, ownerId)
-  try {
-    await localGit.raw(['checkout', 'HEAD', '--', '.'])
-    console.log("Initial checkout done with binary attributes applied")
-  } catch (checkoutErr) {
-    console.error("Initial checkout failed:", checkoutErr.message)
-    throw checkoutErr
-  }
+  // Reconstruire le projet Overleaf depuis le working tree cloné, puis sauvegarder le lien git
   await buildProject(repoPath, projectId, ownerId, getRootId(projectId))
   await saveGitLink(projectId, link, branch, token, tokenType)
 
@@ -772,6 +603,8 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
   await fs.ensureDir(repoPath)
 
   const alreadyRepo = await isGitRepo(projectId, ownerId)
+
+  
   if (alreadyRepo) {
     console.log(`Le projet ${projectId} est déjà un repo git, gitInit ignoré.`)
     return { created: false, remoteLinked: false }
@@ -782,16 +615,17 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
     baseDir: repoPath,
     config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf']
   })
+
   await localGit.init()
   await localGit.addConfig('user.name', 'overleaf')
   await localGit.addConfig('user.email', 'overleaf@overleaf.com')
- 
+
   // Écrire les attributs binaires pour éviter toute conversion de fins de ligne
   await disableBinaryConversion(repoPath)
- 
+  
   // Commit initial vide pour que la branche existe
   await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
- 
+
   // Renommer la branche par défaut si besoin (git init crée "master" par défaut)
   try {
     await localGit.raw(['branch', '-M', defaultBranch])
@@ -804,6 +638,7 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
   // Lier le remote et pousser si une URL est fournie
   let remoteLinked = false
   if (remoteUrl) {
+    console.log(`debute le remote "origin" avec url ${repoPath} (branche: ${defaultBranch})`)
     await localGit.addRemote('origin', remoteUrl)
     console.log(`Remote "origin" configuré sur ${remoteUrl}`)
     try {
@@ -818,13 +653,74 @@ async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'ma
       console.log(`Branche "${defaultBranch}" poussée sur origin`)
       remoteLinked = true
     } catch (pushErr) {
-      console.error('Push initial échoué (le remote est configuré mais pas synchronisé):', pushErr.message)
-      // On ne lève pas l'erreur : le repo local est valide, le remote peut être lié manuellement
+      console.error('Push initial échoué, tentative de merge avec le remote:', pushErr.message)
+      // Le remote n'est pas vide (ex: README créé sur GitHub) : on fusionne les historiques
+      try {
+        if (token) {
+          const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+          await localGit.raw(['pull', authUrl, defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+        } else {
+          await withSshKey(ownerId, async () => {
+            await localGit.raw(['pull', 'origin', defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+            await localGit.push(['-u', 'origin', defaultBranch])
+          })
+        }
+        console.log(`Branche "${defaultBranch}" synchronisée et poussée sur origin (merge unrelated histories)`)
+        remoteLinked = true
+      } catch (mergeErr) {
+        console.error('Push initial échoué après tentative de merge:', mergeErr.message)
+        // Le repo local reste valide, le lien remote est sauvegardé pour un push manuel ultérieur
+      }
     }
   }
 
   await saveGitLink(projectId, remoteUrl, defaultBranch, token, tokenType)
   return { created: true, remoteLinked }
+}
+
+// Lie un remote à un repo git local existant et tente un push initial.
+async function gitSetRemote(projectId, ownerId, remoteUrl, branch = 'main', token = null, tokenType = null) {
+  const repoPath = dataPath + projectId + '-' + ownerId
+  const localGit = simpleGit({ baseDir: repoPath, config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'] })
+
+  // Supprimer lancien remote sil existe
+  try { await localGit.removeRemote('origin') } catch (_) {}
+
+  await localGit.addRemote('origin', remoteUrl)
+  console.log(`Remote "origin" configuré sur ${remoteUrl}`)
+
+  let remoteLinked = false
+  try {
+    if (token) {
+      const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+      await localGit.push(authUrl, branch, ['--set-upstream'])
+    } else {
+      await withSshKey(ownerId, () => localGit.push(['-u', 'origin', branch]))
+    }
+    console.log(`Branche "${branch}" poussée sur origin`)
+    remoteLinked = true
+  } catch (pushErr) {
+    console.error('Push échoué, tentative merge unrelated histories:', pushErr.message)
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.raw(['pull', authUrl, branch, '--allow-unrelated-histories', '--no-rebase'])
+        await localGit.push(authUrl, branch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, async () => {
+          await localGit.raw(['pull', 'origin', branch, '--allow-unrelated-histories', '--no-rebase'])
+          await localGit.push(['-u', 'origin', branch])
+        })
+      }
+      remoteLinked = true
+    } catch (mergeErr) {
+      console.error('Push échoué après merge:', mergeErr.message)
+    }
+  }
+
+  await saveGitLink(projectId, remoteUrl, branch, token, tokenType)
+  return { remoteLinked }
 }
 
 function convertPemToOpenSSH(pemKey) {
@@ -1113,103 +1009,74 @@ GitController = {
     }
   },
 
+  async setRemote(req, res) {
+    const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
+    if (!projectId || !userId || !remoteUrl) {
+      return res.status(400).json({ error: 'projectId, userId et remoteUrl sont requis.' })
+    }
+    const repoExists = await isGitRepo(projectId, userId)
+    if (!repoExists) {
+      return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
+    }
+    try {
+      const result = await gitSetRemote(projectId, userId, remoteUrl, branch, token, tokenType)
+      const message = result.remoteLinked
+        ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
+        : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué (vérifiez l'URL et les droits).`
+      return res.status(200).json({ ...result, message })
+    } catch (error) {
+      console.error('Erreur dans gitSetRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+
   async pull(req, res) {
-    const projectId = req.body.projectId
-    const userId = req.body.userId
+    const { projectId, userId } = req.body
     const projectPath = dataPath + projectId + "-" + userId
-
     console.log("Pulling")
-    move(projectId, userId)
-    const localGit = getGitForProject(projectId, userId)
 
-    // Compiler pour copier le contenu actuel de l'éditeur Overleaf (MongoDB) vers compiles/,
-    // puis gitUpdate copie compiles/ → dossier git. Sans cette étape, des éditions non compilées
-    // seraient invisibles pour le stash et seraient perdues lors du pull.
     try {
       await compileProject(projectId, userId)
       console.log("Compilation réussie avant pull")
     } catch (compileError) {
       console.log("Compilation échouée avant pull, on utilise le dernier état compilé:", compileError.message)
     }
-
-    // Synchroniser le contenu Overleaf (compiles/) → dossier git avant de stasher.
     try {
       await gitUpdate(projectId, userId)
-      console.log("gitUpdate effectué avant stash")
+      console.log("gitUpdate effectué avant pull")
     } catch (updateError) {
-      console.log("gitUpdate échoué avant stash, on continue:", updateError.message)
+      console.log("gitUpdate échoué avant pull, on continue:", updateError.message)
     }
 
-    // Sauvegarder les changements locaux non commités pour les restaurer après le pull
-    let stashed = false
+    // déléguer la partie git au git-service (stash, pull, conflits, re-checkout, pop)
+    let result
     try {
-      const status = await localGit.status()
-      if (status.files.length > 0) {
-        await localGit.stash(['push', '-u', '-m', 'overleaf-auto-stash-before-pull'])
-        stashed = true
-        console.log(`${status.files.length} fichier(s) stashé(s) avant pull`)
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-    } catch (stashErr) {
-      console.log("Stash échoué, on continue:", stashErr.message)
+      result = await response.json() // { status: 'ok' | 'conflict' | 'stash-conflict', conflicts? }
+    } catch (err) {
+      return HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+
+    // Conflit : le merge a été annulé côté service, rien à reconstruire
+    if (result.status === 'conflict') {
+      return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(result.conflicts || []))
     }
 
     try {
-      await disableBinaryConversion(projectPath)
-      const update = await withRemoteAuth(projectId, userId, (remote, info) =>
-        localGit.pull(remote, info?.branch || null, {'--no-rebase': null})
-      )
-
-      if (update.conflicts && update.conflicts.length > 0) {
-        // Conflit de merge : restaurer le stash avant d'abandonner le merge
-        if (stashed) {
-          try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
-        }
-        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, update.conflicts)
-        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
-      }
-
-      console.log("Repository pulled")
-      // Ré-extraire tous les fichiers pour corriger toute corruption binaire due à d'anciens attributs de texte
-      try {
-        await localGit.raw(['checkout', 'HEAD', '--', '.'])
-        console.log("Files re-checked out with binary attributes applied")
-      } catch (recheckoutErr) {
-        console.error("Re-checkout failed:", recheckoutErr.message)
-      }
-
-      // Restaurer les changements stashés par-dessus le résultat du pull
-      let stashConflict = false
-      if (stashed) {
-        try {
-          await localGit.stash(['pop'])
-          console.log("Stash restauré après pull")
-        } catch (stashPopErr) {
-          stashConflict = true
-          console.error("Conflit lors de la restauration du stash:", stashPopErr.message)
-          // Le stash entre en conflit avec le remote : abandonner le stash, garder l'état pullé
-          try {
-            await localGit.raw(['reset', '--hard', 'HEAD'])
-            await localGit.stash(['drop'])
-          } catch (_) {}
-        }
-      }
-
-      // Supprimer les fichiers de compilation parasites du dossier Git
-      for (const banned of bannedFiles) {
-        const bannedPath = path.join(projectPath, banned)
-        if (await fs.pathExists(bannedPath)) {
-          await fs.remove(bannedPath)
-          console.log(`Removed banned file after pull: ${banned}`)
-        }
-      }
-
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
 
-      // Le service CLSI (www-data) ne peut pas écrire dans son cache si le dossier du projet
-      // a été créé par root. On supprime le cache et le dossier de compilation du projet
-      // (en tant que root on peut tout supprimer) et on s'assure que le dossier parent du
-      // cache est accessible en écriture, afin que CLSI les recrée lui-même avec les bonnes
-      // permissions lors du prochain compile.
+      // CLSI (www-data) doit pouvoir recréer son cache : on supprime le dossier de
+      // compilation et le cache du projet pour qu'ils soient régénérés proprement.
       try {
         await fs.remove(outputPath + projectId + "-" + userId)
         console.log('Répertoire de compilation CLSI supprimé')
@@ -1226,25 +1093,15 @@ GitController = {
 
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
 
-      if (stashConflict) {
+      if (result.status === 'stash-conflict') {
         return HttpErrorHandler.gitMethodError(req, res,
           'Pull effectué, mais vos modifications locales non commitées étaient en conflit avec le dépôt distant et ont été écartées.')
       }
       res.sendStatus(200)
-
     } catch (error) {
       if (res.headersSent) return
-      // En cas d'erreur, tenter de restaurer le stash
-      if (stashed) {
-        try { await localGit.raw(['reset', '--hard', 'HEAD']); await localGit.stash(['pop']) } catch (_) {}
-      }
-      if (isConflictError(error)) {
-        const conflictedFiles = await abortMergeAndGetConflicts(projectId, userId, [])
-        return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(conflictedFiles))
-      }
-      console.error("Error.git: ", error.git)
-      console.error("Error.message: ", error.message)
-      HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
+      console.error("Erreur après le pull (buildProject):", error.message)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
 
@@ -1274,22 +1131,7 @@ GitController = {
     if (!isSafeRelativePath(filePath)) {
       return res.status(400).json({ error: 'filePath invalide.' })
     }
-    console.log("Adding " + filePath + (deleted ? " (deletion)" : ""))
-    move(projectId, userId)
-
-    if (deleted) {
-      // File was deleted from Overleaf: remove it from the git working tree
-      // (if still present from a previous state) then let git.add stage the deletion.
-      const gitFilePath = path.join(dataPath + projectId + "-" + userId, filePath)
-      try {
-        if (await fs.pathExists(gitFilePath)) {
-          await fs.remove(gitFilePath)
-          console.log(`Removed deleted file from git working tree: ${filePath}`)
-        }
-      } catch (err) {
-        console.log(`Could not remove ${filePath} from git working tree:`, err.message)
-      }
-    } else {
+    if (!deleted) {
       try {
         await compileProject(projectId, userId)
         console.log("Compilation réussie avant le add")
@@ -1298,178 +1140,210 @@ GitController = {
       }
       try {
         await gitUpdate(projectId, userId, [filePath])
-      } catch(error) {
+      } catch (error) {
         console.log("error when syncing in git add", error)
       }
     }
 
-    git.add(filePath, async (error) => {
-        if (error) {
-          console.error("Could not add the file", error)
-          HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
-        } else {
-          if (deleted) {
-            await Project.updateOne({ _id: projectId }, { $pull: { 'git.pendingDeletions': filePath } }).catch(() => {})
-          }
-          console.log('File added')
-          res.sendStatus(200)
-        }
-     })
-  },
-
-  commit(req, res) {
-    const projectId = req.body.projectId
-    const userId = req.body.userId
-    const message = req.body.message
-    console.log("Commit with message: " + message)
-    if (!message || message.trim() === "") {
-      console.log("Empty commit messages are not permitted")
-      HttpErrorHandler.gitMethodError(req, res, "Please add a commit message before committing.")
-      return
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/add`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, filePath, deleted }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      // Suppression indexée avec succès : la retirer des suppressions en attente.
+      if (deleted) {
+        await Project.updateOne({ _id: projectId }, { $pull: { 'git.pendingDeletions': filePath } }).catch(() => {})
+      }
+      res.sendStatus(200)
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
-    move(projectId, userId)
-
-    git.commit(message, (error) => {
-        if (error) {
-          console.error("Could not commit", error)
-          HttpErrorHandler.gitMethodError(req, res, error)
-        }
-        else{
-          console.log('Commit successful')
-          res.sendStatus(200)
-        }
-     })
   },
 
-  push(req, res) {
-    const projectId = req.body.projectId
-    const userId = req.body.userId
+  async commit(req, res) {
+    const { projectId, userId, message } = req.body // userId = owner injecté par injectGitOwner
+    if (!message || message.trim() === '') {
+    return HttpErrorHandler.gitMethodError(req, res, 'Please add a commit message before committing.')
+    }
+    try {
+    const response = await fetch(`${GIT_SERVICE_URL}/commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, message: message.trim() }),
+    })
+    if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+    }
+    res.sendStatus(200)
+    } catch (err) {
+    HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
+  async push(req, res) {
+    const { projectId, userId } = req.body
     console.log("Pushing")
-    move(projectId, userId)
-    withRemoteAuth(projectId, userId, (remote, info) =>
-      git.push(remote, info?.branch || null)
-    )
-      .then(() => {
-        console.log('Push successful')
-        res.sendStatus(200)
+    try {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/push`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
       })
-      .catch(error => {
-        console.error("Error:", error)
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error))
-      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      res.sendStatus(200)
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
   },
 
   // Route pour obtenir l'historique des commits
-  commitHistory(req, res) {
+  async commitHistory(req, res) {
     const { projectId, userId } = req.query
     const limit = req.query.limit || 10
-
-    move(projectId, userId)
-
-    getCommitHistory(parseInt(limit))
-      .then(commits => {
-        res.json(commits)
-        console.log("Commit history fetched successfully")
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/commits`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, limit }),
       })
-      .catch(error => {
-        console.error("Error fetching commit history:", error)
-        res.json([])
-      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching commit history:", error)
+      res.json([])
+    }
   },
 
   // Route pour effectuer un rollback
-  rollback(req, res) {
+  async rollback(req, res) {
     const projectId = req.body.projectId
     const userId = req.body.userId
     const commitHash = req.body.commitHash
     const projectPath = dataPath + projectId + "-" + userId
 
     console.log(`Rolling back to commit ${commitHash}`)
-    console.log(`Project path: ${projectPath}`)
-    
     if (!commitHash || !commitHash.trim()) {
-        console.error("No commit hash provided")
-        res.status(400).json({ error: "No commit hash provided" })
-        return
+      return res.status(400).json({ error: "No commit hash provided" })
     }
 
-    move(projectId, userId)
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, commitHash }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return res.status(500).json({ success: false, error: text || `git service: ${response.status}` })
+      }
+      // reset --hard a changé le working tree → reconstruire l'éditeur "from scratch"
+      await rebuildProjectAfterRollback(projectPath, projectId, userId)
+      res.json({ success: true, message: 'Rollback and rebuild successful' })
+    } catch (error) {
+      console.error("Error during rollback:", error)
+      res.status(500).json({ success: false, error: error.message || 'Rollback failed' })
+    }
+  },
 
-    resetToCommit(commitHash, projectId, userId)
-      .then(() => {
-        console.log("Rollback successful, rebuilding project")
-        return rebuildProjectAfterRollback(projectPath, projectId, userId)
-      })
-      .then(() => {
-        console.log('Rollback and rebuild successful')
-        res.json({ 
-          success: true, 
-          message: 'Rollback and rebuild successful' 
-        })
-      })
-      .catch(error => {
-        console.error("Error during rollback:", error)
-      res.status(500).json({ 
-        success: false,
-        error: error.message || 'Rollback failed'
-      })
-    })
-},
-
-  stagedFiles(req, res) {
+  async stagedFiles(req, res) {
     const { projectId, userId } = req.query
-
-    move(projectId, userId)
-
-    getStaged(projectId,userId)
-    .then(stagedFilesList => {
-      res.json(stagedFilesList)
-    })
-    .catch(error => {
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/staged`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
       console.error("Error:", error)
       res.json([])
-    })
+    }
   },
 
-  notStagedFiles(req, res) {
+  // Hybride : le service renvoie la partie git (modifiés/non suivis + nouveaux fichiers
+  // de compiles/ + liste des fichiers suivis) ; web y ajoute les entités Overleaf non
+  // suivies (docstore/filestore) et les suppressions en attente (Mongo).
+  async notStagedFiles(req, res) {
     const { projectId, userId } = req.query
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/not-staged`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json({ notStaged: [], deleted: [] })
+      const { notStaged, tracked } = await response.json()
+      const trackedSet = new Set(tracked || [])
+      const listed = new Set(notStaged)
 
-    move(projectId, userId)
+      // Entités Overleaf (docs + binaires) non suivies par git et pas déjà listées
+      try {
+        const { docs, files } = await ProjectEntityHandler.promises.getAllEntities(projectId)
+        for (const { path: filePath } of [...docs, ...files]) {
+          const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
+          if (!trackedSet.has(normalized) && !listed.has(normalized)) {
+            notStaged.push(normalized)
+            listed.add(normalized)
+          }
+        }
+      } catch (e) {
+        console.log('getAllEntities échoué:', e.message)
+      }
 
-    getNotStaged(projectId,userId)
-    .then(result => {
-      res.json(result)
-    })
-    .catch(error => {
+      // Suppressions en attente
+      const project = await Project.findById(projectId, 'git.pendingDeletions').lean().exec()
+      const deleted = project?.git?.pendingDeletions || []
+
+      res.json({ notStaged, deleted })
+    } catch (error) {
       console.error("Error:", error)
+      res.json({ notStaged: [], deleted: [] })
+    }
+  },
+
+  async currentBranch(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/current-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) return res.json("")
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching current Branch:", error)
+      res.json("")
+    }
+  },
+
+  async branches(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/branches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, gitInfo }),
+      })
+      if (!response.ok) return res.json([])
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching branches:", error)
       res.json([])
-    })
-  },
-
-  currentBranch(req, res) {
-    const { projectId, userId } = req.query
-    move(projectId, userId)
-    getCurrentBranch(projectId, userId)
-      .then(currBranch=> {
-        res.json(currBranch)
-      })
-      .catch(error => {
-        console.error("Error fetching current Branch:", error)
-        res.json("")
-      })
-  },
-
-  branches(req, res) {
-    const { projectId, userId } = req.query
-    move(projectId, userId)
-    getBranches(projectId, userId)
-      .then(branchList => {
-        res.json(branchList)
-      })
-      .catch(error => {
-        console.error("Error fetching branches:", error)
-        res.json([])
-      })
+    }
   },
 
   async switch_branch(req, res) {
@@ -1478,26 +1352,23 @@ GitController = {
     console.log("switch branch to:", branchName)
 
     try {
-      move(projectId, userId)
-      await withRemoteAuth(projectId, userId, (remote) => git.fetch(remote))
-
-      // branchName est au format "origin/ma-branche", on extrait la partie locale
-      const [, localBranch] = branchName.split('/')
-      const localBranches = await git.branchLocal()
-
-      if (localBranches.all.includes(localBranch)) {
-        await git.checkout(localBranch)
-      } else {
-        await git.checkout(['-b', localBranch, branchName])
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, ref: branchName, gitInfo }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-      console.log("Switched to branch:", localBranch)
-
-      // Appliquer les attributs binaires et ré-extraire pour éviter la corruption des fichiers binaires
-      await disableBinaryConversion(projectPath)
-      const localGit = getGitForProject(projectId, userId)
-      await localGit.raw(['checkout', 'HEAD', '--', '.'])
-
+      // Mémoriser la branche courante en base pour que push/pull ciblent la bonne branche
+      const localBranch = branchName.startsWith('origin/') ? branchName.slice('origin/'.length) : branchName
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': localBranch } }).exec()
+      // Le working tree a changé de branche → reconstruire l'éditeur Overleaf
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      // Retirer les fichiers de l'ancienne branche absents de la nouvelle
+      await syncDeletionsWithWorkingTree(projectId, userId, projectPath)
       resyncHistory(projectId) // arrière-plan : ne bloque pas la réponse
       res.sendStatus(200)
     } catch (error) {
@@ -1507,27 +1378,27 @@ GitController = {
   },
 
   async createBranch(req, res) {
-    console.log("Here at create Branch");
-    const { projectId, userId, newBranchName } = req.body;
-    const projectPath = dataPath + projectId + "-" + userId;
+    const { projectId, userId, newBranchName } = req.body
     try {
-      move(projectId, userId);
-      const BranchCreationSummary = await git.checkoutLocalBranch(newBranchName);
-      console.log("created new branch: ", newBranchName)
-
-      await withRemoteAuth(projectId, userId, (remote) =>
-        git.push(remote, newBranchName, ['--set-upstream'])
-      )
-      console.log(`Branch '${newBranchName}' pushed to origin`)
-
-      res.sendStatus(200);
-
-      } catch (error) {
-        console.error("Create branch failed:", error);
-        await buildProject(projectPath, projectId, userId, getRootId(projectId));
-        HttpErrorHandler.gitMethodError(req, res, error?.git?.message || error?.message || String(error));
+      const gitInfo = await getGitInfo(projectId)
+      const response = await fetch(`${GIT_SERVICE_URL}/create-branch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, newBranchName, gitInfo }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-    },
+      // checkoutLocalBranch bascule sur la nouvelle branche → la mémoriser en base
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': newBranchName } }).exec()
+      // Créer une branche ne change pas le contenu du working tree → pas de rebuild
+      res.sendStatus(200)
+    } catch (error) {
+      console.error("Create branch failed:", error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
 
   getKey(req, res) {
     // La clé SSH est propre à l'utilisateur : on dérive l'identité de la session,
@@ -1546,8 +1417,8 @@ GitController = {
   async addAll(req, res) {
     const { projectId, userId } = req.body
     if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
-    move(projectId, userId)
     try {
+      // Matérialiser le contenu de l'éditeur sur le working tree avant de tout indexer
       try {
         await compileProject(projectId, userId)
         console.log("Compilation réussie avant addAll")
@@ -1556,16 +1427,17 @@ GitController = {
       }
       const { notStaged: newFiles, deleted: deletedFiles } = await getNotStaged(projectId, userId)
       await gitUpdate(projectId, userId, newFiles)
-      // Supprimer du working tree les fichiers supprimés dans Overleaf
-      const repoPath = dataPath + projectId + "-" + userId
-      for (const f of deletedFiles) {
-        if (!isSafeRelativePath(f)) continue // ignore tout chemin non confiné au dépôt
-        const fullPath = path.join(repoPath, f)
-        try {
-          if (await fs.pathExists(fullPath)) await fs.remove(fullPath)
-        } catch (_) {}
+
+      // Le service retire les fichiers supprimés du working tree puis fait git add .
+      const response = await fetch(`${GIT_SERVICE_URL}/add-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, deletedFiles }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-      await git.add('.')
       if (deletedFiles.length > 0) {
         await Project.updateOne({ _id: projectId }, { $set: { 'git.pendingDeletions': [] } }).catch(() => {})
       }

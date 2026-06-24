@@ -8,6 +8,8 @@ on:
       - template_integration
       - git_compilation
       - overleaf
+      - ginit_ui
+      - git-as-service
       - admin-panel
     tags: [ 'v*.*.*' ]
   pull_request:
@@ -62,6 +64,10 @@ jobs:
             TAG="git-compilation"
           elif [ "$BRANCH_NAME" = "overleaf" ]; then
             TAG="overleaf"
+          elif [ "$BRANCH_NAME" = "ginit_ui" ]; then
+            TAG="ginit_ui"
+          elif [ "$BRANCH_NAME" = "git-as-service" ]; then
+            TAG="git-service"
           elif [ "$BRANCH_NAME" = "admin-panel" ]; then
             TAG="admin"
           else
@@ -83,10 +89,7 @@ jobs:
           docker images
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          # Must match server-ce/Makefile BRANCH_NAME_TAG_SAFE: only '/' -> '--',
-          # every other character (including '-' and '_') is preserved.
-          CLEAN_BRANCH=$(echo "$BRANCH_NAME" | sed 's#/#--#g')
-
+          CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       
           echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"
