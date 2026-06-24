@@ -8,6 +8,7 @@ on:
       - template_integration
       - git_compilation
       - overleaf
+      - ginit_ui
       - git-as-service
       - admin-panel
     tags: [ 'v*.*.*' ]
@@ -63,6 +64,8 @@ jobs:
             TAG="git-compilation"
           elif [ "$BRANCH_NAME" = "overleaf" ]; then
             TAG="overleaf"
+          elif [ "$BRANCH_NAME" = "ginit_ui" ]; then
+            TAG="ginit_ui"
           elif [ "$BRANCH_NAME" = "git-as-service" ]; then
             TAG="git-service"
           elif [ "$BRANCH_NAME" = "admin-panel" ]; then
