@@ -52,14 +52,21 @@ FROM app AS with-texlive
 # NB (fork Artishow) : divergence ASSUMÉE par rapport au Dockerfile auto-généré.
 # L'upstream installait TeXLive via
 #   apt-cache depends texlive-full | grep Depends | ... | xargs apt-get install
-# Cette tuyauterie échoue sur la base node:24 (Debian Bookworm) : la liste générée
-# contient des paquets virtuels/alternatives qu'apt-get ne résout pas, un paquet
-# échoue et xargs renvoie 123 (→ "dpkg returned an error code (1)").
-# On installe donc texlive-full directement : apt résout l'arbre de dépendances
-# proprement. Image plus lourde mais build fiable.
+# Cette tuyauterie échouait (xargs → exit 123). On installe donc texlive-full
+# directement : apt résout l'arbre de dépendances proprement.
+#
+# texlive-full s'installe bien, mais ImageMagick (tiré via asymptote/pstoedit/
+# inkscape) échoue à se CONFIGURER en conteneur : ses scripts postinst tombent
+# sur debconf sans TTY ("falling back to frontend: Teletype") et sur le conffile
+# /etc/ImageMagick-6/policy.xml déjà patché par install_deps.sh (étape base).
+# → DEBIAN_FRONTEND=noninteractive neutralise les prompts debconf ;
+#   -o Dpkg::Options "confdef/confold" résout les conffiles sans interaction
+#   (garde la version déjà patchée). Ça débloque imagemagick-6-common & co.
 # Si bin/update_build_scripts est un jour relancé, REPORTER ce correctif.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
         texlive-full \
         fontconfig \
         inkscape \
