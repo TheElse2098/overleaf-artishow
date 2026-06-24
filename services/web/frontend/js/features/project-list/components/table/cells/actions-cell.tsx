@@ -1,7 +1,6 @@
 import { Project } from '../../../../../../../types/project/dashboard/api'
 import { CopyProjectButtonTooltip } from './action-buttons/copy-project-button'
 import { ArchiveProjectButtonTooltip } from './action-buttons/archive-project-button'
-import { TrashProjectButtonTooltip } from './action-buttons/trash-project-button'
 import { UnarchiveProjectButtonTooltip } from './action-buttons/unarchive-project-button'
 import { UntrashProjectButtonTooltip } from './action-buttons/untrash-project-button'
 import { DownloadProjectButtonTooltip } from './action-buttons/download-project-button'
@@ -17,15 +16,16 @@ type ActionsCellProps = {
 export default function ActionsCell({ project }: ActionsCellProps) {
   return (
     <>
-      <CopyProjectButtonTooltip project={project} />
+      <span className="hover-only-action-btn">
+        <CopyProjectButtonTooltip project={project} />
+      </span>
+      <TemplateProjectButtonTooltip project={project} />
       <DownloadProjectButtonTooltip project={project} />
       <CompileAndDownloadProjectPDFButtonTooltip project={project} />
       <ArchiveProjectButtonTooltip project={project} />
-      <TrashProjectButtonTooltip project={project} />
       <UnarchiveProjectButtonTooltip project={project} />
       <UntrashProjectButtonTooltip project={project} />
       <LeaveProjectButtonTooltip project={project} />
-      <TemplateProjectButtonTooltip project={project} />
       <DeleteProjectButtonTooltip project={project} />
     </>
   )
