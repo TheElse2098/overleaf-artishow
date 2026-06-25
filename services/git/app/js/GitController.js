@@ -22,6 +22,11 @@ const GIT_ERROR_RULES = [
       'Impossible de joindre le dépôt distant : vérifiez l’URL et votre connexion réseau.',
   },
   {
+    test: /not a git repository|fatal: not a git repository/i,
+    message:
+      'Ce projet n’est pas encore lié à un dépôt Git. Importez ou configurez un dépôt distant avant de lancer une opération Git.',
+  },
+  {
     test: /repository not found|does not (appear to be a git repository|exist)|not found/i,
     message:
       'Dépôt introuvable : vérifiez l’URL du dépôt distant.',
