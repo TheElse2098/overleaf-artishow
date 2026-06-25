@@ -40,10 +40,7 @@ function globalBlobFileKeyMiddleware(req, res, next) {
   req.bucket = settings.filestore.stores.global_blobs
   const { hash } = req.params
   req.key = `${hash.slice(0, 2)}/${hash.slice(2, 4)}/${hash.slice(4)}`
-  // Fork Artishow : on NE force PAS useSubdirectories. history-v1 écrit les blobs
-  // à plat (FSPersistor, useSubdirectories=false → les / de la clé deviennent _).
-  // Forcer les sous-dossiers ici ferait chercher .../ab/hash alors que le fichier
-  // est à plat (..._ab_hash) → 404. On lit donc à plat, cohérent avec l'écriture.
+  req.useSubdirectories = true
   next()
 }
 
@@ -51,7 +48,7 @@ function projectBlobFileKeyMiddleware(req, res, next) {
   req.bucket = settings.filestore.stores.project_blobs
   const { historyId, hash } = req.params
   req.key = `${projectKey.format(historyId)}/${hash.slice(0, 2)}/${hash.slice(2)}`
-  // Fork Artishow : idem, pas de useSubdirectories (lecture à plat, cf. ci-dessus).
+  req.useSubdirectories = true
   next()
 }
 

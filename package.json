@@ -236,7 +236,6 @@
     "services/document-updater",
     "services/filestore",
     "services/freegeoip",
-    "services/git",
     "services/github-sync",
     "services/history-v1",
     "services/idp",
