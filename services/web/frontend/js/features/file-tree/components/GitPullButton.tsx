@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { postJSON } from '../../../infrastructure/fetch-json'
 import MaterialIcon from '@/shared/components/material-icon'
 import { GitNotif, GitConfirm } from '../../editor-navigation-toolbar/components/GitFeedback'
+import { useGitModifiedFiles } from '../contexts/git-modified-files'
 
 type Props = {
   projectId: string
@@ -237,6 +238,11 @@ export default function GitPullButton({ projectId, userId }: Props) {
   const [notif, setNotif] = useState<Notif | null>(null)
   const [popupRect, setPopupRect] = useState<DOMRect | null>(null)
   const buttonRef = useRef<HTMLDivElement>(null)
+  const { refreshModifiedFiles } = useGitModifiedFiles()
+
+  function openPopup() {
+    if (buttonRef.current) setPopupRect(buttonRef.current.getBoundingClientRect())
+  }
 
   function openPopup() {
     if (buttonRef.current) setPopupRect(buttonRef.current.getBoundingClientRect())
@@ -271,6 +277,7 @@ export default function GitPullButton({ projectId, userId }: Props) {
       }
 
       setNotif({ type: 'success', message: 'Pull effectué avec succès.' })
+      refreshModifiedFiles()
     } catch (err: any) {
       setNotif({
         type: 'error',

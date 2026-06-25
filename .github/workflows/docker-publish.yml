@@ -11,6 +11,8 @@ on:
       - ginit_ui
       - git-as-service
       - admin-panel
+      - ui-upgrade
+      - Fit-add
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -70,6 +72,10 @@ jobs:
             TAG="git-service"
           elif [ "$BRANCH_NAME" = "admin-panel" ]; then
             TAG="admin"
+          elif [ "$BRANCH_NAME" = "ui-upgrade" ]; then
+            TAG="ui-upgrade"
+          elif [ "$BRANCH_NAME" = "Fit-add" ]; then
+            TAG="Fit-add"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
@@ -90,7 +96,6 @@ jobs:
       
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's#/#--#g')
-      
           SOURCE_IMAGE="sharelatex/sharelatex:${CLEAN_BRANCH}"
       
           echo "Using SOURCE_IMAGE=$SOURCE_IMAGE"
