@@ -17,27 +17,82 @@ const CONFIRM_MSG =
   'Vos commits locaux seront conservés via un merge. ' +
   'Les modifications non commitées seront sauvegardées (stash) et restaurées après le pull.'
 
+// Types de token, identiques à la modale d'import (modal-content-new-git-project-form)
+const TOKEN_TYPES = [
+  { value: 'github', label: 'GitHub (Personal Access Token)' },
+  { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+]
+
+// Section d'authentification par token, partagée par init et set-remote.
+// Même logique que la modale d'import : type de token + champ token + bouton "Voir".
+function TokenAuthFields({
+  token, setToken, tokenType, setTokenType, showToken, setShowToken,
+}: {
+  token: string
+  setToken: (v: string) => void
+  tokenType: string
+  setTokenType: (v: string) => void
+  showToken: boolean
+  setShowToken: (v: boolean) => void
+}) {
+  return (
+    <>
+      <div style={{ fontSize: 12, fontWeight: 500, margin: '2px 0 8px' }}>
+        Authentification par token{' '}
+        <span style={{ fontWeight: 400, color: 'var(--content-secondary, #555)' }}>
+          (optionnel — laissez vide pour utiliser SSH)
+        </span>
+      </div>
+      <label style={labelStyle}>Type de token</label>
+      <select value={tokenType} onChange={e => setTokenType(e.target.value)} style={inputStyle}>
+        {TOKEN_TYPES.map(t => (
+          <option key={t.value} value={t.value}>{t.label}</option>
+        ))}
+      </select>
+      <label style={labelStyle}>Token d'accès personnel</label>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <input
+          type={showToken ? 'text' : 'password'}
+          placeholder="ghp_xxxxxxxxxxxx"
+          value={token}
+          onChange={e => setToken(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+          maxLength={255}
+        />
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setShowToken(!showToken)}
+          style={{ whiteSpace: 'nowrap' }}
+        >
+          {showToken ? 'Masquer' : 'Voir'}
+        </button>
+      </div>
+    </>
+  )
+}
+
 // ── Formulaire d'initialisation ───────────────────────────────────────────────
 function GitInitPopup({
   onConfirm,
   onCancel,
   isLoading,
 }: {
-  onConfirm: (remoteUrl: string | null, token: string | null) => void
+  onConfirm: (remoteUrl: string | null, token: string | null, tokenType: string | null) => void
   onCancel: () => void
   isLoading: boolean
 }) {
   const [wantsRemote, setWantsRemote] = useState(false)
   const [remoteUrl, setRemoteUrl] = useState('')
   const [token, setToken] = useState('')
-
-  const isHttps = remoteUrl.startsWith('https://')
+  const [tokenType, setTokenType] = useState('github')
+  const [showToken, setShowToken] = useState(false)
 
   function handleConfirm() {
-    if (!wantsRemote) { onConfirm(null, null); return }
+    if (!wantsRemote) { onConfirm(null, null, null); return }
     const url = remoteUrl.trim() || null
-    const tok = isHttps ? (token.trim() || null) : null
-    onConfirm(url, tok)
+    const tok = token.trim() || null
+    onConfirm(url, tok, tok ? tokenType : null)
   }
 
   return (
@@ -57,41 +112,19 @@ function GitInitPopup({
           <label style={labelStyle}>URL du dépôt</label>
           <input
             type="text"
-            placeholder="https://github.com/user/repo.git"
+            placeholder="git@github.com:user/repo.git"
             value={remoteUrl}
             onChange={e => setRemoteUrl(e.target.value)}
             style={inputStyle}
+            maxLength={255}
             autoFocus
           />
 
-          {isHttps && (
-            <>
-              <label style={labelStyle}>
-                Token d'accès
-                <span style={{ fontWeight: 400, color: 'var(--content-secondary, #555)', marginLeft: 6 }}>
-                  (optionnel — repo public)
-                </span>
-              </label>
-              <input
-                type="password"
-                placeholder="ghp_xxxxxxxxxxxx"
-                value={token}
-                onChange={e => setToken(e.target.value)}
-                style={inputStyle}
-              />
-              {token && (
-                <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8, marginTop: -6 }}>
-                  {"L'URL utilisée sera : https://<TOKEN>@github.com/…"}
-                </div>
-              )}
-            </>
-          )}
-
-          {!isHttps && remoteUrl.trim() && (
-            <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8 }}>
-              URL SSH détectée — aucun token requis, la clé SSH du serveur sera utilisée.
-            </div>
-          )}
+          <TokenAuthFields
+            token={token} setToken={setToken}
+            tokenType={tokenType} setTokenType={setTokenType}
+            showToken={showToken} setShowToken={setShowToken}
+          />
         </>
       )}
 
@@ -115,18 +148,18 @@ function GitSetRemotePopup({
   onCancel,
   isLoading,
 }: {
-  onConfirm: (remoteUrl: string, token: string | null) => void
+  onConfirm: (remoteUrl: string, token: string | null, tokenType: string | null) => void
   onCancel: () => void
   isLoading: boolean
 }) {
   const [remoteUrl, setRemoteUrl] = useState('')
   const [token, setToken] = useState('')
-
-  const isHttps = remoteUrl.startsWith('https://')
+  const [tokenType, setTokenType] = useState('github')
+  const [showToken, setShowToken] = useState(false)
 
   function handleConfirm() {
-    const tok = isHttps ? (token.trim() || null) : null
-    onConfirm(remoteUrl.trim(), tok)
+    const tok = token.trim() || null
+    onConfirm(remoteUrl.trim(), tok, tok ? tokenType : null)
   }
 
   return (
@@ -139,41 +172,19 @@ function GitSetRemotePopup({
       <label style={labelStyle}>URL du dépôt</label>
       <input
         type="text"
-        placeholder="https://github.com/user/repo.git"
+        placeholder="git@github.com:user/repo.git"
         value={remoteUrl}
         onChange={e => setRemoteUrl(e.target.value)}
         style={inputStyle}
+        maxLength={255}
         autoFocus
       />
 
-      {isHttps && (
-        <>
-          <label style={labelStyle}>
-            Token d'accès
-            <span style={{ fontWeight: 400, color: 'var(--content-secondary, #555)', marginLeft: 6 }}>
-              (optionnel — repo public)
-            </span>
-          </label>
-          <input
-            type="password"
-            placeholder="ghp_xxxxxxxxxxxx"
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            style={inputStyle}
-          />
-          {token && (
-            <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8, marginTop: -6 }}>
-              {"L'URL utilisée sera : https://<TOKEN>@github.com/…"}
-            </div>
-          )}
-        </>
-      )}
-
-      {!isHttps && remoteUrl.trim() && (
-        <div style={{ fontSize: 11, color: 'var(--content-secondary, #555)', marginBottom: 8 }}>
-          URL SSH détectée — aucun token requis, la clé SSH du serveur sera utilisée.
-        </div>
-      )}
+      <TokenAuthFields
+        token={token} setToken={setToken}
+        tokenType={tokenType} setTokenType={setTokenType}
+        showToken={showToken} setShowToken={setShowToken}
+      />
 
       <div style={btnRowStyle}>
         <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={isLoading}>Annuler</button>
@@ -288,11 +299,11 @@ export default function GitPullButton({ projectId, userId }: Props) {
     }
   }
 
-  async function handleInit(remoteUrl: string | null, token: string | null) {
+  async function handleInit(remoteUrl: string | null, token: string | null, tokenType: string | null) {
     setIsLoading(true)
     try {
       const response = await postJSON('/git-init', {
-        body: { projectId, userId, remoteUrl, token },
+        body: { projectId, userId, remoteUrl, token, tokenType },
       }) as any
       setShowInit(false)
       setNotif({ type: 'success', message: response?.message ?? 'Dépôt initialisé avec succès.' })
@@ -307,11 +318,11 @@ export default function GitPullButton({ projectId, userId }: Props) {
     }
   }
 
-  async function handleSetRemote(remoteUrl: string, token: string | null) {
+  async function handleSetRemote(remoteUrl: string, token: string | null, tokenType: string | null) {
     setIsLoading(true)
     try {
       const response = await postJSON('/git-set-remote', {
-        body: { projectId, userId, remoteUrl, token },
+        body: { projectId, userId, remoteUrl, token, tokenType },
       }) as any
       setShowSetRemote(false)
       setNotif({ type: 'success', message: response?.message ?? 'Remote lié avec succès.' })
