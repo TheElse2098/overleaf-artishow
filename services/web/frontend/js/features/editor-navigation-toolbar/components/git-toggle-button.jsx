@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useProjectContext } from '@/shared/context/project-context'
 import { useUserContext } from '../../../shared/context/user-context'
+import { useActiveOverallTheme } from '@/shared/hooks/use-active-overall-theme'
 import MaterialIcon from '../../../shared/components/material-icon'
 import './Modal.css'
 
@@ -32,6 +33,17 @@ function Modal({
   onRefresh,
 }) {
   const [activeTab, setActiveTab] = useState('commit')
+  const activeOverallTheme = useActiveOverallTheme()
+  const isDark = activeOverallTheme === 'dark'
+
+  const TABS = [
+    { id: 'commit', label: 'Commit & Push' },
+    { id: 'rollback', label: 'Rollback' },
+    { id: 'branches', label: 'Branches' },
+    { id: 'token', label: 'Token' },
+    { id: 'documentation', label: 'Documentation' },
+  ]
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -52,72 +64,30 @@ function Modal({
   return (
     <div className="modal-overlay">
 
-        <div className="modal-content">
+        <div className={'modal-content' + (isDark ? ' git-menu-dark' : '')}>
           <button onClick={onClose} className="modal-close-button">X</button>
           <h2 style={{ fontFamily: 'sans-serif', fontWeight: 500 }}>Git Menu</h2>
-          
+
           {/* Tabs */}
-          <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid #ddd' }}>
-            <button 
-              onClick={() => setActiveTab('commit')}
-              style={{ 
-                padding: '10px 20px', 
-                border: 'none', 
-                backgroundColor: activeTab === 'commit' ? '#45a444' : 'transparent',
-                color: activeTab === 'commit' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Commit & Push
-            </button>
-            <button 
-              onClick={() => setActiveTab('rollback')}
-              style={{ 
-                padding: '10px 20px', 
-                border: 'none', 
-                backgroundColor: activeTab === 'rollback' ? '#45a444' : 'transparent',
-                color: activeTab === 'rollback' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Rollback
-            </button>
-            <button 
-              onClick={() => setActiveTab('branches')}
-              style={{ 
-                padding: '10px 20px', 
-                border: 'none', 
-                backgroundColor: activeTab === 'branches' ? '#45a444' : 'transparent',
-                color: activeTab === 'branches' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Branches
-            </button>
-            <button
-              onClick={() => setActiveTab('token')}
-              style={{
-                padding: '10px 20px',
-                border: 'none',
-                backgroundColor: activeTab === 'token' ? '#45a444' : 'transparent',
-                color: activeTab === 'token' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Token
-            </button>
-            <button
-              onClick={() => setActiveTab('documentation')}
-              style={{
-                padding: '10px 20px',
-                border: 'none',
-                backgroundColor: activeTab === 'documentation' ? '#45a444' : 'transparent',
-                color: activeTab === 'documentation' ? 'white' : 'black',
-                cursor: 'pointer'
-              }}
-            >
-              Documentation
-            </button>
+          <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid var(--git-border)' }}>
+            {TABS.map(tab => {
+              const isActive = activeTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  style={{
+                    padding: '10px 20px',
+                    border: 'none',
+                    backgroundColor: isActive ? 'var(--git-accent)' : 'transparent',
+                    color: isActive ? 'white' : 'var(--git-text)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
           </div>
 
           {/* Commit & Push Tab */}
@@ -159,7 +129,7 @@ function Modal({
 
           {/* Documentation Tab */}
           {activeTab === 'documentation' && (
-            <div style={{ color: 'black', fontFamily: 'sans-serif', lineHeight: '1.6' }}>
+            <div style={{ color: 'var(--git-text)', fontFamily: 'sans-serif', lineHeight: '1.6' }}>
               <h3>Guide d'utilisation de Git</h3>
 
               <p><strong>Avant toute opération Git</strong><br />
@@ -195,7 +165,7 @@ function Modal({
                 <li>Allez dans l’onglet <strong>"Rollback"</strong></li>
                 <li>Sélectionnez un commit, puis cliquez sur <strong>"Rollback to this commit"</strong></li>
               </ul>
-              <p style={{ color: 'red' }}><strong>⚠️ Cette action supprimera toutes les modifications après ce commit.</strong></p>
+              <p style={{ color: '#e0524d' }}><strong>⚠️ Cette action supprimera toutes les modifications après ce commit.</strong></p>
 
               <h4>e. <code>git branch</code> – Voir et changer de branche</h4>
               <ul>
@@ -211,7 +181,7 @@ function Modal({
                 </li>
               </ul>
 
-              <div style={{ marginTop: '10px', fontStyle: 'italic', color: 'gray' }}>
+              <div style={{ marginTop: '10px', fontStyle: 'italic', color: 'var(--git-text-muted)' }}>
                 Remarque : certaines opérations (comme "add") peuvent être automatisées selon la configuration serveur.
               </div>
             </div>
