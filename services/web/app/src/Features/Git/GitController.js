@@ -976,56 +976,56 @@ GitController = {
     }
   },
 
-    // Initialise un repo git local pour le projet et, si remoteUrl est fourni, le lie au remote.
-  // Body attendu : { projectId, userId, remoteUrl? (optionnel), branch? (défaut: "main") }
+  // Proxifie /git-init vers le service git, puis sauvegarde le lien dans MongoDB.
   async init(req, res) {
     const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
- 
+
     if (!projectId || !userId) {
       return res.status(400).json({ error: 'projectId et userId sont requis.' })
     }
- 
+
     try {
-      const alreadyRepo = await isGitRepo(projectId, userId)
-      if (alreadyRepo) {
-        console.log(`Projet ${projectId} déjà lié à un repo git.`)
-        return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
-      }
- 
-      const result = await gitInit(projectId, userId, remoteUrl, branch, token, tokenType)
-      console.log(`gitInit terminé pour ${projectId}:`, result)
- 
-      return res.status(200).json({
-        ...result,
-        message: result.created
-          ? (result.remoteLinked
-              ? `Repo créé et lié au remote ${remoteUrl} (branche: ${branch}).`
-              : `Repo créé localement${remoteUrl ? ', mais le push initial a échoué (vérifiez l\'URL et les droits SSH).' : '.'}`)
-          : 'Ce projet est déjà un repo git.'
+      const response = await fetch(`${GIT_SERVICE_URL}/init`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, remoteUrl, branch, token, tokenType }),
       })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      // Sauvegarder le lien dans MongoDB si le repo a bien été créé
+      if (result.created) {
+        await saveGitLink(projectId, remoteUrl, branch, token, tokenType)
+      }
+      return res.status(200).json(result)
     } catch (error) {
-      console.error('Erreur dans gitInit:', error)
+      console.error('Erreur dans init:', error)
       HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
 
+  // Proxifie /git-set-remote vers le service git, puis met à jour MongoDB.
   async setRemote(req, res) {
     const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
     if (!projectId || !userId || !remoteUrl) {
       return res.status(400).json({ error: 'projectId, userId et remoteUrl sont requis.' })
     }
-    const repoExists = await isGitRepo(projectId, userId)
-    if (!repoExists) {
-      return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
-    }
     try {
-      const result = await gitSetRemote(projectId, userId, remoteUrl, branch, token, tokenType)
-      const message = result.remoteLinked
-        ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
-        : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué (vérifiez l'URL et les droits).`
-      return res.status(200).json({ ...result, message })
+      const response = await fetch(`${GIT_SERVICE_URL}/set-remote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, remoteUrl, branch, token, tokenType }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      // Mettre à jour MongoDB avec le nouveau remote
+      await saveGitLink(projectId, remoteUrl, branch, token, tokenType)
+      return res.status(200).json(result)
     } catch (error) {
-      console.error('Erreur dans gitSetRemote:', error)
+      console.error('Erreur dans setRemote:', error)
       HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
@@ -1066,6 +1066,10 @@ GitController = {
     } catch (err) {
       return HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
+
+    // Signaux spéciaux : repo non prêt
+    if (result.notInitialized) return res.status(200).json({ notInitialized: true })
+    if (result.noRemote) return res.status(200).json({ noRemote: true })
 
     // Conflit : le merge a été annulé côté service, rien à reconstruire
     if (result.status === 'conflict') {

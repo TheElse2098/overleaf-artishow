@@ -447,3 +447,116 @@ export async function gitClone(projectId, ownerId, link, branch, token, tokenTyp
   await recheckoutHead(getGitForProject(projectId, ownerId))
   console.log("Initial checkout done with binary attributes applied")
 }
+
+// ── Init & SetRemote ──────────────────────────────────────────────────────────
+
+// Vérifie si un repo git existe sur disque (pas de MongoDB — pur fichiers)
+export async function isGitRepo(projectId, ownerId) {
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  return fs.pathExists(path.join(repoPath, '.git'))
+}
+
+// Initialise un repo git local, configure le remote et tente un push initial.
+export async function gitInit(projectId, ownerId, remoteUrl = null, defaultBranch = 'main', token = null, tokenType = null) {
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  await fs.ensureDir(repoPath)
+
+  const alreadyRepo = await isGitRepo(projectId, ownerId)
+  if (alreadyRepo) return { created: false, remoteLinked: false }
+
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+  })
+
+  await localGit.init()
+  await localGit.addConfig('user.name', 'overleaf')
+  await localGit.addConfig('user.email', 'overleaf@overleaf.com')
+  await disableBinaryConversion(repoPath)
+  await localGit.raw(['commit', '--allow-empty', '-m', 'Initial commit'])
+  try { await localGit.raw(['branch', '-M', defaultBranch]) } catch (_) {}
+
+  let remoteLinked = false
+  if (remoteUrl) {
+    if (!isSafeGitUrl(remoteUrl)) throw new Error('URL remote invalide.')
+    await localGit.addRemote('origin', remoteUrl)
+
+    const tryPush = async () => {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.push(authUrl, defaultBranch, ['--set-upstream'])
+      } else {
+        await withSshKey(ownerId, () => localGit.push(['-u', 'origin', defaultBranch]))
+      }
+    }
+
+    try {
+      await tryPush()
+      remoteLinked = true
+    } catch (_) {
+      // Remote non vide : fusionner les historiques puis repousser
+      try {
+        if (token) {
+          const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+          await localGit.raw(['pull', authUrl, defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+        } else {
+          await withSshKey(ownerId, () =>
+            localGit.raw(['pull', 'origin', defaultBranch, '--allow-unrelated-histories', '--no-rebase'])
+          )
+        }
+        await tryPush()
+        remoteLinked = true
+      } catch (mergeErr) {
+        console.error('Push initial échoué après merge:', sanitizeGitError(mergeErr))
+      }
+    }
+  }
+
+  return { created: true, remoteLinked }
+}
+
+// Lie un remote à un repo local existant et tente un push.
+export async function gitSetRemote(projectId, ownerId, remoteUrl, branch = 'main', token = null, tokenType = null) {
+  if (!isSafeGitUrl(remoteUrl)) throw new Error('URL remote invalide.')
+
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+  })
+
+  try { await localGit.removeRemote('origin') } catch (_) {}
+  await localGit.addRemote('origin', remoteUrl)
+
+  const tryPush = async () => {
+    if (token) {
+      const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+      await localGit.push(authUrl, branch, ['--set-upstream'])
+    } else {
+      await withSshKey(ownerId, () => localGit.push(['-u', 'origin', branch]))
+    }
+  }
+
+  let remoteLinked = false
+  try {
+    await tryPush()
+    remoteLinked = true
+  } catch (_) {
+    try {
+      if (token) {
+        const authUrl = buildAuthenticatedUrl(remoteUrl, token, tokenType)
+        await localGit.raw(['pull', authUrl, branch, '--allow-unrelated-histories', '--no-rebase'])
+      } else {
+        await withSshKey(ownerId, () =>
+          localGit.raw(['pull', 'origin', branch, '--allow-unrelated-histories', '--no-rebase'])
+        )
+      }
+      await tryPush()
+      remoteLinked = true
+    } catch (mergeErr) {
+      console.error('SetRemote push échoué après merge:', sanitizeGitError(mergeErr))
+    }
+  }
+
+  return { remoteLinked }
+}
