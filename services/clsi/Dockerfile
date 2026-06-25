@@ -49,9 +49,29 @@ COPY services/clsi/ /overleaf/services/clsi/
 
 FROM app AS with-texlive
 
+# NB (fork Artishow) : divergence ASSUMÉE par rapport au Dockerfile auto-généré.
+# L'upstream installait TeXLive via
+#   apt-cache depends texlive-full | grep Depends | ... | xargs apt-get install
+# Cette tuyauterie échouait (xargs → exit 123). On installe donc texlive-full
+# directement : apt résout l'arbre de dépendances proprement.
+#
+# texlive-full s'installe bien, mais ImageMagick (tiré via asymptote/pstoedit/
+# inkscape) échoue à se CONFIGURER en conteneur : ses scripts postinst tombent
+# sur debconf sans TTY ("falling back to frontend: Teletype") et sur le conffile
+# /etc/ImageMagick-6/policy.xml déjà patché par install_deps.sh (étape base).
+# → DEBIAN_FRONTEND=noninteractive neutralise les prompts debconf ;
+#   -o Dpkg::Options "confdef/confold" résout les conffiles sans interaction
+#   (garde la version déjà patchée). Ça débloque imagemagick-6-common & co.
+# Si bin/update_build_scripts est un jour relancé, REPORTER ce correctif.
 RUN apt-get update \
-    && apt-cache depends texlive-full | grep "Depends: " | grep -v -- "-doc" | grep -v -- "-lang-" | sed 's/Depends: //' | xargs apt-get install -y --no-install-recommends \
-    && apt-get install -y --no-install-recommends fontconfig inkscape python3-pygments qpdf \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        -o Dpkg::Options::="--force-confdef" \
+        -o Dpkg::Options::="--force-confold" \
+        texlive-full \
+        fontconfig \
+        inkscape \
+        python3-pygments \
+        qpdf \
     && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p cache compiles output \
