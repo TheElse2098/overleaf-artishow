@@ -129,8 +129,10 @@ COPY libraries/validation-tools/ /overleaf/libraries/validation-tools/
 COPY services/web/ /overleaf/services/web/
 COPY tools/migrations/ /overleaf/tools/migrations/
 
-# Omit Server Pro/CE specific scripts from SaaS image
-RUN rm /overleaf/services/web/modules/server-ce-scripts -rf
+# (Déploiement CE microservices) On GARDE le module server-ce-scripts : il est
+# listé dans moduleImportSequence de settings.defaults.js et requis au démarrage.
+# La ligne SaaS d'origine le supprimait :
+#   RUN rm /overleaf/services/web/modules/server-ce-scripts -rf
 RUN OVERLEAF_CONFIG=/overleaf/services/web/config/settings.overrides.saas.js nice yarn run precompile-pug
 
 
