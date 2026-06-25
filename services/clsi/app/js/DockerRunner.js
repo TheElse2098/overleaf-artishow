@@ -143,7 +143,12 @@ const DockerRunner = {
   },
 
   canRunSyncTeXInOutputDir() {
-    return true
+    // This runner bind-mounts the compile dir 1:1 at its real path and only
+    // remaps host paths under the compiles root (see containerToHostPath).
+    // The output build dir lives under a different root that we do not remap,
+    // so synctex must run in the compile dir, where output.synctex.gz and
+    // output.pdf still live (latexmk wrote them there via -outdir=$COMPILE_DIR).
+    return false
   },
 
   stopContainerMonitor() {},

@@ -431,6 +431,21 @@ async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitSt
   return result
 }
 
+// Retire de `paths` les chemins ignorés par le .gitignore du dépôt.
+// `git check-ignore` sort en code 1 quand aucun chemin n'est ignoré (simple-git
+// lève alors une erreur) → on retombe sur la liste complète dans ce cas.
+async function filterIgnored(localGit, paths) {
+  if (!paths || paths.length === 0) return paths
+  try {
+    const out = await localGit.raw(['check-ignore', ...paths])
+    const ignored = new Set(out.split('\n').map(s => s.trim()).filter(Boolean))
+    return paths.filter(p => !ignored.has(p))
+  } catch (_) {
+    // code 1 = aucun fichier ignoré ; autre = on ne filtre pas (sûr)
+    return paths
+  }
+}
+
 async function getNotStaged(projectId, userId) {
   const localGit = getGitForProject(projectId, userId)
   const gitDir = dataPath + projectId + "-" + userId
@@ -468,6 +483,9 @@ async function getNotStaged(projectId, userId) {
     } catch (err) {
       console.log('Could not check Overleaf entities:', err.message)
     }
+
+    // overleafOnlyFiles ne vient pas de `git status` → filtrer le .gitignore à la main
+    overleafOnlyFiles = await filterIgnored(localGit, overleafOnlyFiles)
 
     const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
 
@@ -1299,13 +1317,19 @@ GitController = {
       // Entités Overleaf (docs + binaires) non suivies par git et pas déjà listées
       try {
         const { docs, files } = await ProjectEntityHandler.promises.getAllEntities(projectId)
+        const candidates = []
         for (const { path: filePath } of [...docs, ...files]) {
           const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
           if (!trackedSet.has(normalized) && !listed.has(normalized)) {
-            notStaged.push(normalized)
+            candidates.push(normalized)
             listed.add(normalized)
           }
         }
+        // git status (côté service) exclut déjà les fichiers du .gitignore, mais pas
+        // ces entités Overleaf → on filtre via git check-ignore.
+        const localGit = getGitForProject(projectId, userId)
+        const keep = await filterIgnored(localGit, candidates)
+        notStaged.push(...keep)
       } catch (e) {
         console.log('getAllEntities échoué:', e.message)
       }
