@@ -206,7 +206,12 @@ if ((process.env.DOCKER_RUNNER || process.env.SANDBOXED_COMPILES) === 'true') {
     }
   }
 
-  module.exports.path.synctexBaseDir = () => '/compile'
+  // Upstream's DockerRunner mounts the compile dir at the fixed in-container
+  // path /compile, so it overrides synctexBaseDir to '/compile'. Our DockerRunner
+  // instead bind-mounts the compile dir 1:1 at its real host path, so synctex
+  // must use that real path. Keep the default synctexBaseDir (compilesDir/<name>)
+  // rather than the '/compile' override, otherwise synctex looks in a path that
+  // is not mounted in the container and returns nothing (breaking PDF<->code sync).
 
   module.exports.path.sandboxedCompilesHostDirCompiles =
     process.env.SANDBOXED_COMPILES_HOST_DIR_COMPILES ||

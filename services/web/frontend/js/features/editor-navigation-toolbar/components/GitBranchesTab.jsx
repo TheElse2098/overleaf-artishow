@@ -65,13 +65,13 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
       )}
 
       <div style={{ marginBottom: '16px' }}>
-        <div style={{ color: 'black', fontWeight: '500', marginBottom: '10px' }}>
+        <div style={{ color: 'var(--git-text-strong)', fontWeight: '500', marginBottom: '10px' }}>
           Branche active : <span style={{ color: '#45a444', fontFamily: 'monospace' }}>{selectedBranch || '...'}</span>
         </div>
       </div>
 
       <div style={{ marginBottom: '18px' }}>
-        <label style={{ display: 'block', color: 'black', marginBottom: '6px', fontSize: '13px', fontWeight: '500' }}>
+        <label style={{ display: 'block', color: 'var(--git-text-strong)', marginBottom: '6px', fontSize: '13px', fontWeight: '500' }}>
           Creer une nouvelle branche
         </label>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -85,8 +85,9 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
             style={{
               flex: 1,
               padding: '7px',
-              color: 'dimgray',
-              border: '1px solid #ccc',
+              color: 'var(--git-text)',
+              backgroundColor: 'var(--git-surface)',
+              border: '1px solid var(--git-border)',
               borderRadius: '4px',
               fontSize: '13px',
             }}
@@ -112,17 +113,17 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
       </div>
 
       <div>
-        <label style={{ display: 'block', color: 'black', marginBottom: '6px', fontSize: '13px', fontWeight: '500' }}>
+        <label style={{ display: 'block', color: 'var(--git-text-strong)', marginBottom: '6px', fontSize: '13px', fontWeight: '500' }}>
           Changer de branche
         </label>
         {branches.length === 0 ? (
-          <div style={{ color: 'gray', fontSize: '13px', fontStyle: 'italic' }}>Chargement...</div>
+          <div style={{ color: 'var(--git-text-muted)', fontSize: '13px', fontStyle: 'italic' }}>Chargement...</div>
         ) : (
           <div
             style={{
               maxHeight: '220px',
               overflowY: 'auto',
-              border: '1px solid #ddd',
+              border: '1px solid var(--git-border)',
               borderRadius: '4px',
               padding: '6px',
             }}
@@ -136,8 +137,8 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
                   style={{
                     padding: '8px 10px',
                     marginBottom: '4px',
-                    backgroundColor: isCurrent ? '#e3f2fd' : '#f8f9fa',
-                    border: isCurrent ? '1px solid #2196f3' : '1px solid #dee2e6',
+                    backgroundColor: isCurrent ? 'var(--git-selected-bg)' : 'var(--git-surface-alt)',
+                    border: isCurrent ? '1px solid var(--git-accent-blue)' : '1px solid var(--git-border)',
                     borderRadius: '4px',
                     cursor: isBusy ? 'not-allowed' : (isCurrent ? 'default' : 'pointer'),
                     display: 'flex',
@@ -147,7 +148,7 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
                 >
                   <span
                     style={{
-                      color: 'black',
+                      color: 'var(--git-text-strong)',
                       fontFamily: 'monospace',
                       fontSize: '13px',
                       fontWeight: isCurrent ? 'bold' : 'normal',
@@ -159,9 +160,9 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
                     <span
                       style={{
                         fontSize: '11px',
-                        color: '#1976d2',
-                        backgroundColor: '#e3f2fd',
-                        border: '1px solid #90caf9',
+                        color: 'var(--git-badge-text)',
+                        backgroundColor: 'var(--git-badge-bg)',
+                        border: '1px solid var(--git-badge-border)',
                         borderRadius: '10px',
                         padding: '1px 7px',
                       }}
@@ -170,7 +171,7 @@ function GitBranchesTab({ projectId, userId, branches, selectedBranch, onRefresh
                     </span>
                   )}
                   {isSwitching && !isCurrent && (
-                    <span style={{ fontSize: '11px', color: 'gray' }}>...</span>
+                    <span style={{ fontSize: '11px', color: 'var(--git-text-muted)' }}>...</span>
                   )}
                 </div>
               )
