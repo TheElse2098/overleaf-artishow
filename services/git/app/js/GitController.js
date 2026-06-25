@@ -1,9 +1,6 @@
 import logger from '@overleaf/logger'
 import path from 'node:path'
 import * as GitManager from './GitManager.js'
-import ProjectModel from '../../../models/Project.js'
-
-const Project = ProjectModel
 
 export async function commit(req, res) {
   const { projectId, userId, message } = req.body
@@ -43,11 +40,6 @@ export async function push(req,res) {
 }
 
 export async function pull(req, res) {
-  // Vérifications préalables : repo initialisé ? remote configuré ?
-  const repoExists = await GitManager.isGitRepo(Project, req.body.projectId, req.body.userId).catch(() => false)
-  if (!repoExists) return res.status(200).json({ notInitialized: true })
-  const info = await GitManager.getGitInfo(Project, req.body.projectId).catch(() => null)
-  if (!info?.remoteUrl) return res.status(200).json({ noRemote: true })
   const { projectId, userId, gitInfo } = req.body
   if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
   try {
@@ -200,57 +192,6 @@ export async function addAll(req, res) {
     res.sendStatus(200)
   } catch (err) {
     logger.error({ err, projectId }, 'git addAll failed')
-    res.status(500).json({ error: err.message })
-  }
-}
-// ── Handlers liés à l'initialisation ─────────────────────────────────────────
-
-export async function gitInfo(req, res) {
-  const { projectId } = req.query
-  if (!projectId) return res.status(400).json({ error: 'projectId requis.' })
-  try {
-    const info = await GitManager.getGitInfo(Project, projectId)
-    res.json(info || {})
-  } catch (err) {
-    logger.error({ err, projectId }, 'gitInfo failed')
-    res.status(500).json({ error: err.message })
-  }
-}
-
-export async function init(req, res) {
-  const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
-  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
-  try {
-    const alreadyRepo = await GitManager.isGitRepo(Project, projectId, userId)
-    if (alreadyRepo) {
-      return res.status(200).json({ created: false, remoteLinked: false, message: 'Ce projet est déjà un repo git.' })
-    }
-    const result = await GitManager.gitInit(Project, projectId, userId, remoteUrl, branch, token, tokenType)
-    const message = result.created
-      ? (result.remoteLinked
-          ? `Repo créé et lié au remote ${remoteUrl} (branche: ${branch}).`
-          : `Repo créé localement${remoteUrl ? ', mais le push initial a échoué (vérifiez l\'URL et les droits SSH).' : '.'}`)
-      : 'Ce projet est déjà un repo git.'
-    return res.status(200).json({ ...result, message })
-  } catch (err) {
-    logger.error({ err, projectId }, 'git init failed')
-    res.status(500).json({ error: err.message })
-  }
-}
-
-export async function setRemote(req, res) {
-  const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
-  if (!projectId || !userId || !remoteUrl) return res.status(400).json({ error: 'projectId, userId et remoteUrl requis.' })
-  try {
-    const repoExists = await GitManager.isGitRepo(Project, projectId, userId)
-    if (!repoExists) return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
-    const result = await GitManager.gitSetRemote(Project, projectId, userId, remoteUrl, branch, token, tokenType)
-    const message = result.remoteLinked
-      ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
-      : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué (vérifiez l'URL et les droits).`
-    return res.status(200).json({ ...result, message })
-  } catch (err) {
-    logger.error({ err, projectId }, 'git setRemote failed')
     res.status(500).json({ error: err.message })
   }
 }
