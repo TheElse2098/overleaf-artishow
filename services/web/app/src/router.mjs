@@ -406,6 +406,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   webRouter.post(
     '/git-init',
     AuthenticationController.requireLogin(),
+    ...gitWrite,
     GitController.init
   )
 
@@ -419,6 +420,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   webRouter.post(
     '/git-set-remote',
     AuthenticationController.requireLogin(),
+    ...gitWrite,
     GitController.setRemote
   )
 

@@ -244,6 +244,10 @@ export default function GitPullButton({ projectId, userId }: Props) {
     if (buttonRef.current) setPopupRect(buttonRef.current.getBoundingClientRect())
   }
 
+  function openPopup() {
+    if (buttonRef.current) setPopupRect(buttonRef.current.getBoundingClientRect())
+  }
+
   function handleClick() {
     openPopup()
     setNotif(null)

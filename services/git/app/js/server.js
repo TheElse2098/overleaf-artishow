@@ -2,9 +2,9 @@ import http from 'node:http'
 import express from 'express'
 import logger from '@overleaf/logger'
 import metrics from '@overleaf/metrics'
-import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone, addAll } from './GitController.js'
+import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone, addAll, init, setRemote} from './GitController.js'
 
-logger.initialize('git')           // nomme le service dans les logs
+logger.initialize('git')       // nomme le service dans les logs
 
 // Secret partagé avec web pour l'authentification inter-services
 const SHARED_SECRET = process.env.GIT_SERVICE_SECRET || process.env.WEB_API_PASSWORD || 'password'
@@ -38,7 +38,8 @@ export async function createServer() {
   app.use(requireServiceAuth)
   app.use(validateIds)
 
-  app.post('/commit', commit)      // routes git
+  // Routes git existantes
+  app.post('/commit', commit)
   app.post('/pull', pull)
   app.post('/push', push)
   app.post('/add', add)
@@ -52,6 +53,9 @@ export async function createServer() {
   app.post('/commits', commitHistory)
   app.post('/gitClone', gitClone)
   app.post('/add-all', addAll)
+
+  app.post('/init', init)
+  app.post('/set-remote', setRemote)
 
   const server = http.createServer(app)
   return { app, server }
