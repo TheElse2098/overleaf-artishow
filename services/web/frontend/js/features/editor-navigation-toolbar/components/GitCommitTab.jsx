@@ -2,6 +2,12 @@ import { useState } from 'react'
 import { postJSON } from '../../../infrastructure/fetch-json'
 import { GitNotif } from './GitFeedback'
 
+// Signale au file tree (autre arbre React) que l'état Git des fichiers a changé,
+// pour qu'il rafraîchisse les marqueurs "M". Voir git-modified-files.tsx.
+function notifyGitFilesChanged() {
+  window.dispatchEvent(new Event('git:files-changed'))
+}
+
 var BTN_BASE = {
   padding: '8px 14px',
   border: 'none',
@@ -27,7 +33,7 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
         gap: '8px',
         padding: '5px 6px',
         borderRadius: '4px',
-        backgroundColor: checked ? '#f0faf0' : 'transparent',
+        backgroundColor: checked ? 'var(--git-row-checked-bg)' : 'transparent',
         marginBottom: '2px',
       }}
     >
@@ -37,7 +43,7 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
         onChange={function() { onToggle(filePath) }}
         style={{ cursor: 'pointer', flexShrink: 0 }}
       />
-      <span style={{ color: 'black', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+      <span style={{ color: 'var(--git-text-strong)', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
         {filePath}
       </span>
       <button
@@ -47,9 +53,9 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
         style={Object.assign({}, BTN_BASE, {
           padding: '3px 8px',
           fontSize: '12px',
-          backgroundColor: isAdding ? '#ccc' : '#e8f5e9',
-          color: '#2e7d32',
-          border: '1px solid #a5d6a7',
+          backgroundColor: isAdding ? '#ccc' : 'var(--git-add-bg)',
+          color: 'var(--git-add-text)',
+          border: '1px solid var(--git-add-border)',
           cursor: isAdding ? 'not-allowed' : 'pointer',
           fontWeight: '400',
           flexShrink: 0,
@@ -70,7 +76,8 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
   var [isAddingAll, setIsAddingAll] = useState(false)
   var [notification, setNotification] = useState(null)
 
-  var allPendingFiles = [...notStagedFiles, ...deletedFiles]
+  const deletedFilesFiltered = deletedFiles.filter(file => !notStagedFiles.includes(file))
+  var allPendingFiles = [...notStagedFiles, ...deletedFilesFiltered]
   var selectedCount = Object.values(selected).filter(Boolean).length
 
   function showNotif(type, message) {
@@ -113,6 +120,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       })
       setCommitMessage('')
       await onRefresh()
+      notifyGitFilesChanged()
       showNotif('success', 'Commit effectué avec succès.')
     } catch (err) {
       showNotif('error', 'Echec du commit : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
@@ -138,7 +146,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
 
   async function handleAddOne(filePath) {
     setAddingFile(filePath)
-    var isDeleted = deletedFiles.includes(filePath)
+    var isDeleted = deletedFiles.includes(filePath) && !notStagedFiles.includes(filePath)
     try {
       await postJSON('/git-add', {
         body: { projectId: projectId, userId: userId, filePath: filePath, deleted: isDeleted },
@@ -149,6 +157,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
         return next
       })
       await onRefresh()
+      notifyGitFilesChanged()
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
@@ -163,11 +172,12 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
     try {
       for (var i = 0; i < files.length; i++) {
         await postJSON('/git-add', {
-          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: deletedFiles.includes(files[i]) },
+          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: deletedFiles.includes(files[i]) && !notStagedFiles.includes(files[i]) },
         })
       }
       setSelected({})
       await onRefresh()
+      notifyGitFilesChanged()
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
@@ -183,6 +193,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       })
       setSelected({})
       await onRefresh()
+      notifyGitFilesChanged()
       showNotif('success', 'Tous les fichiers ont ete ajoutés au staging.')
     } catch (err) {
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
@@ -201,7 +212,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       )}
 
       <div>
-        <label style={{ color: 'black', fontSize: '13px', fontWeight: '500' }}>
+        <label style={{ color: 'var(--git-text-strong)', fontSize: '13px', fontWeight: '500' }}>
           Message de commit
         </label>
         <textarea
@@ -209,12 +220,13 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
           onChange={function(e) { setCommitMessage(e.target.value) }}
           rows="3"
           style={{
-            color: 'dimgray',
+            color: 'var(--git-text)',
+            backgroundColor: 'var(--git-surface)',
             width: '100%',
             marginTop: '4px',
             boxSizing: 'border-box',
             padding: '6px',
-            border: '1px solid #ccc',
+            border: '1px solid var(--git-border)',
             borderRadius: '4px',
             fontSize: '13px',
             resize: 'vertical',
@@ -258,10 +270,10 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
               style={{ cursor: 'pointer' }}
               title="Tout selectionner"
             />
-            <h3 style={{ margin: 0, fontSize: '14px', color: 'black' }}>
+            <h3 style={{ margin: 0, fontSize: '14px', color: 'var(--git-text-strong)' }}>
               Fichiers non indexes
               {allPendingFiles.length > 0 && (
-                <span style={{ color: 'gray', fontWeight: 'normal', marginLeft: '6px' }}>
+                <span style={{ color: 'var(--git-text-muted)', fontWeight: 'normal', marginLeft: '6px' }}>
                   ({allPendingFiles.length})
                 </span>
               )}
@@ -301,7 +313,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
         </div>
 
         {allPendingFiles.length === 0 ? (
-          <p style={{ color: 'gray', fontSize: '13px', fontStyle: 'italic', margin: '8px 0' }}>
+          <p style={{ color: 'var(--git-text-muted)', fontSize: '13px', fontStyle: 'italic', margin: '8px 0' }}>
             Aucun fichier modifie.
           </p>
         ) : (
@@ -318,7 +330,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                 />
               )
             })}
-            {deletedFiles.map(function(file, index) {
+            {deletedFilesFiltered.map(function(file, index) {
               return (
                 <li
                   key={'d-' + index}
@@ -328,7 +340,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     gap: '8px',
                     padding: '5px 6px',
                     borderRadius: '4px',
-                    backgroundColor: selected[file] ? '#fff5f5' : 'transparent',
+                    backgroundColor: selected[file] ? 'var(--git-danger-row-bg)' : 'transparent',
                     marginBottom: '2px',
                   }}
                 >
@@ -338,8 +350,8 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     onChange={function() { toggleFile(file) }}
                     style={{ cursor: 'pointer', flexShrink: 0 }}
                   />
-                  <span style={{ color: '#c62828', fontWeight: 'bold', fontSize: '11px', flexShrink: 0 }}>D</span>
-                  <span style={{ color: '#c62828', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all', textDecoration: 'line-through' }}>
+                  <span style={{ color: 'var(--git-danger-text)', fontWeight: 'bold', fontSize: '11px', flexShrink: 0 }}>D</span>
+                  <span style={{ color: 'var(--git-danger-text)', flex: 1, fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all', textDecoration: 'line-through' }}>
                     {file}
                   </span>
                   <button
@@ -349,9 +361,9 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                     style={Object.assign({}, BTN_BASE, {
                       padding: '3px 8px',
                       fontSize: '12px',
-                      backgroundColor: (addingFile === file || addingFile === '__selected__') ? '#ccc' : '#ffebee',
-                      color: '#c62828',
-                      border: '1px solid #ef9a9a',
+                      backgroundColor: (addingFile === file || addingFile === '__selected__') ? '#ccc' : 'var(--git-danger-bg)',
+                      color: 'var(--git-danger-text)',
+                      border: '1px solid var(--git-danger-border)',
                       cursor: (addingFile === file || addingFile === '__selected__') ? 'not-allowed' : 'pointer',
                       fontWeight: '400',
                       flexShrink: 0,
@@ -367,16 +379,16 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       </div>
 
       <div style={{ marginTop: '20px' }}>
-        <h3 style={{ fontSize: '14px', color: 'black', marginBottom: '8px' }}>
+        <h3 style={{ fontSize: '14px', color: 'var(--git-text-strong)', marginBottom: '8px' }}>
           Fichiers indexes
           {stagedFiles.length > 0 && (
-            <span style={{ color: 'gray', fontWeight: 'normal', marginLeft: '6px' }}>
+            <span style={{ color: 'var(--git-text-muted)', fontWeight: 'normal', marginLeft: '6px' }}>
               ({stagedFiles.length})
             </span>
           )}
         </h3>
         {stagedFiles.length === 0 ? (
-          <p style={{ color: 'gray', fontSize: '13px', fontStyle: 'italic', margin: 0 }}>
+          <p style={{ color: 'var(--git-text-muted)', fontSize: '13px', fontStyle: 'italic', margin: 0 }}>
             Aucun fichier indexe.
           </p>
         ) : (
@@ -387,10 +399,10 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                   key={index}
                   style={{
                     padding: '4px 6px',
-                    color: '#2e7d32',
+                    color: 'var(--git-add-text-strong)',
                     fontSize: '13px',
                     fontFamily: 'monospace',
-                    borderLeft: '3px solid #45a444',
+                    borderLeft: '3px solid var(--git-accent)',
                     marginBottom: '2px',
                   }}
                 >

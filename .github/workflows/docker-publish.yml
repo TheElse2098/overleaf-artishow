@@ -5,6 +5,9 @@ on:
     branches:
       - main
       - git-as-service
+      - admin-panel
+      - ui-upgrade
+      - Fit-add
       - k8s
     tags: [ 'v*.*.*' ]
   pull_request:
@@ -71,6 +74,24 @@ jobs:
           BRANCH_NAME=${GITHUB_REF#refs/heads/}
           if [ "$BRANCH_NAME" = "main" ]; then
             TAG="latest"
+          elif [ "$BRANCH_NAME" = "git_integration" ]; then
+            TAG="git"
+          elif [ "$BRANCH_NAME" = "template_integration" ]; then
+            TAG="template"
+          elif [ "$BRANCH_NAME" = "git_compilation" ]; then
+            TAG="git-compilation"
+          elif [ "$BRANCH_NAME" = "overleaf" ]; then
+            TAG="overleaf"
+          elif [ "$BRANCH_NAME" = "ginit_ui" ]; then
+            TAG="ginit_ui"
+          elif [ "$BRANCH_NAME" = "git-as-service" ]; then
+            TAG="git-service"
+          elif [ "$BRANCH_NAME" = "admin-panel" ]; then
+            TAG="admin"
+          elif [ "$BRANCH_NAME" = "ui-upgrade" ]; then
+            TAG="ui-upgrade"
+          elif [ "$BRANCH_NAME" = "Fit-add" ]; then
+            TAG="Fit-add"
           else
             TAG=$(echo "$BRANCH_NAME" | sed 's/[^a-zA-Z0-9]/-/g')
           fi
