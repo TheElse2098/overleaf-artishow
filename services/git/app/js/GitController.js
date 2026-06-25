@@ -99,7 +99,7 @@ export async function commit(req, res) {
   }
 }
 
-export async function push(req,res) {
+export async function push(req, res) {
   const { projectId, userId, gitInfo } = req.body
 
   if (!projectId || !userId || !gitInfo) {
@@ -119,13 +119,19 @@ export async function pull(req, res) {
   const { projectId, userId, gitInfo } = req.body
   if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
   try {
+    // Vérification préalable : si le repo n'existe pas sur disque, signaler au web
+    const repoExists = await GitManager.isGitRepo(projectId, userId)
+    if (!repoExists) return res.status(200).json({ notInitialized: true })
+
+    // Si pas de remote configuré (gitInfo null ou sans remoteUrl), signaler au web
+    if (!gitInfo?.remoteUrl) return res.status(200).json({ noRemote: true })
+
     const result = await GitManager.pull(projectId, userId, gitInfo)
-    res.json(result)              // { status: 'ok' | 'conflict' | 'stash-conflict', conflicts? }
+    res.json(result)
   } catch (err) {
     sendGitError(res, err, 'git pull failed', { projectId })
   }
 }
-
 
 function isSafeRelativePath(filePath) {
   if (typeof filePath !== 'string' || filePath.length === 0) return false
@@ -257,5 +263,41 @@ export async function addAll(req, res) {
     res.sendStatus(200)
   } catch (err) {
     sendGitError(res, err, 'git addAll failed', { projectId })
+  }
+}
+
+// ── Init & SetRemote ──────────────────────────────────────────────────────────
+
+export async function init(req, res) {
+  const { projectId, userId, remoteUrl, branch, token, tokenType } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const result = await GitManager.gitInit(projectId, userId, remoteUrl, branch, token, tokenType)
+    const message = !result.created
+      ? 'Ce projet est déjà un repo git.'
+      : result.remoteLinked
+        ? `Repo créé et lié au remote ${remoteUrl} (branche: ${branch}).`
+        : `Repo créé localement${remoteUrl ? ', mais le push initial a échoué (vérifiez l\'URL et les droits).' : '.'}`
+    return res.status(200).json({ ...result, message })
+  } catch (err) {
+    logger.error({ err, projectId }, 'git init failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function setRemote(req, res) {
+  const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
+  if (!projectId || !userId || !remoteUrl) return res.status(400).json({ error: 'projectId, userId et remoteUrl requis.' })
+  try {
+    const repoExists = await GitManager.isGitRepo(projectId, userId)
+    if (!repoExists) return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
+    const result = await GitManager.gitSetRemote(projectId, userId, remoteUrl, branch, token, tokenType)
+    const message = result.remoteLinked
+      ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
+      : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué.`
+    return res.status(200).json({ ...result, message })
+  } catch (err) {
+    logger.error({ err, projectId }, 'git setRemote failed')
+    res.status(500).json({ error: err.message })
   }
 }
