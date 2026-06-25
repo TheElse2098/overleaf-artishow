@@ -76,7 +76,8 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
   var [isAddingAll, setIsAddingAll] = useState(false)
   var [notification, setNotification] = useState(null)
 
-  var allPendingFiles = [...notStagedFiles, ...deletedFiles]
+  const deletedFilesFiltered = deletedFiles.filter(file => !notStagedFiles.includes(file))
+  var allPendingFiles = [...notStagedFiles, ...deletedFilesFiltered]
   var selectedCount = Object.values(selected).filter(Boolean).length
 
   function showNotif(type, message) {
@@ -145,7 +146,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
 
   async function handleAddOne(filePath) {
     setAddingFile(filePath)
-    var isDeleted = deletedFiles.includes(filePath)
+    var isDeleted = deletedFiles.includes(filePath) && !notStagedFiles.includes(filePath)
     try {
       await postJSON('/git-add', {
         body: { projectId: projectId, userId: userId, filePath: filePath, deleted: isDeleted },
@@ -171,7 +172,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
     try {
       for (var i = 0; i < files.length; i++) {
         await postJSON('/git-add', {
-          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: deletedFiles.includes(files[i]) },
+          body: { projectId: projectId, userId: userId, filePath: files[i], deleted: deletedFiles.includes(files[i]) && !notStagedFiles.includes(files[i]) },
         })
       }
       setSelected({})
@@ -329,7 +330,7 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                 />
               )
             })}
-            {deletedFiles.map(function(file, index) {
+            {deletedFilesFiltered.map(function(file, index) {
               return (
                 <li
                   key={'d-' + index}
