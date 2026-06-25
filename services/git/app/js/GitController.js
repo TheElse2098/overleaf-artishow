@@ -205,7 +205,7 @@ export async function addAll(req, res) {
 // ── Init & SetRemote ──────────────────────────────────────────────────────────
 
 export async function init(req, res) {
-  const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
+  const { projectId, userId, remoteUrl, branch, token, tokenType } = req.body
   if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
   try {
     const result = await GitManager.gitInit(projectId, userId, remoteUrl, branch, token, tokenType)
