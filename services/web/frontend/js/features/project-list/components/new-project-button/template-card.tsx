@@ -158,13 +158,14 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           </div>
         )}
         
-        <div className="mt-auto d-flex gap-2 flex-wrap">
+        <div className="mt-auto d-flex gap-2">
           <OLButton
             variant="primary"
             size="sm"
             onClick={openNameModal}
             disabled={isCreating || isRemoving}
-            className="flex-grow-1"
+            className="text-truncate"
+            style={{ flex: '1 1 0', minWidth: 0 }}
           >
             {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
@@ -174,6 +175,8 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
               size="sm"
               onClick={() => setShowShareModal(true)}
               disabled={isCreating || isRemoving}
+              className="text-truncate"
+              style={{ flex: '1 1 0', minWidth: 0 }}
             >
               Share
             </OLButton>
@@ -185,6 +188,8 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
               onClick={handleRemove}
               disabled={isCreating || isRemoving}
               title={removeTitle}
+              className="text-truncate"
+              style={{ flex: '1 1 0', minWidth: 0 }}
             >
               {isRemoving ? '...' : removeLabel}
             </OLButton>
