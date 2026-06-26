@@ -341,11 +341,12 @@ const _ProjectController = {
     if (fromTemplate) {
       // Creating a project from a template duplicates an existing project by
       // id. "General" templates can be used by anyone; "Personnel" templates
-      // can only be duplicated by their owner. This keeps a user from cloning
-      // an arbitrary (private) project they cannot access.
+      // can only be duplicated by their owner or a user they were shared with.
+      // This keeps a user from cloning an arbitrary (private) project they
+      // cannot access.
       const templateProject = await ProjectGetter.promises.getProject(
         templateId,
-        { isTemplate: 1, templateCategory: 1, owner_ref: 1 }
+        { isTemplate: 1, templateCategory: 1, owner_ref: 1, templateSharedWith: 1 }
       )
       if (!TemplatesPolicy.canUse(templateProject, userId)) {
         return res.sendStatus(403)

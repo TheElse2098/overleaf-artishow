@@ -45,24 +45,46 @@ function canRemove(project, userId, isAdmin) {
   return isOwner(project, userId) || (Boolean(isAdmin) && isGeneralTemplate(project))
 }
 
-// A template can be instantiated by anyone if it's "General", or by its owner.
-// This keeps a user from cloning an arbitrary (private) project they cannot
-// access.
+// The owner shares a template with a list of users (templateSharedWith). They may
+// see and instantiate it, but never edit or re-share it.
+function isSharedWith(project, userId) {
+  if (userId == null || !Array.isArray(project?.templateSharedWith)) return false
+  return project.templateSharedWith.some(
+    id => id != null && id.toString() === userId.toString()
+  )
+}
+
+// Only the owner may manage a template's share list — admins included. This
+// mirrors canMark: sharing exposes the project's content, so it stays with the owner.
+function canShare(project, userId) {
+  return isOwner(project, userId)
+}
+
+// A template can be instantiated by anyone if it's "General", by its owner, or by
+// a user it was shared with. This keeps a user from cloning an arbitrary (private)
+// project they cannot access.
 function canUse(project, userId) {
   return (
     isGeneralTemplate(project) ||
-    (Boolean(project?.isTemplate) && isOwner(project, userId))
+    (Boolean(project?.isTemplate) &&
+      (isOwner(project, userId) || isSharedWith(project, userId)))
   )
 }
 
 // Mongo filter selecting the (non-trashed) templates a given user may see:
-// every "General" template, plus their own templates.
+// every "General" template, their own templates, plus templates shared with them.
 function visibleFilter(userId) {
   return {
     isTemplate: true,
     $and: [
       { $or: [{ trashed: { $exists: false } }, { trashed: { $size: 0 } }] },
-      { $or: [{ templateCategory: GENERAL }, { owner_ref: userId }] },
+      {
+        $or: [
+          { templateCategory: GENERAL },
+          { owner_ref: userId },
+          { templateSharedWith: userId },
+        ],
+      },
     ],
   }
 }
@@ -75,6 +97,8 @@ export default {
   categoryForMarking,
   canMark,
   canRemove,
+  isSharedWith,
+  canShare,
   canUse,
   visibleFilter,
 }

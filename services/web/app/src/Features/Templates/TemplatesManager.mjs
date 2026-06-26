@@ -146,23 +146,56 @@ const TemplatesManager = {
     }
   },
 
-  // The templates a user is allowed to see: every "General" template plus their
-  // own. Returns plain objects ready for the API.
+  // The templates a user is allowed to see: every "General" template, their own,
+  // plus templates shared with them. Returns plain objects ready for the API,
+  // enriched with ownership/sharing info so the UI can show the right controls.
   async getVisibleTemplates(userId) {
     const projects = await Project.find(TemplatesPolicy.visibleFilter(userId), {
       name: 1,
       templateDescription: 1,
       templateCategory: 1,
+      owner_ref: 1,
+      templateSharedWith: 1,
     }).lean()
-    return projects.map(p => ({
-      id: p._id.toString(),
-      name: p.name,
-      description: p.templateDescription || '',
-      category:
-        p.templateCategory === TemplatesPolicy.GENERAL
-          ? TemplatesPolicy.GENERAL
-          : TemplatesPolicy.PERSONNEL,
-    }))
+
+    // Resolve the owners of templates the viewer doesn't own, so the recipient
+    // card can show "Shared by <name>". One grouped query, not one per template.
+    const foreignOwnerIds = projects
+      .filter(p => p.owner_ref?.toString() !== userId.toString())
+      .map(p => p.owner_ref)
+      .filter(Boolean)
+    const ownersById = new Map()
+    if (foreignOwnerIds.length > 0) {
+      const owners = await User.find(
+        { _id: { $in: foreignOwnerIds } },
+        { first_name: 1, last_name: 1, email: 1 }
+      ).lean()
+      for (const o of owners) {
+        const name = [o.first_name, o.last_name].filter(Boolean).join(' ').trim()
+        ownersById.set(o._id.toString(), name || o.email)
+      }
+    }
+
+    return projects.map(p => {
+      const isOwnedByViewer = p.owner_ref?.toString() === userId.toString()
+      return {
+        id: p._id.toString(),
+        name: p.name,
+        description: p.templateDescription || '',
+        category:
+          p.templateCategory === TemplatesPolicy.GENERAL
+            ? TemplatesPolicy.GENERAL
+            : TemplatesPolicy.PERSONNEL,
+        isOwnedByViewer,
+        // Owner sees how many people it's shared with; recipient sees who shared it.
+        sharedWithCount: isOwnedByViewer
+          ? (p.templateSharedWith || []).length
+          : undefined,
+        sharedByName: isOwnedByViewer
+          ? undefined
+          : ownersById.get(p.owner_ref?.toString()) || undefined,
+      }
+    })
   },
 
   // (Un)mark a project as a template. Only the owner may do this — admins
@@ -188,14 +221,17 @@ const TemplatesManager = {
       isAdmin: user?.isAdmin,
       isGeneral,
     })
-    await Project.updateOne(
-      { _id: projectId },
-      {
-        isTemplate: wantsTemplate,
-        templateDescription: wantsTemplate ? templateDescription || '' : '',
-        templateCategory: wantsTemplate ? category : '',
-      }
-    )
+    const update = {
+      isTemplate: wantsTemplate,
+      templateDescription: wantsTemplate ? templateDescription || '' : '',
+      templateCategory: wantsTemplate ? category : '',
+    }
+    // Unmarking a template must drop its share list, otherwise old shares would
+    // silently come back (and stay visible) if it's ever re-marked as a template.
+    if (!wantsTemplate) {
+      update.templateSharedWith = []
+    }
+    await Project.updateOne({ _id: projectId }, update)
   },
 
   // Clear a project's template status. The owner can always do so; an admin can
@@ -212,7 +248,84 @@ const TemplatesManager = {
     }
     await Project.updateOne(
       { _id: projectId },
-      { isTemplate: false, templateDescription: '', templateCategory: '' }
+      {
+        isTemplate: false,
+        templateDescription: '',
+        templateCategory: '',
+        templateSharedWith: [],
+      }
+    )
+  },
+
+  // List the users a template is shared with. Only the owner may view this.
+  async getTemplateShares({ projectId, userId }) {
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1, isTemplate: 1, templateSharedWith: 1 }
+    ).lean()
+    if (!project || !TemplatesPolicy.canShare(project, userId)) {
+      throw new Errors.ForbiddenError('not allowed to view template shares')
+    }
+    const ids = project.templateSharedWith || []
+    if (ids.length === 0) return []
+    const users = await User.find(
+      { _id: { $in: ids } },
+      { first_name: 1, last_name: 1, email: 1 }
+    ).lean()
+    return users.map(u => ({
+      userId: u._id.toString(),
+      email: u.email,
+      name: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email,
+    }))
+  },
+
+  // Share a template with an existing user, identified by email. Only the owner
+  // may share. Throws NotFoundError if no account matches the email.
+  async shareTemplate({ projectId, userId, email }) {
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1, isTemplate: 1, templateSharedWith: 1 }
+    ).lean()
+    if (!project || !TemplatesPolicy.canShare(project, userId)) {
+      throw new Errors.ForbiddenError('not allowed to share template')
+    }
+    const normalizedEmail = (email || '').trim().toLowerCase()
+    const target = await User.findOne(
+      { email: normalizedEmail },
+      { _id: 1, email: 1, first_name: 1, last_name: 1 }
+    ).lean()
+    if (!target) {
+      throw new Errors.NotFoundError('no user with that email')
+    }
+    // Sharing with the owner is a no-op they don't need.
+    if (target._id.toString() === project.owner_ref.toString()) {
+      throw new Errors.InvalidError('cannot share a template with its owner')
+    }
+    await Project.updateOne(
+      { _id: projectId },
+      { $addToSet: { templateSharedWith: target._id } }
+    )
+    return {
+      userId: target._id.toString(),
+      email: target.email,
+      name:
+        [target.first_name, target.last_name].filter(Boolean).join(' ').trim() ||
+        target.email,
+    }
+  },
+
+  // Revoke a user's access to a shared template. Only the owner may do this.
+  async unshareTemplate({ projectId, userId, targetUserId }) {
+    const project = await Project.findOne(
+      { _id: projectId },
+      { owner_ref: 1, isTemplate: 1 }
+    ).lean()
+    if (!project || !TemplatesPolicy.canShare(project, userId)) {
+      throw new Errors.ForbiddenError('not allowed to unshare template')
+    }
+    await Project.updateOne(
+      { _id: projectId },
+      { $pull: { templateSharedWith: targetUserId } }
     )
   },
 }

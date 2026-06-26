@@ -49,6 +49,9 @@ export const ProjectSchema = new Schema(
     isTemplate: { type: Boolean, default: false },
     templateDescription: { type: String, default: '' },
     templateCategory: { type: String, default: '' },
+    // Users the owner shared this template with: they may see and instantiate it,
+    // but never edit or re-share it. Only meaningful when isTemplate is true.
+    templateSharedWith: [{ type: ObjectId, ref: 'User' }],
     track_changes: { type: Object },
     tokens: {
       readOnly: {

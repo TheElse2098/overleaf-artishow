@@ -83,6 +83,78 @@ const TemplatesController = {
     res.json({ ok: true })
   },
 
+  async getTemplateShares(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    try {
+      const shares = await TemplatesManager.promises.getTemplateShares({
+        projectId,
+        userId,
+      })
+      res.json({ shares })
+    } catch (err) {
+      if (err instanceof Errors.ForbiddenError) {
+        return res.sendStatus(403)
+      }
+      throw err
+    }
+  },
+
+  async shareTemplate(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    const { email } = req.body
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    if (!email || typeof email !== 'string') {
+      return res.status(400).json({ error: 'email_required' })
+    }
+    try {
+      const share = await TemplatesManager.promises.shareTemplate({
+        projectId,
+        userId,
+        email,
+      })
+      res.json({ share })
+    } catch (err) {
+      if (err instanceof Errors.ForbiddenError) {
+        return res.sendStatus(403)
+      }
+      if (err instanceof Errors.NotFoundError) {
+        return res.status(404).json({ error: 'no_user' })
+      }
+      if (err instanceof Errors.InvalidError) {
+        return res.status(400).json({ error: 'invalid_target' })
+      }
+      throw err
+    }
+  },
+
+  async unshareTemplate(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId, userId: targetUserId } = req.params
+    if (!ObjectId.isValid(projectId) || !ObjectId.isValid(targetUserId)) {
+      return res.sendStatus(400)
+    }
+    try {
+      await TemplatesManager.promises.unshareTemplate({
+        projectId,
+        userId,
+        targetUserId,
+      })
+      res.json({ ok: true })
+    } catch (err) {
+      if (err instanceof Errors.ForbiddenError) {
+        return res.sendStatus(403)
+      }
+      throw err
+    }
+  },
+
   async createProjectFromV1Template(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const project = await TemplatesManager.promises.createProjectFromV1Template(
@@ -111,4 +183,7 @@ export default {
   getLocalTemplates: expressify(TemplatesController.getLocalTemplates),
   setTemplateStatus: expressify(TemplatesController.setTemplateStatus),
   removeTemplate: expressify(TemplatesController.removeTemplate),
+  getTemplateShares: expressify(TemplatesController.getTemplateShares),
+  shareTemplate: expressify(TemplatesController.shareTemplate),
+  unshareTemplate: expressify(TemplatesController.unshareTemplate),
 }
