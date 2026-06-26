@@ -284,10 +284,15 @@ const TemplatesManager = {
   async shareTemplate({ projectId, userId, email }) {
     const project = await Project.findOne(
       { _id: projectId },
-      { owner_ref: 1, isTemplate: 1, templateSharedWith: 1 }
+      { owner_ref: 1, isTemplate: 1, templateCategory: 1, templateSharedWith: 1 }
     ).lean()
     if (!project || !TemplatesPolicy.canShare(project, userId)) {
       throw new Errors.ForbiddenError('not allowed to share template')
+    }
+    // A "General" template is already visible to everyone, so targeted sharing
+    // is meaningless — reject it rather than store a pointless share list.
+    if (TemplatesPolicy.isGeneralTemplate(project)) {
+      throw new Errors.InvalidError('cannot share a general template')
     }
     const normalizedEmail = (email || '').trim().toLowerCase()
     const target = await User.findOne(
@@ -314,13 +319,19 @@ const TemplatesManager = {
     }
   },
 
-  // Revoke a user's access to a shared template. Only the owner may do this.
+  // Revoke a user's access to a shared template. The owner may remove anyone; a
+  // recipient may remove only themselves (so "deleting" a shared template from
+  // their catalogue just drops their own access — the owner keeps it).
   async unshareTemplate({ projectId, userId, targetUserId }) {
     const project = await Project.findOne(
       { _id: projectId },
       { owner_ref: 1, isTemplate: 1 }
     ).lean()
-    if (!project || !TemplatesPolicy.canShare(project, userId)) {
+    if (!project) {
+      throw new Errors.ForbiddenError('not allowed to unshare template')
+    }
+    const isSelfRemoval = targetUserId.toString() === userId.toString()
+    if (!TemplatesPolicy.canShare(project, userId) && !isSelfRemoval) {
       throw new Errors.ForbiddenError('not allowed to unshare template')
     }
     await Project.updateOne(

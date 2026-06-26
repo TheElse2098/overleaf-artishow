@@ -13,6 +13,7 @@ import OLFormControl from '@/shared/components/ol/ol-form-control'
 import { postJSON, deleteJSON } from '../../../../infrastructure/fetch-json'
 import { useLocation } from '../../../../shared/hooks/use-location'
 import getMeta from '../../../../utils/meta'
+import TemplateShareModal from './template-share-modal'
 
 type Template = {
   id: string
@@ -21,6 +22,10 @@ type Template = {
   previewUrl?: string
   category?: string
   tags?: string[]
+  // Sharing metadata from getVisibleTemplates.
+  isOwnedByViewer?: boolean
+  sharedWithCount?: number
+  sharedByName?: string
 }
 
 type TemplateCardProps = {
@@ -33,12 +38,25 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const [isCreating, setIsCreating] = useState(false)
   const [isRemoving, setIsRemoving] = useState(false)
   const [showNameModal, setShowNameModal] = useState(false)
+  const [showShareModal, setShowShareModal] = useState(false)
+  const [sharedCount, setSharedCount] = useState(template.sharedWithCount ?? 0)
   const [projectName, setProjectName] = useState('')
   const location = useLocation()
   const isAdmin = getMeta('ol-user')?.isAdmin
-  // The catalogue only shows a user their own Personnel templates, so any
-  // visible Personnel card belongs to the viewer and can be removed by them.
-  const canRemove = isAdmin || template.category === 'Personnel'
+  const currentUserId = getMeta('ol-user_id')
+  // Owner-only actions. The viewer owns the template when the backend says so;
+  // fall back to the old "Personnel" heuristic for safety if the field is absent.
+  const isOwner =
+    template.isOwnedByViewer ?? template.category === 'Personnel'
+  // A recipient is someone who sees a Personnel template they don't own — it was
+  // shared with them.
+  const isRecipient = !isOwner && template.category === 'Personnel'
+  // The owner (or an admin) can delete the template outright. A recipient can
+  // "remove" it too, but that only drops their own access (a self-unshare).
+  const canRemove = isOwner || isAdmin || isRecipient
+  // Only the owner can share, and only a non-General (Personnel) template.
+  const canShare = isOwner && template.category !== 'General'
+  const removeLabel = isRecipient ? 'Remove from my templates' : 'Remove'
 
   const openNameModal = () => {
     setProjectName(template.name)
@@ -69,7 +87,15 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const handleRemove = async () => {
     try {
       setIsRemoving(true)
-      await deleteJSON(`/project/${template.id}/template`)
+      if (isRecipient) {
+        // Recipient: drop only my own access. The template stays for its owner.
+        await deleteJSON(
+          `/project/${template.id}/template/shares/${currentUserId}`
+        )
+      } else {
+        // Owner / admin: clear the template status entirely.
+        await deleteJSON(`/project/${template.id}/template`)
+      }
       onRemoved(template.id)
     } catch (error) {
       console.error('Error removing template:', error)
@@ -100,8 +126,20 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
         )}
 
         {template.category && (
-          <div className="mb-2">
-            <span className="template-card-category">{template.category}</span>
+          <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
+            {/* Recipients see who shared it; owners see the category. */}
+            {!isOwner && template.sharedByName ? (
+              <span className="template-card-category">
+                Shared by {template.sharedByName}
+              </span>
+            ) : (
+              <span className="template-card-category">{template.category}</span>
+            )}
+            {isOwner && sharedCount > 0 && (
+              <span className="template-card-tag" title="Shared with people">
+                🔗 Shared ({sharedCount})
+              </span>
+            )}
           </div>
         )}
 
@@ -125,14 +163,25 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           >
             {isCreating ? t('creating') + '...' : 'Use template'}
           </OLButton>
+          {canShare && (
+            <OLButton
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowShareModal(true)}
+              disabled={isCreating || isRemoving}
+            >
+              Share
+            </OLButton>
+          )}
           {canRemove && (
             <OLButton
               variant="danger"
               size="sm"
               onClick={handleRemove}
               disabled={isCreating || isRemoving}
+              title={removeLabel}
             >
-              {isRemoving ? '...' : 'Remove'}
+              {isRemoving ? '...' : removeLabel}
             </OLButton>
           )}
         </div>
@@ -183,6 +232,14 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           </OLButton>
         </OLModalFooter>
       </OLModal>
+      {showShareModal && (
+        <TemplateShareModal
+          templateId={template.id}
+          templateName={template.name}
+          onHide={() => setShowShareModal(false)}
+          onSharesChanged={setSharedCount}
+        />
+      )}
     </div>
   )
 }
