@@ -71,7 +71,7 @@ function Modal({
           <h2 style={{ fontFamily: 'sans-serif', fontWeight: 500 }}>Git Menu</h2>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid var(--git-border)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '20px', borderBottom: '1px solid var(--git-border)' }}>
             {TABS.map(tab => {
               const isActive = activeTab === tab.id
               return (
@@ -79,8 +79,10 @@ function Modal({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   style={{
-                    padding: '10px 20px',
+                    padding: '10px 14px',
                     border: 'none',
+                    borderRadius: '4px 4px 0 0',
+                    whiteSpace: 'nowrap',
                     backgroundColor: isActive ? 'var(--git-accent)' : 'transparent',
                     color: isActive ? 'white' : 'var(--git-text)',
                     cursor: 'pointer',

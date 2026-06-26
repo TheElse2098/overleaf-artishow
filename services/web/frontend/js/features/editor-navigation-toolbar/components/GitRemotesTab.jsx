@@ -5,6 +5,7 @@ import { GitNotif, GitConfirm } from './GitFeedback'
 const TOKEN_TYPES = [
   { value: 'github', label: 'GitHub (Personal Access Token)' },
   { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+  { value: 'other', label: 'Autre (token générique)' },
 ]
 
 function GitRemotesTab({ projectId, userId, onRefresh }) {

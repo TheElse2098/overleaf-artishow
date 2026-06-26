@@ -21,6 +21,7 @@ const CONFIRM_MSG =
 const TOKEN_TYPES = [
   { value: 'github', label: 'GitHub (Personal Access Token)' },
   { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+  { value: 'other', label: 'Autre (token générique)' },
 ]
 
 // Section d'authentification par token, partagée par init et set-remote.

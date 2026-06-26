@@ -487,11 +487,22 @@ async function withSshKey(userId, fn) {
 }
 
 // Construit une URL HTTPS authentifiée par token
-// tokenType 'github' → x-access-token, 'gitlab' → oauth2
+// tokenType 'github' → x-access-token, 'gitlab' → oauth2,
+// 'other' → token brut comme userinfo (l'utilisateur peut entrer "token" seul ou
+// "utilisateur:token" pour les fournisseurs qui exigent un nom d'utilisateur).
 function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
-  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
   const sshPattern = /^git@([^:]+):(.+\.git)$/
   const match = remoteUrl.match(sshPattern)
+  if (tokenType === 'other') {
+    if (match) return `https://${token}@${match[1]}/${match[2]}`
+    try {
+      const url = new URL(remoteUrl)
+      return `${url.protocol}//${token}@${url.host}${url.pathname}${url.search}`
+    } catch {
+      return remoteUrl
+    }
+  }
+  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
   if (match) {
     return `https://${username}:${token}@${match[1]}/${match[2]}`
   }
