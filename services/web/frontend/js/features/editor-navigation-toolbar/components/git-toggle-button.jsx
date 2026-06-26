@@ -129,8 +129,17 @@ function Modal({
 
           {/* Documentation Tab */}
           {activeTab === 'documentation' && (
-            <div style={{ color: 'var(--git-text)', fontFamily: 'sans-serif', lineHeight: '1.6' }}>
-              <h3>Guide d'utilisation de Git</h3>
+            <div style={{ color: 'black', fontFamily: 'sans-serif', lineHeight: '1.6' }}>
+              <h2>Guide d'utilisation de Git</h2>
+
+              <h3>Importer un projet depuis un dépôt git distant</h3>
+
+              <ul>Cliquez sur le bouton <strong>New Project</strong> puis <strong>Import from Git</strong></ul>
+              <ul>Copier-coller le lien ssh (git@github.com:&gt;votre pseudo&lt;/&gt;votre repo &lt;)</ul>
+              <ul>Entrez votre token git. Si vous souhaitez utiliser une connexion par ssh, autoriser la clé que vous trouverez dans les paramètres de votre compte overleaf</ul>
+              <ul>Enfin, cliquez sur <strong>Importer</strong></ul>
+
+              <h3>Les commandes Git usuelles</h3>
 
               <p><strong>Avant toute opération Git</strong><br />
               Assurez-vous que le projet compile <strong>sans erreur</strong>.</p>
@@ -158,6 +167,7 @@ function Modal({
               <ul>
                 <li>Cliquez sur le bouton <strong>"Pull"</strong> en haut à gauche (icône en forme de flèche circulaire)</li>
               </ul>
+              <p>Vos modifications non comitées seront stash avant le pull puis pop après. <strong>Dans le cas de conflit sur un fichier, vos modifications non commitées sur ce fichier seront supprimées.</strong></p>
 
               <h4>d. <code>git rollback</code> – Revenir à un ancien commit</h4>
               <ul>
@@ -180,6 +190,8 @@ function Modal({
                   </ul>
                 </li>
               </ul>
+              <p><strong>Vos modifications non commitées seront supprimées.</strong></p>
+
 
               <div style={{ marginTop: '10px', fontStyle: 'italic', color: 'var(--git-text-muted)' }}>
                 Remarque : certaines opérations (comme "add") peuvent être automatisées selon la configuration serveur.
