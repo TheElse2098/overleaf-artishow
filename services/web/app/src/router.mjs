@@ -72,7 +72,7 @@ const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
 
 import bodyParser from "body-parser";
 import passport from 'passport';
-import {MultiSamlStrategy, Strategy as samlStrategy} from 'passport-saml';
+import {MultiSamlStrategy, Strategy as samlStrategy} from '@node-saml/passport-saml';
 import {Strategy as gitlabStrategy} from 'passport-gitlab2';
 import fs from 'fs';
 import { User } from './models/User.js';
