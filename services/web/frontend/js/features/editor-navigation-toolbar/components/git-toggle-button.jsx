@@ -32,6 +32,7 @@ function Modal({
   projectId,
   userId,
   onRefresh,
+  mergeState,
 }) {
   const [activeTab, setActiveTab] = useState('commit')
   const activeOverallTheme = useActiveOverallTheme()
@@ -103,6 +104,7 @@ function Modal({
               deletedFiles={deletedFiles}
               stagedFiles={stagedFiles}
               onRefresh={onRefresh}
+              mergeState={mergeState}
             />
           )}
 
@@ -227,6 +229,7 @@ function GitToggleButton() {
   const [commitHistory, setCommitHistory] = useState([])
   const [branches, setBranches] = useState([])
   const [selectedBranch, setSelectedBranch] = useState('')
+  const [mergeState, setMergeState] = useState({ mergeInProgress: false, conflicts: [] })
 
   const classes = classNames(
     'btn',
@@ -242,20 +245,22 @@ function GitToggleButton() {
 
   const loadGitData = async () => {
     try {
-      const [notStaged, staged, commits, branchesData, currentBranch] = await Promise.all([
+      const [notStaged, staged, commits, branchesData, currentBranch, mergeStatus] = await Promise.all([
         getJSON(`/git-notstaged?projectId=${projectId}&userId=${userId}`),
         getJSON(`/git-staged?projectId=${projectId}&userId=${userId}`),
         getJSON(`/git-commits?projectId=${projectId}&userId=${userId}&limit=20`),
         getJSON(`/git-branches?projectId=${projectId}&userId=${userId}`),
-        getJSON(`/git-currentbranch?projectId=${projectId}&userId=${userId}`)
+        getJSON(`/git-currentbranch?projectId=${projectId}&userId=${userId}`),
+        getJSON(`/git-merge-status?projectId=${projectId}&userId=${userId}`)
       ])
-      
+
       setNotStagedFiles(notStaged.notStaged || [])
       setDeletedFiles(notStaged.deleted || [])
       setStagedFiles(staged)
       setCommitHistory(commits)
       setBranches(branchesData)
       setSelectedBranch(currentBranch)
+      setMergeState(mergeStatus || { mergeInProgress: false, conflicts: [] })
     } catch (error) {
       console.error('Error loading git data:', error)
     }
@@ -289,6 +294,7 @@ function GitToggleButton() {
           projectId={projectId}
           userId={userId}
           onRefresh={loadGitData}
+          mergeState={mergeState}
         />,
         document.body
       )}

@@ -67,7 +67,7 @@ function FileRow({ filePath, checked, onToggle, onAddOne, isAdding }) {
   )
 }
 
-function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], stagedFiles, onRefresh }) {
+function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], stagedFiles, onRefresh, mergeState = { mergeInProgress: false, conflicts: [] } }) {
   var [commitMessage, setCommitMessage] = useState('')
   var [isCommitting, setIsCommitting] = useState(false)
   var [isPushing, setIsPushing] = useState(false)
@@ -76,7 +76,57 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
   var [isAddingAll, setIsAddingAll] = useState(false)
   var [unstagingFile, setUnstagingFile] = useState(null)
   var [isUnstagingAll, setIsUnstagingAll] = useState(false)
+  var [isResolving, setIsResolving] = useState(false)
+  var [isAborting, setIsAborting] = useState(false)
+  var [markerWarnings, setMarkerWarnings] = useState([])
   var [notification, setNotification] = useState(null)
+
+  var mergeInProgress = mergeState && mergeState.mergeInProgress
+  var conflictFiles = (mergeState && mergeState.conflicts) || []
+
+  async function handleResolveMerge() {
+    setIsResolving(true)
+    setNotification(null)
+    setMarkerWarnings([])
+    try {
+      var result = await postJSON('/git-resolve-merge', {
+        body: { projectId: projectId, userId: userId, message: commitMessage.trim() || 'Merge: résolution des conflits' },
+      })
+      var warnings = (result && result.markerWarnings) || []
+      if (warnings.length > 0) {
+        // Le merge est commité, mais on signale les marqueurs encore présents.
+        setMarkerWarnings(warnings)
+        showNotif('warning', 'Conflit résolu et commité, mais des marqueurs de conflit subsistent dans certains fichiers (voir ci-dessous). Vérifiez s\'ils sont voulus.')
+      } else {
+        showNotif('success', 'Conflit résolu et commité avec succès.')
+      }
+      setCommitMessage('')
+      await onRefresh()
+      notifyGitFilesChanged()
+    } catch (err) {
+      showNotif('error', 'Echec de la résolution : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
+    } finally {
+      setIsResolving(false)
+    }
+  }
+
+  async function handleAbortMerge() {
+    setIsAborting(true)
+    setNotification(null)
+    setMarkerWarnings([])
+    try {
+      await postJSON('/git-abort-merge', {
+        body: { projectId: projectId, userId: userId },
+      })
+      showNotif('success', 'Merge annulé. Le projet est revenu à son état d\'avant le pull.')
+      await onRefresh()
+      notifyGitFilesChanged()
+    } catch (err) {
+      showNotif('error', 'Echec de l\'annulation : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'erreur inconnue'))
+    } finally {
+      setIsAborting(false)
+    }
+  }
 
   const deletedFilesFiltered = deletedFiles.filter(file => !notStagedFiles.includes(file))
   var allPendingFiles = [...notStagedFiles, ...deletedFilesFiltered]
@@ -244,6 +294,78 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
         <GitNotif type={notification.type} message={notification.message} onDismiss={dismissNotif} />
       )}
 
+      {mergeInProgress && (
+        <div style={{
+          border: '1px solid var(--git-danger-border)',
+          backgroundColor: 'var(--git-danger-row-bg)',
+          borderRadius: '6px',
+          padding: '12px',
+          marginBottom: '16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+            <span style={{ fontSize: '16px' }}>⚠️</span>
+            <strong style={{ color: 'var(--git-danger-text)', fontSize: '14px' }}>
+              Conflit de merge en cours
+            </strong>
+          </div>
+          <p style={{ color: 'var(--git-text)', fontSize: '13px', margin: '0 0 8px' }}>
+            Résolvez les marqueurs de conflit (<code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code>) directement dans l'éditeur, puis cliquez sur « Résoudre le conflit ». Vous pouvez aussi annuler le merge pour revenir en arrière.
+          </p>
+          {conflictFiles.length > 0 && (
+            <ul style={{ margin: '0 0 8px', paddingLeft: '18px' }}>
+              {conflictFiles.map(function(f, i) {
+                return (
+                  <li key={'c-' + i} style={{ color: 'var(--git-danger-text)', fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    {f}
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+          {markerWarnings.length > 0 && (
+            <div style={{ marginBottom: '8px' }}>
+              <p style={{ color: 'var(--git-text-strong)', fontSize: '12px', fontWeight: 600, margin: '0 0 4px' }}>
+                Marqueurs encore présents :
+              </p>
+              <ul style={{ margin: 0, paddingLeft: '18px' }}>
+                {markerWarnings.map(function(w, i) {
+                  return (
+                    <li key={'w-' + i} style={{ color: 'var(--git-text)', fontSize: '12px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      {w.path} : lignes {(w.markers || []).map(function(m) { return m.line }).join(', ')}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+            <button
+              onClick={handleResolveMerge}
+              disabled={isResolving || isAborting}
+              style={Object.assign({}, BTN_BASE, {
+                backgroundColor: (isResolving || isAborting) ? '#ccc' : '#45a444',
+                color: 'white',
+                cursor: (isResolving || isAborting) ? 'not-allowed' : 'pointer',
+              })}
+            >
+              {isResolving ? 'Résolution...' : 'Résoudre le conflit'}
+            </button>
+            <button
+              onClick={handleAbortMerge}
+              disabled={isResolving || isAborting}
+              style={Object.assign({}, BTN_BASE, {
+                backgroundColor: 'transparent',
+                color: 'var(--git-danger-text)',
+                border: '1px solid var(--git-danger-border)',
+                cursor: (isResolving || isAborting) ? 'not-allowed' : 'pointer',
+              })}
+            >
+              {isAborting ? 'Annulation...' : 'Annuler le merge'}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div>
         <label style={{ color: 'var(--git-text-strong)', fontSize: '13px', fontWeight: '500' }}>
           Message de commit
@@ -270,22 +392,24 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       <div style={{ marginTop: '10px', display: 'flex', gap: '8px' }}>
         <button
           onClick={handleCommit}
-          disabled={isCommitting || isPushing}
+          disabled={isCommitting || isPushing || mergeInProgress}
+          title={mergeInProgress ? 'Résolvez le conflit de merge en cours avant de commiter.' : undefined}
           style={Object.assign({}, BTN_GREEN, {
             flex: 1,
-            opacity: (isCommitting || isPushing) ? 0.6 : 1,
-            cursor: (isCommitting || isPushing) ? 'not-allowed' : 'pointer',
+            opacity: (isCommitting || isPushing || mergeInProgress) ? 0.6 : 1,
+            cursor: (isCommitting || isPushing || mergeInProgress) ? 'not-allowed' : 'pointer',
           })}
         >
           {isCommitting ? 'Commit...' : 'Commit'}
         </button>
         <button
           onClick={handlePush}
-          disabled={isCommitting || isPushing}
+          disabled={isCommitting || isPushing || mergeInProgress}
+          title={mergeInProgress ? 'Résolvez le conflit de merge en cours avant de pusher.' : undefined}
           style={Object.assign({}, BTN_OUTLINE, {
             flex: 1,
-            opacity: (isCommitting || isPushing) ? 0.6 : 1,
-            cursor: (isCommitting || isPushing) ? 'not-allowed' : 'pointer',
+            opacity: (isCommitting || isPushing || mergeInProgress) ? 0.6 : 1,
+            cursor: (isCommitting || isPushing || mergeInProgress) ? 'not-allowed' : 'pointer',
           })}
         >
           {isPushing ? 'Push...' : 'Push'}

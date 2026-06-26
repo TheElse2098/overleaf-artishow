@@ -288,6 +288,19 @@ export default function GitPullButton({ projectId, userId }: Props) {
         return
       }
 
+      // Conflit de merge : le merge reste en cours, les marqueurs sont dans
+      // l'éditeur. On invite l'utilisateur à résoudre via le menu Git.
+      if (response?.status === 'conflict') {
+        setNotif({
+          type: 'warning',
+          message:
+            (response.message || 'Conflit de merge détecté.') +
+            ' Ouvrez le menu Git (onglet « Commit & Push ») pour résoudre ou annuler le merge.',
+        })
+        refreshModifiedFiles()
+        return
+      }
+
       setNotif({ type: 'success', message: 'Pull effectué avec succès.' })
       refreshModifiedFiles()
     } catch (err: any) {
