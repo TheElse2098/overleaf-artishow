@@ -72,13 +72,10 @@ const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
 
 import bodyParser from "body-parser";
 import passport from 'passport';
-import {MultiSamlStrategy, Strategy as samlStrategy} from '@node-saml/passport-saml';
 import {Strategy as gitlabStrategy} from 'passport-gitlab2';
-import fs from 'fs';
 import { User } from './models/User.mjs';
 import UserCreator from './Features/User/UserCreator.mjs'
 import UserUpdater from './Features/User/UserUpdater.mjs'
-const certDir = '/var/lib/overleaf/certs/'
 
 const rateLimiters = {
   addEmail: new RateLimiter('add-email', {
@@ -257,117 +254,6 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     CaptchaMiddleware.validateCaptcha('login'),
     AuthenticationController.passportLogin
   )
-
-var oldstrat = new samlStrategy({
-       //callbackUrl: "http://137.194.211.16/login/callback",
-       callbackUrl: "https://proj104-overleaf.r2.enst.fr/login/callback",
-       entryPoint:"https://idp.telecom-paristech.fr/idp/profile/SAML2/Redirect/SSO",
-       issuer:"https://overleaf.enst.fr",
-       privateCert: fs.readFileSync(certDir + 'certificate.crt', 'utf8'),
-       decryptionPvk: fs.readFileSync(certDir + 'privateKey.key', 'utf8'),
-       cert: fs.readFileSync(certDir + 'tpt.crt', 'utf8')
-}, function(){});
-var sstrat = new MultiSamlStrategy({
-       passReqToCallback: true,
-       callbackUrl: "https://proj104-overleaf.r2.enst.fr/login/callback",
-       issuer:"https://overleaf.enst.fr",
-       privateCert: fs.readFileSync(certDir + 'certificate.crt', 'utf8'),
-       decryptionPvk: fs.readFileSync(certDir + 'privateKey.key', 'utf8'),
-       identifierFormat: null,
-
-       getSamlOptions: function(req, done){
-               console.log(req);
-               console.log(req.get('Referer'))
-
-               var org = req.query.institution ? req.query.institution : req.body.RelayState;
-               var ans = "";
-               req.query.RelayState = {'institution': org}
-
-               console.log("detected org:", org)
-
-
-               switch(org){
-                       case "tpt":
-                               ans= {
-                                       cert: fs.readFileSync(certDir + 'tpt.crt', 'utf8'),
-                                       entryPoint:"https://idp.telecom-paristech.fr/idp/profile/SAML2/Redirect/SSO",
-                                       additionalParams: { 'RelayState': org },
-                               }
-                               break
-                       case "tsp":
-                               ans= {
-                                       cert: fs.readFileSync(certDir + 'tsp.cert', 'utf8'),
-                                       entryPoint:"https://idpr4.imtbs-tsp.eu/idp/profile/SAML2/Redirect/SSO",
-                                       additionalParams: { 'RelayState': org },
-                               }
-                               break
-                       case "x":
-                               ans= {
-                                       cert: [fs.readFileSync(certDir + 'x.cert', 'utf8'), fs.readFileSync(certDir + 'x2.cert', 'utf8') ],
-                                       entryPoint:"https://idp.polytechnique.fr/idp/profile/SAML2/Redirect/SSO",
-                                       additionalParams: { 'RelayState': org },
-                               }
-                               break
-                       case "ensta":
-                               ans= {
-                                       cert: fs.readFileSync(certDir + 'ensta.cert', 'utf8'),
-                                       entryPoint:"https://shibboleth.ensta.fr/idp/profile/SAML2/Redirect/SSO",
-                                       additionalParams: { 'RelayState': org },
-                               }
-                               break
-                       case "ensae":
-                               ans = {
-                                       cert: fs.readFileSync(certDir + 'ensae.cert', 'utf8'),
-                                       entryPoint:"https://idp.ensae.fr/saml2/idp/SSOService.php",
-                                       additionalParams: { 'RelayState': org },
-                               }
-                               break
-                       default:
-                               return done("nop", null)
-               }
-               return done(null, ans)
-       },
-},
-       function (req, profile, done) {
-      User.findOne({'email':profile.email }).then( (u) => {
-             console.log("toto",u, profile)
-      if(u) {return done(null, u)} else {
-             UserCreator.createNewUser({"email":profile.email}, function() {
-             User.findOne({'email':profile.email }).then( (u) => {
-               console.log("CREATING",u, profile)
-             UserUpdater.confirmEmail(u._id, u.email, function(){return done(null, u)})
-             }) })
-      } })
-    }
-
-)
-passport.use("saml", sstrat)
-  webRouter.post(
-    "/login/callback",
-    //bodyParser.urlencoded({ extended: false }),
-    passport.authenticate("saml", { failureRedirect: "/", failureFlash: true }),
-    function (req, res) {
-      res.redirect("/");
-    }
-  )
- webRouter.csrf.disableDefaultCsrfProtection("/login/callback", "POST")
- AuthenticationController.addEndpointToLoginWhitelist('/login/callback')
-
-  webRouter.get("/samlmetadata", function(req, res) {
-    res.type('application/xml');
-    res.status(200).send(oldstrat.generateServiceProviderMetadata(
-      fs.readFileSync(certDir + 'certificate.crt', 'utf8')
-      ,fs.readFileSync(certDir + 'certificate.crt', 'utf8')
-    ));
-  })
-  AuthenticationController.addEndpointToLoginWhitelist('/samlmetadata')
-
- webRouter.get("/login/saml",
-       passport.authenticate("saml", { failureRedirect: "/", failureFlash: true }),
-  function (req, res) {
-   res.redirect("/");
-  })
-  AuthenticationController.addEndpointToLoginWhitelist('/login/saml')
 
 var oauthurl = "https://gitlab.telecom-paris.fr/"
 var oauthid = "2f14cc93b69d442949fb70320b3768012570cb074746ee5afdef6164e6b07bc2"
