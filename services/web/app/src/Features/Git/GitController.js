@@ -30,17 +30,6 @@ const GIT_SERVICE_URL =
 const GIT_SERVICE_SECRET =
   process.env.GIT_SERVICE_SECRET || process.env.WEB_API_PASSWORD || 'password'
 
-// Le service git répond { error: "<message lisible>" } en cas d'échec. On en
-// extrait juste le message pour l'UI ; sinon on retombe sur le texte brut.
-async function gitServiceErrorMessage(response) {
-  const text = await response.text().catch(() => '')
-  try {
-    const parsed = JSON.parse(text)
-    if (parsed && typeof parsed.error === 'string') return parsed.error
-  } catch (_) {}
-  return text || `git service: ${response.status}`
-}
-
 // Valide un identifiant Mongo (24 caractères hexadécimaux)
 function isValidObjectId(id) {
   return typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)
@@ -431,21 +420,6 @@ async function scanCompilesDirForNewFiles(compilesDir, gitDir, trackedSet, gitSt
   return result
 }
 
-// Retire de `paths` les chemins ignorés par le .gitignore du dépôt.
-// `git check-ignore` sort en code 1 quand aucun chemin n'est ignoré (simple-git
-// lève alors une erreur) → on retombe sur la liste complète dans ce cas.
-async function filterIgnored(localGit, paths) {
-  if (!paths || paths.length === 0) return paths
-  try {
-    const out = await localGit.raw(['check-ignore', ...paths])
-    const ignored = new Set(out.split('\n').map(s => s.trim()).filter(Boolean))
-    return paths.filter(p => !ignored.has(p))
-  } catch (_) {
-    // code 1 = aucun fichier ignoré ; autre = on ne filtre pas (sûr)
-    return paths
-  }
-}
-
 async function getNotStaged(projectId, userId) {
   const localGit = getGitForProject(projectId, userId)
   const gitDir = dataPath + projectId + "-" + userId
@@ -483,9 +457,6 @@ async function getNotStaged(projectId, userId) {
     } catch (err) {
       console.log('Could not check Overleaf entities:', err.message)
     }
-
-    // overleafOnlyFiles ne vient pas de `git status` → filtrer le .gitignore à la main
-    overleafOnlyFiles = await filterIgnored(localGit, overleafOnlyFiles)
 
     const notStagedFiles = [...modifiedFiles, ...untrackedFiles, ...overleafOnlyFiles]
 
@@ -582,7 +553,8 @@ async function gitClone(projectId, ownerId, link, branch = null, token = null, t
     body: JSON.stringify({ projectId, ownerId, link, branch, token, tokenType }),
   })
   if (!response.ok) {
-    throw new Error(await gitServiceErrorMessage(response))
+    const text = await response.text().catch(() => '')
+    throw new Error(text || `git service clone failed: ${response.status}`)
   }
 
   // Reconstruire le projet Overleaf depuis le working tree cloné, puis sauvegarder le lien git
@@ -1007,11 +979,9 @@ GitController = {
   // Proxifie /git-init vers le service git, puis sauvegarde le lien dans MongoDB.
   async init(req, res) {
     const { projectId, userId, remoteUrl = null, branch = 'main', token = null, tokenType = null } = req.body
-
     if (!projectId || !userId) {
       return res.status(400).json({ error: 'projectId et userId sont requis.' })
     }
-
     try {
       const response = await fetch(`${GIT_SERVICE_URL}/init`, {
         method: 'POST',
@@ -1022,9 +992,14 @@ GitController = {
       if (!response.ok) {
         return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
       }
-      // Sauvegarder le lien dans MongoDB si le repo a bien été créé
+      // Sauvegarder dans MongoDB uniquement si le repo a été créé.
+      // Si le push a échoué (remoteLinked: false), on sauvegarde sans remoteUrl
+      // pour que l'utilisateur puisse le lier manuellement via setRemote ensuite.
       if (result.created) {
-        await saveGitLink(projectId, remoteUrl, branch, token, tokenType)
+        const linkedUrl = result.remoteLinked ? remoteUrl : null
+        const linkedToken = result.remoteLinked ? token : null
+        const linkedTokenType = result.remoteLinked ? tokenType : null
+        await saveGitLink(projectId, linkedUrl, branch, linkedToken, linkedTokenType)
       }
       return res.status(200).json(result)
     } catch (error) {
@@ -1058,27 +1033,6 @@ GitController = {
     }
   },
 
-  async setRemote(req, res) {
-    const { projectId, userId, remoteUrl, branch = 'main', token = null, tokenType = null } = req.body
-    if (!projectId || !userId || !remoteUrl) {
-      return res.status(400).json({ error: 'projectId, userId et remoteUrl sont requis.' })
-    }
-    const repoExists = await isGitRepo(projectId, userId)
-    if (!repoExists) {
-      return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
-    }
-    try {
-      const result = await gitSetRemote(projectId, userId, remoteUrl, branch, token, tokenType)
-      const message = result.remoteLinked
-        ? `Remote lié et branche "${branch}" poussée sur ${remoteUrl}.`
-        : `Remote configuré sur ${remoteUrl}, mais le push initial a échoué (vérifiez l'URL et les droits).`
-      return res.status(200).json({ ...result, message })
-    } catch (error) {
-      console.error('Erreur dans gitSetRemote:', error)
-      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
-    }
-  },
-
 
   async pull(req, res) {
     const { projectId, userId } = req.body
@@ -1108,10 +1062,10 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
-      result = await response.json() // { status: 'ok' | 'conflict' | 'stash-conflict', conflicts? }
+      result = await response.json() // { status, notInitialized?, noRemote?, conflicts? }
     } catch (err) {
       return HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
@@ -1205,8 +1159,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, filePath, deleted }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
       // Suppression indexée avec succès : la retirer des suppressions en attente.
       if (deleted) {
@@ -1230,8 +1184,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, message: message.trim() }),
     })
     if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
     }
     res.sendStatus(200)
     } catch (err) {
@@ -1250,8 +1204,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
       res.sendStatus(200)
     } catch (err) {
@@ -1296,7 +1250,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, commitHash }),
       })
       if (!response.ok) {
-        return res.status(500).json({ success: false, error: await gitServiceErrorMessage(response) })
+        const text = await response.text().catch(() => '')
+        return res.status(500).json({ success: false, error: text || `git service: ${response.status}` })
       }
       // reset --hard a changé le working tree → reconstruire l'éditeur "from scratch"
       await rebuildProjectAfterRollback(projectPath, projectId, userId)
@@ -1342,19 +1297,13 @@ GitController = {
       // Entités Overleaf (docs + binaires) non suivies par git et pas déjà listées
       try {
         const { docs, files } = await ProjectEntityHandler.promises.getAllEntities(projectId)
-        const candidates = []
         for (const { path: filePath } of [...docs, ...files]) {
           const normalized = filePath.startsWith('/') ? filePath.slice(1) : filePath
           if (!trackedSet.has(normalized) && !listed.has(normalized)) {
-            candidates.push(normalized)
+            notStaged.push(normalized)
             listed.add(normalized)
           }
         }
-        // git status (côté service) exclut déjà les fichiers du .gitignore, mais pas
-        // ces entités Overleaf → on filtre via git check-ignore.
-        const localGit = getGitForProject(projectId, userId)
-        const keep = await filterIgnored(localGit, candidates)
-        notStaged.push(...keep)
       } catch (e) {
         console.log('getAllEntities échoué:', e.message)
       }
@@ -1417,8 +1366,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, ref: branchName, gitInfo }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
       // Mémoriser la branche courante en base pour que push/pull ciblent la bonne branche
       const localBranch = branchName.startsWith('origin/') ? branchName.slice('origin/'.length) : branchName
@@ -1445,8 +1394,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, newBranchName, gitInfo }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
       // checkoutLocalBranch bascule sur la nouvelle branche → la mémoriser en base
       await Project.updateOne({ _id: projectId }, { $set: { 'git.branch': newBranchName } }).exec()
@@ -1493,8 +1442,8 @@ GitController = {
         body: JSON.stringify({ projectId, userId, deletedFiles }),
       })
       if (!response.ok) {
-        const message = await gitServiceErrorMessage(response)
-        return HttpErrorHandler.gitMethodError(req, res, message)
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
       }
       if (deletedFiles.length > 0) {
         await Project.updateOne({ _id: projectId }, { $set: { 'git.pendingDeletions': [] } }).catch(() => {})
