@@ -474,6 +474,20 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
     GitController.removeRemote
   )
 
+  webRouter.post(
+    '/git-switch-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.switchRemote
+  )
+
+  webRouter.post(
+    '/git-remove-saved-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.removeSavedRemote
+  )
+
   webRouter.get(
   '/git-commits',
   AuthenticationController.requireLogin(),

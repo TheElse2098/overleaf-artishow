@@ -126,6 +126,19 @@ export const ProjectSchema = new Schema(
       },
       tokenType: { type: String },
       pendingDeletions: { type: [String], default: undefined },
+      // Dépôts distants mémorisés pour pouvoir switcher entre eux (comme les
+      // branches). Chacun garde sa propre auth (token/type) ; l'actif = git.remoteUrl.
+      savedRemotes: {
+        type: [
+          {
+            url: { type: String },
+            tokenType: { type: String },
+            token: { type: String },
+            branch: { type: String },
+          },
+        ],
+        default: undefined,
+      },
     },
   },
   { minimize: false }

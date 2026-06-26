@@ -390,6 +390,22 @@ async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType
   if (token) fields['git.token'] = token
   if (tokenType) fields['git.tokenType'] = tokenType
   await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+
+  // Mémoriser ce dépôt dans la liste (dédupe par url) pour pouvoir re-switcher
+  // dessus comme une branche. On conserve le token déjà mémorisé si aucun nouveau
+  // n'est fourni.
+  if (remoteUrl) {
+    const proj = await Project.findById(projectId, 'git.savedRemotes').lean().exec()
+    const existing = (proj?.git?.savedRemotes || []).find(r => r.url === remoteUrl)
+    const entry = {
+      url: remoteUrl,
+      tokenType: tokenType || existing?.tokenType || null,
+      token: token || existing?.token || null,
+      branch: branch || existing?.branch || 'main',
+    }
+    await Project.updateOne({ _id: projectId }, { $pull: { 'git.savedRemotes': { url: remoteUrl } } }).exec()
+    await Project.updateOne({ _id: projectId }, { $push: { 'git.savedRemotes': entry } }).exec()
+  }
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
 }
 
@@ -981,6 +997,13 @@ GitController = {
         linkedAt: info?.linkedAt || null,
         tokenType: info?.tokenType || null,
         hasToken: !!info?.token,
+        // Liste des dépôts mémorisés (sans le token, juste un booléen).
+        savedRemotes: (info?.savedRemotes || []).map(r => ({
+          url: r.url,
+          tokenType: r.tokenType || null,
+          branch: r.branch || 'main',
+          hasToken: !!r.token,
+        })),
       })
     } catch (err) {
       HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
@@ -1065,6 +1088,63 @@ GitController = {
       return res.status(200).json(result)
     } catch (error) {
       console.error('Erreur dans removeRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Active un dépôt déjà mémorisé (switch, comme une branche) : on relie origin
+  // sur son url avec son auth (token/type/branche) stockée, puis on le rend actif.
+  async switchRemote(req, res) {
+    const { projectId, userId, url } = req.body
+    if (!projectId || !userId || !url) {
+      return res.status(400).json({ error: 'projectId, userId et url sont requis.' })
+    }
+    try {
+      const info = await getGitInfo(projectId)
+      const saved = (info?.savedRemotes || []).find(r => r.url === url)
+      if (!saved) {
+        return res.status(404).json({ error: 'Dépôt introuvable dans la liste.' })
+      }
+      const branch = saved.branch || 'main'
+      const token = saved.token || null
+      const tokenType = saved.tokenType || null
+      const response = await fetch(`${GIT_SERVICE_URL}/set-remote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, remoteUrl: url, branch, token, tokenType }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      await saveGitLink(projectId, url, branch, token, tokenType)
+      return res.status(200).json(result)
+    } catch (error) {
+      console.error('Erreur dans switchRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Retire un dépôt de la liste mémorisée. Si c'était l'actif, on détache aussi origin.
+  async removeSavedRemote(req, res) {
+    const { projectId, userId, url } = req.body
+    if (!projectId || !userId || !url) {
+      return res.status(400).json({ error: 'projectId, userId et url sont requis.' })
+    }
+    try {
+      const info = await getGitInfo(projectId)
+      await Project.updateOne({ _id: projectId }, { $pull: { 'git.savedRemotes': { url } } })
+      if (info?.remoteUrl === url) {
+        await fetch(`${GIT_SERVICE_URL}/remove-remote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+          body: JSON.stringify({ projectId, userId }),
+        }).catch(() => {})
+        await Project.updateOne({ _id: projectId }, { $set: { 'git.remoteUrl': null } })
+      }
+      return res.status(200).json({ message: 'Dépôt retiré.' })
+    } catch (error) {
+      console.error('Erreur dans removeSavedRemote:', error)
       HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
     }
   },
