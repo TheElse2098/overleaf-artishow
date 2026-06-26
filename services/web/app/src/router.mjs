@@ -70,6 +70,13 @@ import AsyncLocalStorage from './infrastructure/AsyncLocalStorage.mjs'
 const { renderUnsupportedBrowserPage, unsupportedBrowserMiddleware } =
   UnsupportedBrowserMiddleware
 
+import bodyParser from "body-parser";
+import passport from 'passport';
+import {Strategy as gitlabStrategy} from 'passport-gitlab2';
+import { User } from './models/User.mjs';
+import UserCreator from './Features/User/UserCreator.mjs'
+import UserUpdater from './Features/User/UserUpdater.mjs'
+
 const rateLimiters = {
   addEmail: new RateLimiter('add-email', {
     points: 10,
@@ -247,6 +254,42 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     CaptchaMiddleware.validateCaptcha('login'),
     AuthenticationController.passportLogin
   )
+
+var oauthurl = "https://gitlab.telecom-paris.fr/"
+var oauthid = "4de9c655e56100356ccffc66a3ab829345ae7c9d4825b2a0ddcbc4570e1b2a2e"
+var oauthsecret = process.env.GITLAB_APP_SECRET || ""
+var gstrat = new gitlabStrategy({
+    baseURL: oauthurl,
+    clientID: oauthid,
+    clientSecret: oauthsecret,
+    callbackURL: process.env.OVERLEAF_SITE_URL+"/login/gitlab/callback"
+  },
+  function(accessToken, refreshToken, profile, done) {
+      User.findOne({'email':profile.emails[0].value }).then( (u) => {
+             console.log("toto",u, profile)
+      if(u) {return done(null, u)} else {
+             UserCreator.createNewUser({"email":profile.emails[0].value, "first_name":profile.displayName}, function() {
+             User.findOne({'email':profile.emails[0].value }).then( (u) => {
+               console.log("CREATING",u, profile)
+             UserUpdater.confirmEmail(u._id, u.email, function(){return done(null, u)})
+             }) })
+      } })
+  }
+);
+passport.use("gitlab", gstrat);
+webRouter.get('/login/gitlab', passport.authenticate('gitlab'));
+webRouter.get('/login/gitlab/callback',
+  passport.authenticate('gitlab', {
+    failureRedirect: '/login'
+  }),
+  function(req, res) {
+    // Successful authentication, redirect home.
+    res.redirect('/');
+  });
+webRouter.csrf.disableDefaultCsrfProtection("/login/gitlab/callback", "POST")
+AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab/callback')
+AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
+
 
   webRouter.get(
     '/compromised-password',
@@ -457,6 +500,20 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
     AuthenticationController.requireLogin(),
     ...gitWrite,
     GitController.addAll
+  )
+
+  webRouter.post(
+    '/git-unstage',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstage
+  )
+
+  webRouter.post(
+    '/git-unstage-all',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstageAll
   )
 
   webRouter.post(

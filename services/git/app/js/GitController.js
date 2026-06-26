@@ -152,6 +152,29 @@ export async function add(req, res) {
   }
 }
 
+export async function unstage(req, res) {
+  const { projectId, userId, filePath } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  if (!isSafeRelativePath(filePath)) return res.status(400).json({ error: 'filePath invalide.' })
+  try {
+    await GitManager.unstage(projectId, userId, filePath)
+    res.sendStatus(200)
+  } catch (err) {
+    sendGitError(res, err, 'git unstage failed', { projectId })
+  }
+}
+
+export async function unstageAll(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    await GitManager.unstageAll(projectId, userId)
+    res.sendStatus(200)
+  } catch (err) {
+    sendGitError(res, err, 'git unstageAll failed', { projectId })
+  }
+}
+
 // Valide une réf git (branche "origin/xxx" ou hash de commit) : pas de segment
 // commençant par "-" (anti-injection d'argument), pas de segment vide.
 function isSafeRef(name) {

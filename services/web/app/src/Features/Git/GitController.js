@@ -1172,6 +1172,49 @@ GitController = {
     }
   },
 
+  // Désindexe un fichier (git reset HEAD -- <file>). Miroir de add : ne touche
+  // qu'à l'index, donc pas de compile/gitUpdate à faire au préalable.
+  async unstage(req, res) {
+    const { projectId, userId } = req.body
+    const filePath = req.body.filePath
+    if (!isSafeRelativePath(filePath)) {
+      return res.status(400).json({ error: 'filePath invalide.' })
+    }
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/unstage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, filePath }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      res.sendStatus(200)
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
+  async unstageAll(req, res) {
+    const { projectId, userId } = req.body
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/unstage-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      res.sendStatus(200)
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
   async commit(req, res) {
     const { projectId, userId, message } = req.body // userId = owner injecté par injectGitOwner
     if (!message || message.trim() === '') {
