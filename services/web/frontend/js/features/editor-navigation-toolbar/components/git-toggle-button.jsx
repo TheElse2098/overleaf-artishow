@@ -18,6 +18,7 @@ import GitTokenTab from './GitTokenTab'
 import GitCommitTab from './GitCommitTab'
 import GitRollbackTab from './GitRollbackTab'
 import GitBranchesTab from './GitBranchesTab'
+import GitRemotesTab from './GitRemotesTab'
 
 function Modal({
   isOpen,
@@ -40,6 +41,7 @@ function Modal({
     { id: 'commit', label: 'Commit & Push' },
     { id: 'rollback', label: 'Rollback' },
     { id: 'branches', label: 'Branches' },
+    { id: 'remotes', label: 'Remotes' },
     { id: 'token', label: 'Token' },
     { id: 'documentation', label: 'Documentation' },
   ]
@@ -122,6 +124,15 @@ function Modal({
               onRefresh={onRefresh}
             />
           )}
+          {/* Remotes Tab */}
+          {activeTab === 'remotes' && (
+            <GitRemotesTab
+              projectId={projectId}
+              userId={userId}
+              onRefresh={onRefresh}
+            />
+          )}
+
           {/* Token Tab */}
           {activeTab === 'token' && (
             <GitTokenTab projectId={projectId} userId={userId} />

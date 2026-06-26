@@ -577,3 +577,14 @@ export async function gitSetRemote(projectId, ownerId, remoteUrl, branch = 'main
 
   return { remoteLinked }
 }
+
+// Supprime le remote "origin" d'un repo local existant (no-op s'il n'existe pas).
+export async function gitRemoveRemote(projectId, ownerId) {
+  const repoPath = DATA_PATH + projectId + '-' + ownerId
+  const localGit = simpleGit({
+    baseDir: repoPath,
+    config: [`safe.directory=${repoPath}`, 'core.autocrlf=false', 'core.eol=lf'],
+  })
+
+  try { await localGit.removeRemote('origin') } catch (_) {}
+}

@@ -324,3 +324,17 @@ export async function setRemote(req, res) {
     res.status(500).json({ error: err.message })
   }
 }
+
+export async function removeRemote(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const repoExists = await GitManager.isGitRepo(projectId, userId)
+    if (!repoExists) return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
+    await GitManager.gitRemoveRemote(projectId, userId)
+    return res.status(200).json({ message: 'Remote supprimé.' })
+  } catch (err) {
+    logger.error({ err, projectId }, 'git removeRemote failed')
+    res.status(500).json({ error: err.message })
+  }
+}

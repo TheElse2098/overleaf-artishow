@@ -2,7 +2,7 @@ import http from 'node:http'
 import express from 'express'
 import logger from '@overleaf/logger'
 import metrics from '@overleaf/metrics'
-import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone, addAll, unstage, unstageAll, init, setRemote} from './GitController.js'
+import { commit, pull, push, add, checkout, rollback, createBranch, staged, notStaged, branches, currentBranch, commitHistory, gitClone, addAll, unstage, unstageAll, init, setRemote, removeRemote} from './GitController.js'
 
 logger.initialize('git')       // nomme le service dans les logs
 
@@ -58,6 +58,7 @@ export async function createServer() {
 
   app.post('/init', init)
   app.post('/set-remote', setRemote)
+  app.post('/remove-remote', removeRemote)
 
   const server = http.createServer(app)
   return { app, server }

@@ -1033,6 +1033,31 @@ GitController = {
     }
   },
 
+  // Proxifie /git-remove-remote vers le service git, puis efface le remote dans MongoDB.
+  async removeRemote(req, res) {
+    const { projectId, userId } = req.body
+    if (!projectId || !userId) {
+      return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    }
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/remove-remote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      // Effacer le remote dans MongoDB ; on garde le token pour un re-link ultérieur.
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.remoteUrl': null } })
+      return res.status(200).json(result)
+    } catch (error) {
+      console.error('Erreur dans removeRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
 
   async pull(req, res) {
     const { projectId, userId } = req.body
