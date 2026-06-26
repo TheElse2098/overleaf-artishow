@@ -158,10 +158,17 @@ const TemplatesManager = {
       templateSharedWith: 1,
     }).lean()
 
-    // Resolve the owners of templates the viewer doesn't own, so the recipient
-    // card can show "Shared by <name>". One grouped query, not one per template.
+    // A "received" template is a Personnel one the viewer doesn't own (so it was
+    // shared with them). General templates are public, not "shared", so they
+    // never carry a "Shared by" label even when the viewer isn't the owner.
+    const isReceived = p =>
+      p.templateCategory !== TemplatesPolicy.GENERAL &&
+      p.owner_ref?.toString() !== userId.toString()
+
+    // Resolve the owners of received templates, so the recipient card can show
+    // "Shared by <name>". One grouped query, not one per template.
     const foreignOwnerIds = projects
-      .filter(p => p.owner_ref?.toString() !== userId.toString())
+      .filter(isReceived)
       .map(p => p.owner_ref)
       .filter(Boolean)
     const ownersById = new Map()
@@ -191,9 +198,9 @@ const TemplatesManager = {
         sharedWithCount: isOwnedByViewer
           ? (p.templateSharedWith || []).length
           : undefined,
-        sharedByName: isOwnedByViewer
-          ? undefined
-          : ownersById.get(p.owner_ref?.toString()) || undefined,
+        sharedByName: isReceived(p)
+          ? ownersById.get(p.owner_ref?.toString()) || undefined
+          : undefined,
       }
     })
   },

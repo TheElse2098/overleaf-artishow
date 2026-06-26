@@ -56,7 +56,12 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
   const canRemove = isOwner || isAdmin || isRecipient
   // Only the owner can share, and only a non-General (Personnel) template.
   const canShare = isOwner && template.category !== 'General'
-  const removeLabel = isRecipient ? 'Remove from my templates' : 'Remove'
+  // Keep the button label short so it never overflows the card; the full intent
+  // lives in the tooltip.
+  const removeLabel = 'Remove'
+  const removeTitle = isRecipient
+    ? 'Remove from my templates (revokes your access only)'
+    : 'Remove template'
 
   const openNameModal = () => {
     setProjectName(template.name)
@@ -127,8 +132,8 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
 
         {template.category && (
           <div className="mb-2 d-flex align-items-center gap-2 flex-wrap">
-            {/* Recipients see who shared it; owners see the category. */}
-            {!isOwner && template.sharedByName ? (
+            {/* Recipients see who shared it; everyone else sees the category. */}
+            {isRecipient && template.sharedByName ? (
               <span className="template-card-category">
                 Shared by {template.sharedByName}
               </span>
@@ -153,7 +158,7 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
           </div>
         )}
         
-        <div className="mt-auto d-flex gap-2">
+        <div className="mt-auto d-flex gap-2 flex-wrap">
           <OLButton
             variant="primary"
             size="sm"
@@ -179,7 +184,7 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
               size="sm"
               onClick={handleRemove}
               disabled={isCreating || isRemoving}
-              title={removeLabel}
+              title={removeTitle}
             >
               {isRemoving ? '...' : removeLabel}
             </OLButton>
