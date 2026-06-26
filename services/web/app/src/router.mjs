@@ -75,9 +75,9 @@ import passport from 'passport';
 import {MultiSamlStrategy, Strategy as samlStrategy} from '@node-saml/passport-saml';
 import {Strategy as gitlabStrategy} from 'passport-gitlab2';
 import fs from 'fs';
-import { User } from './models/User.js';
-import UserCreator from './Features/User/UserCreator.js'
-import UserUpdater from './Features/User/UserUpdater.js'
+import { User } from './models/User.mjs';
+import UserCreator from './Features/User/UserCreator.mjs'
+import UserUpdater from './Features/User/UserUpdater.mjs'
 const certDir = '/var/lib/overleaf/certs/'
 
 const rateLimiters = {
