@@ -14,6 +14,7 @@ on:
       - ui-upgrade
       - Fit-add
       - sso
+      - upgrades
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -79,6 +80,8 @@ jobs:
             TAG="Fit-add"
           elif [ "$BRANCH_NAME" = "sso" ]; then
             TAG="sso"
+          elif [ "$BRANCH_NAME" = "upgrades" ]; then
+            TAG="upgrades"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
