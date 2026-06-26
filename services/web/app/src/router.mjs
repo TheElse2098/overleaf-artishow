@@ -537,6 +537,27 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
     GitController.unstageAll
   )
 
+  webRouter.get(
+    '/git-merge-status',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.mergeStatus
+  )
+
+  webRouter.post(
+    '/git-resolve-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.resolveMerge
+  )
+
+  webRouter.post(
+    '/git-abort-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.abortMerge
+  )
+
   webRouter.post(
     '/git-save-token',
     AuthenticationController.requireLogin(),

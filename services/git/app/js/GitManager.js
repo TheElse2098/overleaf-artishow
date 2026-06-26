@@ -282,10 +282,23 @@ export async function pull(projectId, userId, gitInfo) {
     //conflicts
 
     if (result.conflicts && result.conflicts.length > 0) {
+        // On NE fait PLUS merge --abort : on laisse le working tree dans l'état
+        // conflicté (marqueurs <<<<<<< ======= >>>>>>> dans les fichiers, MERGE_HEAD
+        // présent). web reconstruira l'éditeur avec ces marqueurs pour que
+        // l'utilisateur résolve dans Overleaf, puis appelle resolveMerge / abortMerge.
+        //
+        // Le stash local pré-pull complique la chose : le repop pourrait empiler un
+        // 2e conflit. On le pop quand même pour que les modifs locales soient dans le
+        // working tree à résoudre ; en cas d'échec on le garde (l'utilisateur le
+        // récupère via abortMerge).
         if (stashed) {
-            try { await git.raw(['reset', '--hard', 'HEAD']); await git.stash(['pop']) } catch (_) {}
+            try { await git.stash(['pop']) } catch (_) {}
         }
-        const conflicted = await abortMergeAndGetConflicts(git, result.conflicts)
+        let conflicted = result.conflicts
+        try {
+            const s = await git.status()
+            if (s.conflicted && s.conflicted.length > 0) conflicted = s.conflicted
+        } catch (_) {}
         return { status: 'conflict', conflicts: conflicted }
     }
 
@@ -314,6 +327,79 @@ export async function pull(projectId, userId, gitInfo) {
     return { status: stashConflict ? 'stash-conflict' : 'ok' }
 
 
+}
+
+// Un merge est-il en cours (conflit non encore résolu) ? Source de vérité = git.
+export async function mergeInProgress(projectId, userId) {
+  const repoPath = DATA_PATH + projectId + '-' + userId
+  return fs.pathExists(path.join(repoPath, '.git', 'MERGE_HEAD'))
+}
+
+// Scanne les fichiers (encore) en conflit et y repère les marqueurs de conflit
+// git laissés. Renvoie, par fichier, les lignes contenant un marqueur — pour
+// AVERTIR l'utilisateur sans le bloquer (un "<<<<<<<" peut être voulu).
+async function findConflictMarkers(git, repoPath) {
+  const markerRe = /^(<{7}|={7}|>{7})(\s|$)/
+  const warnings = []
+  let files = []
+  try {
+    files = (await git.status()).conflicted || []
+  } catch (_) {}
+  for (const rel of files) {
+    const full = path.join(repoPath, rel)
+    let content
+    try { content = await fs.readFile(full, 'utf8') } catch (_) { continue }
+    const lines = content.split(/\r?\n/)
+    const hits = []
+    lines.forEach((line, i) => {
+      if (markerRe.test(line)) hits.push({ line: i + 1, marker: line.slice(0, 7) })
+    })
+    if (hits.length > 0) warnings.push({ path: rel, markers: hits })
+  }
+  return warnings
+}
+
+// Liste les fichiers actuellement en conflit (pour l'affichage côté UI).
+export async function conflictedFiles(projectId, userId) {
+  const git = getGitForProject(projectId, userId)
+  try {
+    return (await git.status()).conflicted || []
+  } catch (_) {
+    return []
+  }
+}
+
+// Finalise un merge : indexe tout et commite. NE bloque PAS s'il reste des
+// marqueurs — il les renvoie en avertissement (markerWarnings) et commite quand
+// même, car un marqueur peut être du contenu légitime que l'utilisateur a gardé.
+export async function resolveMerge(projectId, userId, message) {
+  const git = getGitForProject(projectId, userId)
+  const repoPath = DATA_PATH + projectId + '-' + userId
+
+  if (!(await mergeInProgress(projectId, userId))) {
+    return { status: 'no-merge' }
+  }
+
+  const markerWarnings = await findConflictMarkers(git, repoPath)
+
+  await git.add('.')
+  await git.addConfig('user.name', 'overleaf')
+  await git.addConfig('user.email', 'overleaf@overleaf.com')
+  // Commit du merge. Avec un merge en cours, git prend le message MERGE_MSG si on
+  // n'en passe pas ; ici on fournit le nôtre.
+  await git.commit(message || 'Merge: résolution des conflits')
+
+  return { status: 'resolved', markerWarnings }
+}
+
+// Filet de sécurité : abandonne le merge en cours et revient à l'état d'avant pull.
+export async function abortMerge(projectId, userId) {
+  const git = getGitForProject(projectId, userId)
+  if (!(await mergeInProgress(projectId, userId))) {
+    return { status: 'no-merge' }
+  }
+  await git.merge(['--abort'])
+  return { status: 'aborted' }
 }
 
 

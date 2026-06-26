@@ -339,13 +339,14 @@ async function resyncHistory(projectId) {
   }
 }
 
-// Formate le message d'erreur retourné à l'utilisateur en cas de conflit
+// Formate le message affiché en cas de conflit de merge. Le merge reste EN COURS :
+// l'utilisateur résout les marqueurs dans l'éditeur, puis "Résoudre" ou "Annuler".
 function formatConflictMessage(conflictedFiles) {
   if (conflictedFiles.length === 0) {
-    return 'Conflit de merge détecté. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.'
+    return 'Conflit de merge détecté. Résolvez les marqueurs de conflit (<<<<<<<) dans l’éditeur, puis cliquez sur « Résoudre le conflit » — ou « Annuler le merge » pour revenir en arrière.'
   }
   const fileList = conflictedFiles.join(', ')
-  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
+  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Résolvez les marqueurs (<<<<<<<) dans l’éditeur, puis « Résoudre le conflit » — ou « Annuler le merge ».`
 }
 
 // Normalise une URL git (SSH ou HTTPS) pour la comparaison inter-projets
@@ -1190,9 +1191,24 @@ GitController = {
     if (result.notInitialized) return res.status(200).json({ notInitialized: true })
     if (result.noRemote) return res.status(200).json({ noRemote: true })
 
-    // Conflit : le merge a été annulé côté service, rien à reconstruire
+    // Conflit : le merge est laissé EN COURS côté service (marqueurs <<<<<<< dans
+    // les fichiers, MERGE_HEAD présent). On reconstruit l'éditeur avec ces marqueurs
+    // pour que l'utilisateur résolve dans Overleaf, puis on lui signale le conflit
+    // (200, pas une erreur) avec la liste des fichiers à résoudre.
     if (result.status === 'conflict') {
-      return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(result.conflicts || []))
+      try {
+        await buildProject(projectPath, projectId, userId, getRootId(projectId))
+        try { await fs.remove(outputPath + projectId + "-" + userId) } catch (_) {}
+        try { await fs.chmod(clsiCachePath, 0o777); await fs.remove(clsiCachePath + projectId) } catch (_) {}
+        resyncHistory(projectId)
+      } catch (buildErr) {
+        console.error('Erreur reconstruction éditeur après conflit:', buildErr.message)
+      }
+      return res.status(200).json({
+        status: 'conflict',
+        conflicts: result.conflicts || [],
+        message: formatConflictMessage(result.conflicts || []),
+      })
     }
 
     try {
@@ -1225,6 +1241,84 @@ GitController = {
       if (res.headersSent) return
       console.error("Erreur après le pull (buildProject):", error.message)
       HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Indique à l'UI si un merge est en cours (au chargement / rafraîchissement).
+  async mergeStatus(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/merge-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json({ mergeInProgress: false, conflicts: [] })
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching merge status:", error)
+      res.json({ mergeInProgress: false, conflicts: [] })
+    }
+  },
+
+  // Finalise un merge : matérialise l'éditeur (résolu par l'utilisateur) sur le
+  // working tree, puis demande au service de commiter. Renvoie les marqueurs
+  // restants en avertissement (non bloquant).
+  async resolveMerge(req, res) {
+    const { projectId, userId, message } = req.body
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    try {
+      // L'utilisateur a édité dans Overleaf → pousser ces contenus dans le working tree git
+      try {
+        await compileProject(projectId, userId)
+      } catch (e) {
+        console.log("Compilation échouée avant resolveMerge, on continue:", e.message)
+      }
+      try {
+        await gitUpdate(projectId, userId)
+      } catch (e) {
+        console.log("gitUpdate échoué avant resolveMerge, on continue:", e.message)
+      }
+      const response = await fetch(`${GIT_SERVICE_URL}/resolve-merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, message }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      // { status: 'resolved'|'no-merge', markerWarnings?: [{path, markers:[{line,marker}]}] }
+      res.status(200).json(await response.json())
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
+  // Abandonne le merge en cours puis reconstruit l'éditeur depuis l'état restauré.
+  async abortMerge(req, res) {
+    const { projectId, userId } = req.body
+    const projectPath = dataPath + projectId + "-" + userId
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/abort-merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+      }
+      // Le working tree est revenu à l'état pré-merge → reconstruire l'éditeur
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      try { await fs.remove(outputPath + projectId + "-" + userId) } catch (_) {}
+      try { await fs.chmod(clsiCachePath, 0o777); await fs.remove(clsiCachePath + projectId) } catch (_) {}
+      resyncHistory(projectId)
+      res.sendStatus(200)
+    } catch (err) {
+      if (res.headersSent) return
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
   },
 
