@@ -256,7 +256,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
   )
 
 var oauthurl = "https://gitlab.telecom-paris.fr/"
-var oauthid = "2f14cc93b69d442949fb70320b3768012570cb074746ee5afdef6164e6b07bc2"
+var oauthid = "4de9c655e56100356ccffc66a3ab829345ae7c9d4825b2a0ddcbc4570e1b2a2e"
 var oauthsecret = process.env.GITLAB_APP_SECRET || ""
 var gstrat = new gitlabStrategy({
     baseURL: oauthurl,
