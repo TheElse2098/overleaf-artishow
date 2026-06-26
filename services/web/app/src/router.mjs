@@ -260,7 +260,7 @@ async function initialize(webRouter, privateApiRouter, publicApiRouter) {
 
 var oldstrat = new samlStrategy({
        //callbackUrl: "http://137.194.211.16/login/callback",
-       callbackUrl: "https://overleaf.enst.fr/login/callback",
+       callbackUrl: "https://proj104-overleaf.r2.enst.fr/login/callback",
        entryPoint:"https://idp.telecom-paristech.fr/idp/profile/SAML2/Redirect/SSO",
        issuer:"https://overleaf.enst.fr",
        privateCert: fs.readFileSync(certDir + 'certificate.crt', 'utf8'),
@@ -269,7 +269,7 @@ var oldstrat = new samlStrategy({
 }, function(){});
 var sstrat = new MultiSamlStrategy({
        passReqToCallback: true,
-       callbackUrl: "https://overleaf.enst.fr/login/callback",
+       callbackUrl: "https://proj104-overleaf.r2.enst.fr/login/callback",
        issuer:"https://overleaf.enst.fr",
        privateCert: fs.readFileSync(certDir + 'certificate.crt', 'utf8'),
        decryptionPvk: fs.readFileSync(certDir + 'privateKey.key', 'utf8'),
@@ -369,8 +369,8 @@ passport.use("saml", sstrat)
   })
   AuthenticationController.addEndpointToLoginWhitelist('/login/saml')
 
-var oauthurl = process.env.GITLAB_BASEURL || "https://gitlab.com"
-var oauthid = process.env.GITLAB_APP_ID || ""
+var oauthurl = "https://gitlab.telecom-paris.fr/"
+var oauthid = "2f14cc93b69d442949fb70320b3768012570cb074746ee5afdef6164e6b07bc2"
 var oauthsecret = process.env.GITLAB_APP_SECRET || ""
 var gstrat = new gitlabStrategy({
     baseURL: oauthurl,
