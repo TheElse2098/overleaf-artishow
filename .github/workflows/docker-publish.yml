@@ -13,6 +13,7 @@ on:
       - admin-panel
       - ui-upgrade
       - Fit-add
+      - sso
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
@@ -76,6 +77,8 @@ jobs:
             TAG="ui-upgrade"
           elif [ "$BRANCH_NAME" = "Fit-add" ]; then
             TAG="Fit-add"
+          elif [ "$BRANCH_NAME" = "sso" ]; then
+            TAG="sso"
           else
             CLEAN_BRANCH=$(echo $BRANCH_NAME | sed 's/[^a-zA-Z0-9]/-/g')
             TAG=$CLEAN_BRANCH
