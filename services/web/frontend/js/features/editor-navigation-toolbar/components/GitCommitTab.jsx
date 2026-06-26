@@ -322,22 +322,6 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
               })}
             </ul>
           )}
-          {markerWarnings.length > 0 && (
-            <div style={{ marginBottom: '8px' }}>
-              <p style={{ color: 'var(--git-text-strong)', fontSize: '12px', fontWeight: 600, margin: '0 0 4px' }}>
-                Marqueurs encore présents :
-              </p>
-              <ul style={{ margin: 0, paddingLeft: '18px' }}>
-                {markerWarnings.map(function(w, i) {
-                  return (
-                    <li key={'w-' + i} style={{ color: 'var(--git-text)', fontSize: '12px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                      {w.path} : lignes {(w.markers || []).map(function(m) { return m.line }).join(', ')}
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          )}
           <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
             <button
               onClick={handleResolveMerge}
@@ -363,6 +347,31 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
               {isAborting ? 'Annulation...' : 'Annuler le merge'}
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Marqueurs restants après résolution : reste visible même une fois le merge
+          terminé (mergeInProgress repasse à false), pour que l'utilisateur les voie. */}
+      {markerWarnings.length > 0 && (
+        <div style={{
+          border: '1px solid var(--git-warning-border, #ffe082)',
+          backgroundColor: 'var(--git-warning-bg, #fff8e1)',
+          borderRadius: '6px',
+          padding: '12px',
+          marginBottom: '16px',
+        }}>
+          <p style={{ color: 'var(--git-warning-text, #5d4037)', fontSize: '13px', fontWeight: 600, margin: '0 0 4px' }}>
+            Marqueurs de conflit encore présents après le commit :
+          </p>
+          <ul style={{ margin: 0, paddingLeft: '18px' }}>
+            {markerWarnings.map(function(w, i) {
+              return (
+                <li key={'w-' + i} style={{ color: 'var(--git-warning-text, #6d4c41)', fontSize: '12px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                  {w.path} : lignes {(w.markers || []).map(function(m) { return m.line }).join(', ')}
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
 

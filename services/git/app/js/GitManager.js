@@ -287,19 +287,17 @@ export async function pull(projectId, userId, gitInfo) {
         // présent). web reconstruira l'éditeur avec ces marqueurs pour que
         // l'utilisateur résolve dans Overleaf, puis appelle resolveMerge / abortMerge.
         //
-        // Le stash local pré-pull complique la chose : le repop pourrait empiler un
-        // 2e conflit. On le pop quand même pour que les modifs locales soient dans le
-        // working tree à résoudre ; en cas d'échec on le garde (l'utilisateur le
-        // récupère via abortMerge).
-        if (stashed) {
-            try { await git.stash(['pop']) } catch (_) {}
-        }
+        // IMPORTANT : on ne tente PAS `git stash pop` ici. Pendant un merge en
+        // conflit l'index contient des entrées "unmerged" et git REFUSE
+        // d'appliquer un stash → l'opération échouerait et le stash resterait
+        // empilé. Le stash est donc réappliqué plus tard, dans resolveMerge /
+        // abortMerge, une fois le merge terminé (index propre).
         let conflicted = result.conflicts
         try {
             const s = await git.status()
             if (s.conflicted && s.conflicted.length > 0) conflicted = s.conflicted
         } catch (_) {}
-        return { status: 'conflict', conflicts: conflicted }
+        return { status: 'conflict', conflicts: conflicted, stashed }
     }
 
     //checkout HEAD
@@ -333,6 +331,26 @@ export async function pull(projectId, userId, gitInfo) {
 export async function mergeInProgress(projectId, userId) {
   const repoPath = DATA_PATH + projectId + '-' + userId
   return fs.pathExists(path.join(repoPath, '.git', 'MERGE_HEAD'))
+}
+
+// Supprime le stash auto créé avant le pull (overleaf-auto-stash-before-pull), s'il
+// existe. On NE le repop PAS : son contenu (l'ancien état éditeur) est de toute
+// façon re-matérialisé par gitUpdate à la résolution, et un pop sur un working
+// tree déjà résolu pourrait re-créer un conflit. On le nettoie donc simplement.
+async function dropAutoStash(git) {
+  try {
+    const list = await git.stashList()
+    // stashList renvoie les entrées les plus récentes en premier (stash@{0}…)
+    const all = (list && list.all) || []
+    for (let i = 0; i < all.length; i++) {
+      const msg = (all[i] && all[i].message) || ''
+      if (msg.includes('overleaf-auto-stash-before-pull')) {
+        await git.stash(['drop', `stash@{${i}}`])
+        return true
+      }
+    }
+  } catch (_) {}
+  return false
 }
 
 // Scanne les fichiers (encore) en conflit et y repère les marqueurs de conflit
@@ -389,6 +407,9 @@ export async function resolveMerge(projectId, userId, message) {
   // n'en passe pas ; ici on fournit le nôtre.
   await git.commit(message || 'Merge: résolution des conflits')
 
+  // Le merge est terminé (index propre) : nettoyer le stash auto pré-pull.
+  await dropAutoStash(git)
+
   return { status: 'resolved', markerWarnings }
 }
 
@@ -399,6 +420,10 @@ export async function abortMerge(projectId, userId) {
     return { status: 'no-merge' }
   }
   await git.merge(['--abort'])
+  // merge --abort restaure l'état d'avant pull (working tree = HEAD). Le stash
+  // auto pré-pull n'a plus lieu d'être : on le nettoie. (Son contenu correspond à
+  // l'état éditeur, qui sera de toute façon ré-aligné par buildProject côté web.)
+  await dropAutoStash(git)
   return { status: 'aborted' }
 }
 
