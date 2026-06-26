@@ -74,6 +74,8 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
   var [selected, setSelected] = useState({})
   var [addingFile, setAddingFile] = useState(null)
   var [isAddingAll, setIsAddingAll] = useState(false)
+  var [unstagingFile, setUnstagingFile] = useState(null)
+  var [isUnstagingAll, setIsUnstagingAll] = useState(false)
   var [notification, setNotification] = useState(null)
 
   const deletedFilesFiltered = deletedFiles.filter(file => !notStagedFiles.includes(file))
@@ -182,6 +184,37 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
     } finally {
       setAddingFile(null)
+    }
+  }
+
+  async function handleUnstage(filePath) {
+    setUnstagingFile(filePath)
+    try {
+      await postJSON('/git-unstage', {
+        body: { projectId: projectId, userId: userId, filePath: filePath },
+      })
+      await onRefresh()
+      notifyGitFilesChanged()
+    } catch (err) {
+      showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
+    } finally {
+      setUnstagingFile(null)
+    }
+  }
+
+  async function handleUnstageAll() {
+    setIsUnstagingAll(true)
+    try {
+      await postJSON('/git-unstage-all', {
+        body: { projectId: projectId, userId: userId },
+      })
+      await onRefresh()
+      notifyGitFilesChanged()
+      showNotif('success', 'Tous les fichiers ont ete retirés du staging.')
+    } catch (err) {
+      showNotif('error', 'Erreur : ' + ((err && err.data && err.data.errorReason) || (err && err.message) || 'inconnu'))
+    } finally {
+      setIsUnstagingAll(false)
     }
   }
 
@@ -379,14 +412,32 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
       </div>
 
       <div style={{ marginTop: '20px' }}>
-        <h3 style={{ fontSize: '14px', color: 'var(--git-text-strong)', marginBottom: '8px' }}>
-          Fichiers indexes
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+          <h3 style={{ margin: 0, fontSize: '14px', color: 'var(--git-text-strong)' }}>
+            Fichiers indexes
+            {stagedFiles.length > 0 && (
+              <span style={{ color: 'var(--git-text-muted)', fontWeight: 'normal', marginLeft: '6px' }}>
+                ({stagedFiles.length})
+              </span>
+            )}
+          </h3>
           {stagedFiles.length > 0 && (
-            <span style={{ color: 'var(--git-text-muted)', fontWeight: 'normal', marginLeft: '6px' }}>
-              ({stagedFiles.length})
-            </span>
+            <button
+              onClick={handleUnstageAll}
+              disabled={unstagingFile !== null || isUnstagingAll}
+              style={Object.assign({}, BTN_BASE, {
+                padding: '5px 10px',
+                fontSize: '12px',
+                backgroundColor: (unstagingFile !== null || isUnstagingAll) ? '#ccc' : 'var(--git-danger-bg)',
+                color: 'var(--git-danger-text)',
+                border: '1px solid var(--git-danger-border)',
+                cursor: (unstagingFile !== null || isUnstagingAll) ? 'not-allowed' : 'pointer',
+              })}
+            >
+              {isUnstagingAll ? 'Retrait...' : 'Tout désindexer'}
+            </button>
           )}
-        </h3>
+        </div>
         {stagedFiles.length === 0 ? (
           <p style={{ color: 'var(--git-text-muted)', fontSize: '13px', fontStyle: 'italic', margin: 0 }}>
             Aucun fichier indexe.
@@ -398,15 +449,34 @@ function GitCommitTab({ projectId, userId, notStagedFiles, deletedFiles = [], st
                 <li
                   key={index}
                   style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
                     padding: '4px 6px',
-                    color: 'var(--git-add-text-strong)',
-                    fontSize: '13px',
-                    fontFamily: 'monospace',
                     borderLeft: '3px solid var(--git-accent)',
                     marginBottom: '2px',
                   }}
                 >
-                  {file}
+                  <span style={{ flex: 1, color: 'var(--git-add-text-strong)', fontSize: '13px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    {file}
+                  </span>
+                  <button
+                    onClick={function() { handleUnstage(file) }}
+                    disabled={unstagingFile === file || isUnstagingAll}
+                    title="Retirer ce fichier du staging"
+                    style={Object.assign({}, BTN_BASE, {
+                      padding: '3px 8px',
+                      fontSize: '12px',
+                      backgroundColor: (unstagingFile === file || isUnstagingAll) ? '#ccc' : 'var(--git-danger-bg)',
+                      color: 'var(--git-danger-text)',
+                      border: '1px solid var(--git-danger-border)',
+                      cursor: (unstagingFile === file || isUnstagingAll) ? 'not-allowed' : 'pointer',
+                      fontWeight: '400',
+                      flexShrink: 0,
+                    })}
+                  >
+                    – Unstage
+                  </button>
                 </li>
               )
             })}

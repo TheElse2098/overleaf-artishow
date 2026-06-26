@@ -246,6 +246,20 @@ export async function add(projectId, userId, filePath, deleted) {
   await git.add(filePath)
 }
 
+// Désindexe un fichier : git reset HEAD -- <file>. Ne touche pas au working tree
+// (le contenu reste, le fichier repasse simplement en "non indexé").
+// `--` sépare les options des chemins (anti-injection d'argument si filePath commence par "-").
+export async function unstage(projectId, userId, filePath) {
+  const git = getGitForProject(projectId, userId)
+  await git.raw(['reset', '-q', 'HEAD', '--', filePath])
+}
+
+// Désindexe tout : git reset HEAD (remet l'index à HEAD, working tree intact).
+export async function unstageAll(projectId, userId) {
+  const git = getGitForProject(projectId, userId)
+  await git.raw(['reset', '-q', 'HEAD'])
+}
+
 // Indexe tout : retire du working tree les fichiers supprimés dans Overleaf, puis git add .
 export async function addAll(projectId, userId, deletedFiles = []) {
   const git = getGitForProject(projectId, userId)

@@ -617,6 +617,20 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
   )
 
   webRouter.post(
+    '/git-unstage',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstage
+  )
+
+  webRouter.post(
+    '/git-unstage-all',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstageAll
+  )
+
+  webRouter.post(
     '/git-save-token',
     AuthenticationController.requireLogin(),
     ...gitWrite,
