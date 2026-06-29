@@ -18,6 +18,7 @@ import ClsiCacheManager from '../Compile/ClsiCacheManager.mjs'
 import Path from 'node:path'
 import OError from '@overleaf/o-error'
 import TemplatesPolicy from './TemplatesPolicy.mjs'
+import NotificationsBuilder from '../Notifications/NotificationsBuilder.mjs'
 import { Project } from '../../models/Project.mjs'
 import { User } from '../../models/User.mjs'
 
@@ -155,7 +156,7 @@ const TemplatesManager = {
       templateDescription: 1,
       templateCategory: 1,
       owner_ref: 1,
-      templateSharedWith: 1,
+      templateShares: 1,
     }).lean()
 
     // A "received" template is a Personnel one the viewer doesn't own (so it was
@@ -194,9 +195,9 @@ const TemplatesManager = {
             ? TemplatesPolicy.GENERAL
             : TemplatesPolicy.PERSONNEL,
         isOwnedByViewer,
-        // Owner sees how many people it's shared with; recipient sees who shared it.
+        // Owner sees how many people have ACCEPTED the share; recipient sees who shared it.
         sharedWithCount: isOwnedByViewer
-          ? (p.templateSharedWith || []).length
+          ? (p.templateShares || []).filter(s => s.status === 'accepted').length
           : undefined,
         sharedByName: isReceived(p)
           ? ownersById.get(p.owner_ref?.toString()) || undefined
@@ -236,7 +237,7 @@ const TemplatesManager = {
     // Unmarking a template must drop its share list, otherwise old shares would
     // silently come back (and stay visible) if it's ever re-marked as a template.
     if (!wantsTemplate) {
-      update.templateSharedWith = []
+      update.templateShares = []
     }
     await Project.updateOne({ _id: projectId }, update)
   },
@@ -259,30 +260,35 @@ const TemplatesManager = {
         isTemplate: false,
         templateDescription: '',
         templateCategory: '',
-        templateSharedWith: [],
+        templateShares: [],
       }
     )
   },
 
-  // List the users a template is shared with. Only the owner may view this.
+  // List the users a template is shared with, with their status (pending/accepted).
+  // Only the owner may view this.
   async getTemplateShares({ projectId, userId }) {
     const project = await Project.findOne(
       { _id: projectId },
-      { owner_ref: 1, isTemplate: 1, templateSharedWith: 1 }
+      { owner_ref: 1, isTemplate: 1, templateShares: 1 }
     ).lean()
     if (!project || !TemplatesPolicy.canShare(project, userId)) {
       throw new Errors.ForbiddenError('not allowed to view template shares')
     }
-    const ids = project.templateSharedWith || []
-    if (ids.length === 0) return []
+    const shares = project.templateShares || []
+    if (shares.length === 0) return []
+    const statusById = new Map(
+      shares.map(s => [s.userId.toString(), s.status || 'pending'])
+    )
     const users = await User.find(
-      { _id: { $in: ids } },
+      { _id: { $in: shares.map(s => s.userId) } },
       { first_name: 1, last_name: 1, email: 1 }
     ).lean()
     return users.map(u => ({
       userId: u._id.toString(),
       email: u.email,
       name: [u.first_name, u.last_name].filter(Boolean).join(' ').trim() || u.email,
+      status: statusById.get(u._id.toString()) || 'pending',
     }))
   },
 
@@ -291,7 +297,7 @@ const TemplatesManager = {
   async shareTemplate({ projectId, userId, email }) {
     const project = await Project.findOne(
       { _id: projectId },
-      { owner_ref: 1, isTemplate: 1, templateCategory: 1, templateSharedWith: 1 }
+      { name: 1, owner_ref: 1, isTemplate: 1, templateCategory: 1, templateShares: 1 }
     ).lean()
     if (!project || !TemplatesPolicy.canShare(project, userId)) {
       throw new Errors.ForbiddenError('not allowed to share template')
@@ -313,16 +319,77 @@ const TemplatesManager = {
     if (target._id.toString() === project.owner_ref.toString()) {
       throw new Errors.InvalidError('cannot share a template with its owner')
     }
+    // Already invited or already accepted → don't duplicate.
+    if (TemplatesPolicy.shareFor(project, target._id)) {
+      throw new Errors.InvalidError('already shared with this user')
+    }
+
+    // Add a PENDING invitation. It becomes visible only once accepted.
     await Project.updateOne(
       { _id: projectId },
-      { $addToSet: { templateSharedWith: target._id } }
+      { $push: { templateShares: { userId: target._id, status: 'pending' } } }
     )
+
+    // Notif in-app au destinataire (best-effort : un échec ne doit pas faire
+    // échouer le partage lui-même). C'est via cette notif qu'il accepte/refuse.
+    try {
+      const owner = await User.findOne(
+        { _id: project.owner_ref },
+        { first_name: 1, last_name: 1, email: 1 }
+      ).lean()
+      const sharerName =
+        [owner?.first_name, owner?.last_name].filter(Boolean).join(' ').trim() ||
+        owner?.email ||
+        'Un utilisateur'
+      await NotificationsBuilder.promises
+        .templateShared(target._id.toString(), projectId.toString())
+        .create({ sharerName, templateName: project.name, templateId: projectId.toString() })
+    } catch (err) {
+      logger.warn({ err, projectId }, 'failed to create template-shared notification')
+    }
+
     return {
       userId: target._id.toString(),
       email: target.email,
       name:
         [target.first_name, target.last_name].filter(Boolean).join(' ').trim() ||
         target.email,
+      status: 'pending',
+    }
+  },
+
+  // Accept a pending share: the template becomes visible/instantiable for the user.
+  // Only the invited user may accept their own share.
+  async acceptShare({ projectId, userId }) {
+    const res = await Project.updateOne(
+      { _id: projectId, 'templateShares.userId': userId },
+      { $set: { 'templateShares.$.status': 'accepted' } }
+    )
+    if (!res.matchedCount) {
+      throw new Errors.NotFoundError('no pending share for this user')
+    }
+    // Clear the invitation notification (best-effort).
+    try {
+      await NotificationsBuilder.promises
+        .templateShared(userId.toString(), projectId.toString())
+        .read()
+    } catch (err) {
+      logger.warn({ err, projectId }, 'failed to clear template-shared notification')
+    }
+  },
+
+  // Decline a pending share (or the user removing their own access): drop the entry.
+  async declineShare({ projectId, userId }) {
+    await Project.updateOne(
+      { _id: projectId },
+      { $pull: { templateShares: { userId } } }
+    )
+    try {
+      await NotificationsBuilder.promises
+        .templateShared(userId.toString(), projectId.toString())
+        .read()
+    } catch (err) {
+      logger.warn({ err, projectId }, 'failed to clear template-shared notification')
     }
   },
 
@@ -343,8 +410,18 @@ const TemplatesManager = {
     }
     await Project.updateOne(
       { _id: projectId },
-      { $pull: { templateSharedWith: targetUserId } }
+      { $pull: { templateShares: { userId: targetUserId } } }
     )
+
+    // L'accès est retiré → marquer comme lue l'éventuelle notif de partage du
+    // destinataire (best-effort).
+    try {
+      await NotificationsBuilder.promises
+        .templateShared(targetUserId.toString(), projectId.toString())
+        .read()
+    } catch (err) {
+      logger.warn({ err, projectId }, 'failed to clear template-shared notification')
+    }
   },
 }
 

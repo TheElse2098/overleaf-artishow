@@ -45,13 +45,19 @@ function canRemove(project, userId, isAdmin) {
   return isOwner(project, userId) || (Boolean(isAdmin) && isGeneralTemplate(project))
 }
 
-// The owner shares a template with a list of users (templateSharedWith). They may
-// see and instantiate it, but never edit or re-share it.
-function isSharedWith(project, userId) {
-  if (userId == null || !Array.isArray(project?.templateSharedWith)) return false
-  return project.templateSharedWith.some(
-    id => id != null && id.toString() === userId.toString()
+// The owner shares a template as an invitation. A share has a status:
+// 'pending' (invited, not yet visible) or 'accepted' (visible/instantiable).
+// Returns the share entry for a user, or undefined.
+function shareFor(project, userId) {
+  if (userId == null || !Array.isArray(project?.templateShares)) return undefined
+  return project.templateShares.find(
+    s => s?.userId != null && s.userId.toString() === userId.toString()
   )
+}
+
+// True only once the user has ACCEPTED the share (pending shares don't count).
+function isAcceptedShare(project, userId) {
+  return shareFor(project, userId)?.status === 'accepted'
 }
 
 // Only the owner may manage a template's share list — admins included. This
@@ -61,18 +67,19 @@ function canShare(project, userId) {
 }
 
 // A template can be instantiated by anyone if it's "General", by its owner, or by
-// a user it was shared with. This keeps a user from cloning an arbitrary (private)
-// project they cannot access.
+// a user who has ACCEPTED a share. This keeps a user from cloning an arbitrary
+// (private) project they cannot access — and a merely-pending invite grants nothing.
 function canUse(project, userId) {
   return (
     isGeneralTemplate(project) ||
     (Boolean(project?.isTemplate) &&
-      (isOwner(project, userId) || isSharedWith(project, userId)))
+      (isOwner(project, userId) || isAcceptedShare(project, userId)))
   )
 }
 
-// Mongo filter selecting the (non-trashed) templates a given user may see:
-// every "General" template, their own templates, plus templates shared with them.
+// Mongo filter selecting the (non-trashed) templates a given user may see in the
+// catalogue: every "General" template, their own, plus templates they ACCEPTED.
+// Pending invitations are surfaced via notifications, not the catalogue.
 function visibleFilter(userId) {
   return {
     isTemplate: true,
@@ -82,7 +89,7 @@ function visibleFilter(userId) {
         $or: [
           { templateCategory: GENERAL },
           { owner_ref: userId },
-          { templateSharedWith: userId },
+          { templateShares: { $elemMatch: { userId, status: 'accepted' } } },
         ],
       },
     ],
@@ -97,7 +104,8 @@ export default {
   categoryForMarking,
   canMark,
   canRemove,
-  isSharedWith,
+  shareFor,
+  isAcceptedShare,
   canShare,
   canUse,
   visibleFilter,

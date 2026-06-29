@@ -155,6 +155,39 @@ const TemplatesController = {
     }
   },
 
+  // The invited user accepts a pending share → the template becomes visible to them.
+  async acceptShare(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    try {
+      await TemplatesManager.promises.acceptShare({ projectId, userId })
+      res.json({ ok: true })
+    } catch (err) {
+      if (err instanceof Errors.NotFoundError) {
+        return res.status(404).json({ error: 'no_share' })
+      }
+      throw err
+    }
+  },
+
+  // The invited user declines a pending share (or removes their own access).
+  async declineShare(req, res) {
+    const userId = SessionManager.getLoggedInUserId(req.session)
+    const { projectId } = req.params
+    if (!ObjectId.isValid(projectId)) {
+      return res.sendStatus(400)
+    }
+    try {
+      await TemplatesManager.promises.declineShare({ projectId, userId })
+      res.json({ ok: true })
+    } catch (err) {
+      throw err
+    }
+  },
+
   async createProjectFromV1Template(req, res) {
     const userId = SessionManager.getLoggedInUserId(req.session)
     const project = await TemplatesManager.promises.createProjectFromV1Template(
@@ -186,4 +219,6 @@ export default {
   getTemplateShares: expressify(TemplatesController.getTemplateShares),
   shareTemplate: expressify(TemplatesController.shareTemplate),
   unshareTemplate: expressify(TemplatesController.unshareTemplate),
+  acceptShare: expressify(TemplatesController.acceptShare),
+  declineShare: expressify(TemplatesController.declineShare),
 }

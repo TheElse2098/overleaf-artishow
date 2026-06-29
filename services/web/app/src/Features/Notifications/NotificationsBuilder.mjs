@@ -238,6 +238,30 @@ function personalAndGroupSubscriptions(userId) {
   }
 }
 
+// A user was given access to someone's template. One notification per (recipient,
+// template) pair, recreated if it already exists so re-sharing re-notifies.
+function templateShared(userId, templateId) {
+  return {
+    key: `template-shared-${templateId}-${userId}`,
+    async create(messageOpts) {
+      return await NotificationsHandler.promises.createNotification(
+        userId,
+        this.key,
+        'notification_template_shared',
+        messageOpts,
+        null,
+        true
+      )
+    },
+    async read() {
+      return await NotificationsHandler.promises.markAsReadWithKey(
+        userId,
+        this.key
+      )
+    },
+  }
+}
+
 function oldDebugProjects(userId) {
   return {
     key: `old-debug-projects-${userId}`,
@@ -290,6 +314,9 @@ const NotificationsBuilder = {
   personalAndGroupSubscriptions(userId) {
     return callbackifyAll(personalAndGroupSubscriptions(userId))
   },
+  templateShared(userId, templateId) {
+    return callbackifyAll(templateShared(userId, templateId))
+  },
 }
 
 /** @type {Record<string, any>} */
@@ -304,6 +331,7 @@ NotificationsBuilder.promises = {
   personalAndGroupSubscriptions,
   tpdsFileLimit,
   oldDebugProjects,
+  templateShared,
 }
 
 export default NotificationsBuilder

@@ -21,6 +21,7 @@ type Share = {
   userId: string
   email: string
   name: string
+  status?: 'pending' | 'accepted'
 }
 
 type TemplateShareModalProps = {
@@ -197,6 +198,9 @@ function TemplateShareModal({
                   {share.name !== share.email
                     ? `${share.name} (${share.email})`
                     : share.email}
+                  {share.status === 'pending' && (
+                    <span className="text-muted small ms-2">(en attente)</span>
+                  )}
                 </span>
                 <OLButton
                   variant="ghost"

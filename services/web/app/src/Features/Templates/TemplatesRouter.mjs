@@ -59,6 +59,20 @@ export default {
       TemplatesController.unshareTemplate
     )
 
+    app.post(
+      '/project/:projectId/template/share/accept',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.acceptShare
+    )
+
+    app.post(
+      '/project/:projectId/template/share/decline',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.declineShare
+    )
+
     app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>

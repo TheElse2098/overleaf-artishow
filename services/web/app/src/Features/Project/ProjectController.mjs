@@ -346,7 +346,7 @@ const _ProjectController = {
       // cannot access.
       const templateProject = await ProjectGetter.promises.getProject(
         templateId,
-        { isTemplate: 1, templateCategory: 1, owner_ref: 1, templateSharedWith: 1 }
+        { isTemplate: 1, templateCategory: 1, owner_ref: 1, templateShares: 1 }
       )
       if (!TemplatesPolicy.canUse(templateProject, userId)) {
         return res.sendStatus(403)

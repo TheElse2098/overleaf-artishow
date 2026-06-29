@@ -6,6 +6,7 @@ import useAsync from '../../../../../shared/hooks/use-async'
 import { FetchError, postJSON } from '../../../../../infrastructure/fetch-json'
 import {
   NotificationProjectInvite,
+  NotificationTemplateShared,
   Notification as NotificationType,
 } from '../../../../../../../types/project/dashboard/notification'
 import GroupInvitationNotification from './group-invitation/group-invitation'
@@ -52,6 +53,21 @@ function CommonNotification({ notification }: CommonNotificationProps) {
     runAsync(
       postJSON(`/project/${projectId}/invite/token/${token}/accept`)
     ).catch(debugConsole.error)
+  }
+
+  function handleAcceptTemplateShare(notification: NotificationTemplateShared) {
+    const { templateId } = notification.messageOpts
+    runAsync(
+      postJSON(`/project/${templateId}/template/share/accept`)
+    ).catch(debugConsole.error)
+  }
+
+  function handleDeclineTemplateShare(notification: NotificationTemplateShared) {
+    const { templateId } = notification.messageOpts
+    // Decline removes the share server-side; also dismiss the notification.
+    runAsync(postJSON(`/project/${templateId}/template/share/decline`))
+      .then(() => notification._id && handleDismiss(notification._id))
+      .catch(debugConsole.error)
   }
 
   const { _id: id, templateKey, html } = notification
@@ -292,6 +308,54 @@ function CommonNotification({ notification }: CommonNotificationProps) {
           type="warning"
           onDismiss={() => id && handleDismiss(id)}
           content={html}
+        />
+      ) : templateKey === 'notification_template_shared' ? (
+        <Notification
+          type="info"
+          onDismiss={() => id && handleDismiss(id)}
+          content={
+            accepted ? (
+              <Trans
+                i18nKey="notification_template_shared_accepted"
+                components={{ b: <b /> }}
+                values={{ templateName: notification.messageOpts.templateName }}
+                shouldUnescape
+                tOptions={{ interpolation: { escapeValue: true } }}
+              />
+            ) : (
+              <Trans
+                i18nKey="notification_template_shared"
+                components={{ b: <b /> }}
+                values={{
+                  sharerName: notification.messageOpts.sharerName,
+                  templateName: notification.messageOpts.templateName,
+                }}
+                shouldUnescape
+                tOptions={{ interpolation: { escapeValue: true } }}
+              />
+            )
+          }
+          action={
+            accepted ? undefined : (
+              <>
+                <OLButton
+                  variant="secondary"
+                  isLoading={isLoading}
+                  disabled={isLoading}
+                  onClick={() => handleAcceptTemplateShare(notification)}
+                >
+                  {t('accept')}
+                </OLButton>
+                <OLButton
+                  variant="link"
+                  disabled={isLoading}
+                  onClick={() => handleDeclineTemplateShare(notification)}
+                >
+                  {t('decline')}
+                </OLButton>
+              </>
+            )
+          }
         />
       ) : (
         <Notification

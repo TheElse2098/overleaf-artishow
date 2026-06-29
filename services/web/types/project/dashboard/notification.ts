@@ -7,6 +7,7 @@ type TemplateKey =
   | 'notification_dropbox_unlinked_due_to_lapsed_reconfirmation'
   | 'notification_group_invitation'
   | 'notification_personal_and_group_subscriptions'
+  | 'notification_template_shared'
 
 type NotificationBase = {
   _id?: number
@@ -72,6 +73,15 @@ export interface NotificationGroupInvitation extends NotificationBase {
   }
 }
 
+export interface NotificationTemplateShared extends NotificationBase {
+  templateKey: Extract<TemplateKey, 'notification_template_shared'>
+  messageOpts: {
+    sharerName: string
+    templateName: string
+    templateId: string
+  }
+}
+
 export type Notification =
   | NotificationProjectInvite
   | NotificationWFH2020UpgradeOffer
@@ -80,6 +90,7 @@ export type Notification =
   | NotificationDropboxDuplicateProjectNames
   | NotificationDropboxUnlinkedDueToLapsedReconfirmation
   | NotificationGroupInvitation
+  | NotificationTemplateShared
 
 export type Institution = {
   _id?: number

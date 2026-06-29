@@ -49,9 +49,18 @@ export const ProjectSchema = new Schema(
     isTemplate: { type: Boolean, default: false },
     templateDescription: { type: String, default: '' },
     templateCategory: { type: String, default: '' },
-    // Users the owner shared this template with: they may see and instantiate it,
-    // but never edit or re-share it. Only meaningful when isTemplate is true.
-    templateSharedWith: [{ type: ObjectId, ref: 'User' }],
+    // Users the owner shared this template with, as invitations: 'pending' until
+    // the recipient accepts, then 'accepted'. Only an 'accepted' share makes the
+    // template visible/instantiable for that user. Only meaningful when isTemplate.
+    templateShares: {
+      type: [
+        {
+          userId: { type: ObjectId, ref: 'User' },
+          status: { type: String, enum: ['pending', 'accepted'], default: 'pending' },
+        },
+      ],
+      default: undefined,
+    },
     track_changes: { type: Object },
     tokens: {
       readOnly: {
