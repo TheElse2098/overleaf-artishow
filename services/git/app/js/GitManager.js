@@ -274,14 +274,24 @@ export async function pull(projectId, userId, gitInfo) {
     await disableBinaryConversion(repoPath)
 
     //pull
-
-    const result = await withRemoteAuth(git, userId, gitInfo, remote =>
-    git.pull(remote, gitInfo?.branch || null, { '--no-rebase': null })
-    )
+    // simple-git LÈVE une exception en cas de conflit de merge (GitResponseError),
+    // il ne retourne pas tranquillement un résultat. On catch donc l'erreur et on
+    // distingue : merge en cours (MERGE_HEAD présent) = conflit à résoudre ;
+    // sinon = vraie erreur à remonter. NB : withRemoteAuth assainit l'erreur (perd
+    // err.git), d'où la détection via MERGE_HEAD plutôt que via err.git.conflicts.
+    let pullError = null
+    try {
+        await withRemoteAuth(git, userId, gitInfo, remote =>
+            git.pull(remote, gitInfo?.branch || null, { '--no-rebase': null })
+        )
+    } catch (e) {
+        pullError = e
+    }
 
     //conflicts
 
-    if (result.conflicts && result.conflicts.length > 0) {
+    const inMerge = await fs.pathExists(path.join(repoPath, '.git', 'MERGE_HEAD'))
+    if (inMerge) {
         // On NE fait PLUS merge --abort : on laisse le working tree dans l'état
         // conflicté (marqueurs <<<<<<< ======= >>>>>>> dans les fichiers, MERGE_HEAD
         // présent). web reconstruira l'éditeur avec ces marqueurs pour que
@@ -292,12 +302,19 @@ export async function pull(projectId, userId, gitInfo) {
         // d'appliquer un stash → l'opération échouerait et le stash resterait
         // empilé. Le stash est donc réappliqué plus tard, dans resolveMerge /
         // abortMerge, une fois le merge terminé (index propre).
-        let conflicted = result.conflicts
+        let conflicted = []
         try {
-            const s = await git.status()
-            if (s.conflicted && s.conflicted.length > 0) conflicted = s.conflicted
+            conflicted = (await git.status()).conflicted || []
         } catch (_) {}
         return { status: 'conflict', conflicts: conflicted, stashed }
+    }
+
+    // Erreur de pull SANS merge en cours → vraie erreur : restaurer le stash et remonter.
+    if (pullError) {
+        if (stashed) {
+            try { await git.stash(['pop']) } catch (_) {}
+        }
+        throw pullError
     }
 
     //checkout HEAD

@@ -349,6 +349,18 @@ function formatConflictMessage(conflictedFiles) {
   return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Résolvez les marqueurs (<<<<<<<) dans l’éditeur, puis « Résoudre le conflit » — ou « Annuler le merge ».`
 }
 
+// Extrait un message lisible d'une réponse d'erreur du git-service. Le service
+// renvoie du JSON { error: "..." } ; sans ce parsing, on afficherait le JSON brut
+// à l'utilisateur (ex: {"error":"Conflit détecté..."}).
+async function readGitServiceError(response, fallbackStatus) {
+  const text = await response.text().catch(() => '')
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed.error === 'string') return parsed.error
+  } catch (_) {}
+  return text || `git service: ${fallbackStatus}`
+}
+
 // Normalise une URL git (SSH ou HTTPS) pour la comparaison inter-projets
 function normalizeRemoteUrl(url) {
   if (!url) return null
@@ -1179,8 +1191,7 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
       }
       result = await response.json() // { status, notInitialized?, noRemote?, conflicts? }
     } catch (err) {
@@ -1285,8 +1296,7 @@ GitController = {
         body: JSON.stringify({ projectId, userId, message }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
       }
       // { status: 'resolved'|'no-merge', markerWarnings?: [{path, markers:[{line,marker}]}] }
       res.status(200).json(await response.json())
@@ -1307,8 +1317,7 @@ GitController = {
         body: JSON.stringify({ projectId, userId }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
       }
       // Le working tree est revenu à l'état pré-merge → reconstruire l'éditeur
       await buildProject(projectPath, projectId, userId, getRootId(projectId))
