@@ -46,7 +46,13 @@ export const ProjectSchema = new Schema(
     deletedDocs: [DeletedDocSchema],
     imageName: { type: String },
     brandVariationId: { type: String },
-    isTemplate: { type: Boolean, default: false },
+    // Index partiel : n'indexe QUE les projets-templates (une poignée), donc reste
+    // minuscule même sur une grosse collection. Évite un collscan à chaque listing.
+    isTemplate: {
+      type: Boolean,
+      default: false,
+      index: { partialFilterExpression: { isTemplate: true } },
+    },
     templateDescription: { type: String, default: '' },
     templateCategory: { type: String, default: '' },
     // Users the owner shared this template with, as invitations: 'pending' until

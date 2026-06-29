@@ -151,13 +151,26 @@ const TemplatesManager = {
   // plus templates shared with them. Returns plain objects ready for the API,
   // enriched with ownership/sharing info so the UI can show the right controls.
   async getVisibleTemplates(userId) {
-    const projects = await Project.find(TemplatesPolicy.visibleFilter(userId), {
-      name: 1,
-      templateDescription: 1,
-      templateCategory: 1,
-      owner_ref: 1,
-      templateShares: 1,
-    }).lean()
+    // Index dénormalisé : les templates acceptés par cet utilisateur, lus sur le
+    // user (pas en scannant les partages de toute la collection projects).
+    const viewer = await User.findOne(
+      { _id: userId },
+      { sharedTemplates: 1 }
+    ).lean()
+    const acceptedTemplateIds = (viewer?.sharedTemplates || [])
+      .filter(s => s.status === 'accepted')
+      .map(s => s.templateId)
+
+    const projects = await Project.find(
+      TemplatesPolicy.visibleFilter(userId, acceptedTemplateIds),
+      {
+        name: 1,
+        templateDescription: 1,
+        templateCategory: 1,
+        owner_ref: 1,
+        templateShares: 1,
+      }
+    ).lean()
 
     // A "received" template is a Personnel one the viewer doesn't own (so it was
     // shared with them). General templates are public, not "shared", so they
@@ -240,6 +253,13 @@ const TemplatesManager = {
       update.templateShares = []
     }
     await Project.updateOne({ _id: projectId }, update)
+    // Purger l'index miroir chez tous les destinataires (références mortes sinon).
+    if (!wantsTemplate) {
+      await User.updateMany(
+        { 'sharedTemplates.templateId': projectId },
+        { $pull: { sharedTemplates: { templateId: projectId } } }
+      )
+    }
   },
 
   // Clear a project's template status. The owner can always do so; an admin can
@@ -262,6 +282,11 @@ const TemplatesManager = {
         templateCategory: '',
         templateShares: [],
       }
+    )
+    // Purger l'index miroir chez tous les destinataires (références mortes sinon).
+    await User.updateMany(
+      { 'sharedTemplates.templateId': projectId },
+      { $pull: { sharedTemplates: { templateId: projectId } } }
     )
   },
 
@@ -325,9 +350,15 @@ const TemplatesManager = {
     }
 
     // Add a PENDING invitation. It becomes visible only once accepted.
+    // Source de vérité (autorité) : Project.templateShares.
     await Project.updateOne(
       { _id: projectId },
       { $push: { templateShares: { userId: target._id, status: 'pending' } } }
+    )
+    // Index de perf miroir côté User (pour le listing). Jamais l'autorité.
+    await User.updateOne(
+      { _id: target._id },
+      { $push: { sharedTemplates: { templateId: projectId, status: 'pending' } } }
     )
 
     // Notif in-app au destinataire (best-effort : un échec ne doit pas faire
@@ -368,6 +399,11 @@ const TemplatesManager = {
     if (!res.matchedCount) {
       throw new Errors.NotFoundError('no pending share for this user')
     }
+    // Miroir côté User (index de perf).
+    await User.updateOne(
+      { _id: userId, 'sharedTemplates.templateId': projectId },
+      { $set: { 'sharedTemplates.$.status': 'accepted' } }
+    )
     // Clear the invitation notification (best-effort).
     try {
       await NotificationsBuilder.promises
@@ -383,6 +419,10 @@ const TemplatesManager = {
     await Project.updateOne(
       { _id: projectId },
       { $pull: { templateShares: { userId } } }
+    )
+    await User.updateOne(
+      { _id: userId },
+      { $pull: { sharedTemplates: { templateId: projectId } } }
     )
     try {
       await NotificationsBuilder.promises
@@ -411,6 +451,10 @@ const TemplatesManager = {
     await Project.updateOne(
       { _id: projectId },
       { $pull: { templateShares: { userId: targetUserId } } }
+    )
+    await User.updateOne(
+      { _id: targetUserId },
+      { $pull: { sharedTemplates: { templateId: projectId } } }
     )
 
     // L'accès est retiré → marquer comme lue l'éventuelle notif de partage du

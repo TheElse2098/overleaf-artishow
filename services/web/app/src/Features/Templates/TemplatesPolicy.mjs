@@ -80,7 +80,12 @@ function canUse(project, userId) {
 // Mongo filter selecting the (non-trashed) templates a given user may see in the
 // catalogue: every "General" template, their own, plus templates they ACCEPTED.
 // Pending invitations are surfaced via notifications, not the catalogue.
-function visibleFilter(userId) {
+//
+// `acceptedTemplateIds` vient de l'index dénormalisé User.sharedTemplates (les
+// templateId acceptés). On évite ainsi de scanner templateShares de toute la
+// collection : on cible directement par _id. C'est un raccourci de listing —
+// l'autorisation réelle reste canUse() sur le projet.
+function visibleFilter(userId, acceptedTemplateIds = []) {
   return {
     isTemplate: true,
     $and: [
@@ -89,7 +94,7 @@ function visibleFilter(userId) {
         $or: [
           { templateCategory: GENERAL },
           { owner_ref: userId },
-          { templateShares: { $elemMatch: { userId, status: 'accepted' } } },
+          { _id: { $in: acceptedTemplateIds } },
         ],
       },
     ],
