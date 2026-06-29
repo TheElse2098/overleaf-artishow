@@ -182,9 +182,18 @@ function Modal({
               <ul>
                 <li>Cliquez sur le bouton <strong>"Pull"</strong> en haut à gauche (icône en forme de flèche circulaire)</li>
               </ul>
-              <p>Vos modifications non comitées seront stash avant le pull puis pop après. <strong>Dans le cas de conflit sur un fichier, vos modifications non commitées sur ce fichier seront supprimées.</strong></p>
+              <p>Vos modifications non commitées seront automatiquement mises de côté (<em>stash</em>) avant le pull, puis réappliquées. Si le dépôt distant contient des changements incompatibles avec les vôtres, un <strong>conflit de merge</strong> est détecté : voir la section suivante.</p>
 
-              <h4>d. <code>git rollback</code> – Revenir à un ancien commit</h4>
+              <h4>d. Résoudre un conflit de merge</h4>
+              <ul>
+                <li>Si un pull entre en conflit, un bandeau <strong>"Conflit de merge en cours"</strong> s’affiche dans l’onglet <strong>"Commit &amp; Push"</strong></li>
+                <li>Les fichiers concernés s’ouvrent dans l’éditeur avec des marqueurs <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code></li>
+                <li>Éditez le texte pour garder ce que vous voulez et supprimez ces marqueurs</li>
+                <li>Cliquez sur <strong>"Résoudre le conflit"</strong> pour valider, ou <strong>"Annuler le merge"</strong> pour revenir en arrière</li>
+              </ul>
+              <p style={{ color: '#e0524d' }}><strong>⚠️ Assurez-vous que le projet compile avant de cliquer sur "Résoudre le conflit".</strong></p>
+
+              <h4>e. <code>git rollback</code> – Revenir à un ancien commit</h4>
               <ul>
                 <li>Cliquez sur le <strong>Git Menu</strong> (en haut à droite)</li>
                 <li>Allez dans l’onglet <strong>"Rollback"</strong></li>
@@ -192,7 +201,7 @@ function Modal({
               </ul>
               <p style={{ color: '#e0524d' }}><strong>⚠️ Cette action supprimera toutes les modifications après ce commit.</strong></p>
 
-              <h4>e. <code>git branch</code> – Voir et changer de branche</h4>
+              <h4>f. <code>git branch</code> – Voir et changer de branche</h4>
               <ul>
                 <li>Votre branche actuelle est affichée dans <strong>"Select Branch"</strong></li>
                 <li>Toutes les branches distantes sont visibles</li>
