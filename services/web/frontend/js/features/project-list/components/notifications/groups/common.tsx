@@ -57,9 +57,10 @@ function CommonNotification({ notification }: CommonNotificationProps) {
 
   function handleAcceptTemplateShare(notification: NotificationTemplateShared) {
     const { templateId } = notification.messageOpts
-    runAsync(
-      postJSON(`/project/${templateId}/template/share/accept`)
-    ).catch(debugConsole.error)
+    // Accept makes the template visible; then dismiss the notification.
+    runAsync(postJSON(`/project/${templateId}/template/share/accept`))
+      .then(() => notification._id && handleDismiss(notification._id))
+      .catch(debugConsole.error)
   }
 
   function handleDeclineTemplateShare(notification: NotificationTemplateShared) {
@@ -313,48 +314,29 @@ function CommonNotification({ notification }: CommonNotificationProps) {
         <Notification
           type="info"
           onDismiss={() => id && handleDismiss(id)}
-          content={
-            accepted ? (
-              <Trans
-                i18nKey="notification_template_shared_accepted"
-                components={{ b: <b /> }}
-                values={{ templateName: notification.messageOpts.templateName }}
-                shouldUnescape
-                tOptions={{ interpolation: { escapeValue: true } }}
-              />
-            ) : (
-              <Trans
-                i18nKey="notification_template_shared"
-                components={{ b: <b /> }}
-                values={{
-                  sharerName: notification.messageOpts.sharerName,
-                  templateName: notification.messageOpts.templateName,
-                }}
-                shouldUnescape
-                tOptions={{ interpolation: { escapeValue: true } }}
-              />
-            )
-          }
+          // Texte déjà traduit côté serveur (ProjectListController via req.i18n) :
+          // on utilise `html` plutôt qu'un <Trans> client, car la clé i18n n'est
+          // pas dans le bundle frontend (extracted-translations) → afficherait la
+          // clé brute.
+          content={html}
           action={
-            accepted ? undefined : (
-              <>
-                <OLButton
-                  variant="secondary"
-                  isLoading={isLoading}
-                  disabled={isLoading}
-                  onClick={() => handleAcceptTemplateShare(notification)}
-                >
-                  {t('accept')}
-                </OLButton>
-                <OLButton
-                  variant="link"
-                  disabled={isLoading}
-                  onClick={() => handleDeclineTemplateShare(notification)}
-                >
-                  {t('decline')}
-                </OLButton>
-              </>
-            )
+            <>
+              <OLButton
+                variant="secondary"
+                isLoading={isLoading}
+                disabled={isLoading}
+                onClick={() => handleAcceptTemplateShare(notification)}
+              >
+                {t('accept')}
+              </OLButton>
+              <OLButton
+                variant="link"
+                disabled={isLoading}
+                onClick={() => handleDeclineTemplateShare(notification)}
+              >
+                {t('decline')}
+              </OLButton>
+            </>
           }
         />
       ) : (

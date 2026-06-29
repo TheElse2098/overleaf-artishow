@@ -1708,7 +1708,6 @@
   "notification_project_invite_accepted_message": "You’ve joined <b>__projectName__</b>",
   "notification_project_invite_message": "<b>__userName__</b> would like you to join <b>__projectName__</b>",
   "notification_template_shared": "<b>__sharerName__</b> shared the template <b>__templateName__</b> with you.",
-  "notification_template_shared_accepted": "You accepted the template <b>__templateName__</b>. Find it under “New project → Import from template”.",
   "november": "November",
   "number_collab": "Number of collaborators",
   "number_collab_info": "The number of people you can invite to work on a project with you. The limit is per project, so you can invite different people to each project.",

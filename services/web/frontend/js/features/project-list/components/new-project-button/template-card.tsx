@@ -167,7 +167,11 @@ function TemplateCard({ template, onRemoved }: TemplateCardProps) {
             className="text-truncate"
             style={{ flex: '1 1 0', minWidth: 0 }}
           >
-            {isCreating ? t('creating') + '...' : 'Use template'}
+            {isCreating
+              ? t('creating') + '...'
+              : canShare && canRemove
+                ? 'Use'
+                : 'Use template'}
           </OLButton>
           {canShare && (
             <OLButton
