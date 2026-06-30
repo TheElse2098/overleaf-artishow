@@ -314,11 +314,16 @@ function CommonNotification({ notification }: CommonNotificationProps) {
         <Notification
           type="info"
           onDismiss={() => id && handleDismiss(id)}
-          // Texte déjà traduit côté serveur (ProjectListController via req.i18n) :
-          // on utilise `html` plutôt qu'un <Trans> client, car la clé i18n n'est
-          // pas dans le bundle frontend (extracted-translations) → afficherait la
-          // clé brute.
-          content={html}
+          // Contenu construit en JSX (pas le `html` serveur, qui s'afficherait
+          // avec les balises <b> littérales, ni un <Trans> dont la clé n'est pas
+          // dans le bundle frontend). React échappe sharerName / templateName →
+          // pas d'injection HTML/XSS même si un nom contient des balises.
+          content={
+            <>
+              <b>{notification.messageOpts.sharerName}</b> shared the template{' '}
+              <b>{notification.messageOpts.templateName}</b> with you.
+            </>
+          }
           action={
             <>
               <OLButton
