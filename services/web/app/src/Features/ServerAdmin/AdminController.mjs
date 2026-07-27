@@ -1,6 +1,9 @@
 import logger from '@overleaf/logger'
 import http from 'node:http'
 import https from 'node:https'
+import fs from 'node:fs'
+import path from 'node:path'
+import { promisify } from 'node:util'
 import Settings from '@overleaf/settings'
 import TpdsUpdateSender from '../ThirdPartyDataStore/TpdsUpdateSender.mjs'
 import TpdsProjectFlusher from '../ThirdPartyDataStore/TpdsProjectFlusher.mjs'
@@ -10,6 +13,87 @@ import ProjectGetter from '../Project/ProjectGetter.mjs'
 import Modules from '../../infrastructure/Modules.mjs'
 import Features from '../../infrastructure/Features.mjs'
 import { expressify } from '@overleaf/promise-utils'
+import mongodb from '../../infrastructure/mongodb.mjs'
+
+const { db, ObjectId } = mongodb
+const readdir = promisify(fs.readdir)
+const stat = promisify(fs.stat)
+
+async function dirSize(directoryPath) {
+  let totalSize = 0;
+  const entries = await readdir(directoryPath, { withFileTypes: true })
+  for (const entry of entries) {
+    const fullPath = path.join(directoryPath, entry.name)
+    if (entry.isDirectory()) {
+      totalSize += await dirSize(fullPath)
+    } else if (entry.isFile()) {
+      const fileStat = await stat(fullPath)
+      totalSize += fileStat.size
+    }
+  }
+  return totalSize
+}
+
+async function getUserId(projectId) {
+  try {
+    const project = await db.projects.findOne(
+      { _id: new ObjectId(projectId) },
+      { projection: { owner_ref: 1 } }
+    )
+    if (!project) return null
+    return project.owner_ref ? project.owner_ref.toString() : null
+  } catch (err) {
+    console.error('Failed to fetch userId for projectId', projectId, err)
+    throw err
+  }
+}
+
+async function getEmail(userId) {
+  try {
+    const user = await db.users.findOne(
+      { _id: new ObjectId(userId) },
+      { projection: { email: 1 } }
+    )
+    return user ? user.email : null
+  } catch (err) {
+    console.error('Failed to fetch email for userId', userId, err)
+    throw err
+  }
+}
+
+async function getUserFilesDiskUsage(userFilesDir) {
+  let userUsageMap = {} // userId -> summed bytes
+  let entries
+  try {
+    entries = await readdir(userFilesDir, { withFileTypes: true })
+  } catch (err) {
+    // handle error or return empty object
+    return {}
+  }
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    // filename pattern: "${projectId}_${userId}"
+    const match = entry.name.match( /^([^_]+)_([^_]+)$/)
+    if (!match) continue
+    const projectId = match[1]
+    const userId = await getUserId(projectId)
+    const email = await getEmail(userId)
+    const fullPath = path.join(userFilesDir, entry.name)
+    let fileStat
+    try {
+      fileStat = await stat(fullPath)
+    } catch (err) {
+      continue
+    }
+    
+    if (!userUsageMap[email]) userUsageMap[email] = 0
+	  {
+            userUsageMap[email] += fileStat.size
+	  }
+  }
+  return userUsageMap 
+}
+
 
 const AdminController = {
   _sendDisconnectAllUsersMessage: delay => {
@@ -32,6 +116,20 @@ const AdminController = {
       openSockets[`https://${url}`] = https.globalAgent.sockets[url].map(socket => {
         return socket._httpMessage?.path || '(unknown request)'
       })
+    }
+    const targetDir = '/var/lib/overleaf/data'
+    const historyDir = '/var/lib/overleaf/data/history'
+    const userFilesDir = '/var/lib/overleaf/data/user_files'
+    let directorySizeBytes = null
+    let historySizeBytes = null
+    let userFilesUsage = null
+    try {
+      directorySizeBytes = await dirSize(targetDir)
+      historySizeBytes = await dirSize(historyDir)
+      userFilesUsage = await getUserFilesDiskUsage(userFilesDir)
+    } catch (err) {
+      logger.error('Failed to get directory size', { error: err, targetDir })
+      directorySizeBytes = null
     }
 
     const systemMessages =
@@ -109,6 +207,8 @@ const AdminController = {
       res.redirect('/admin#system-messages')
     })
   },
+  
+  
 }
 
 export default AdminController
