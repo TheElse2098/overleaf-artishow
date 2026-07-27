@@ -20,6 +20,7 @@ import SplitTestHandler from '../SplitTests/SplitTestHandler.mjs'
 import SplitTestUserGetter from '../SplitTests/SplitTestUserGetter.mjs'
 import ClsiCacheManager from '../Compile/ClsiCacheManager.mjs'
 import crypto from 'node:crypto'
+import { gitClone } from '../Git/GitController.js'
 
 const { ObjectId } = mongodb
 
@@ -186,6 +187,32 @@ async function createExampleProject(ownerId, projectName, attributes = {}) {
   return project
 }
 
+async function createGitProject(ownerId, projectLink, branch = null, token = null, tokenType = null) {
+  console.log("Importing git project")
+  const regex = /^git@[^:]+:([^/]+)\/([^.]+)\.git$/
+  const match = projectLink.match(regex);
+
+  if (match) {
+    const username = match[1];
+    const repoName = match[2];
+    const projectName = `${repoName} (${username})`
+    const project = await _createBlankProject(ownerId, projectName)
+    AnalyticsManager.recordEventForUser(ownerId, 'project-created', {
+      projectId: project._id,
+    })
+    try {
+      await gitClone(project._id, ownerId, projectLink, branch, token, tokenType)
+    } catch (err) {
+      await Project.deleteOne({ _id: project._id }).exec().catch(() => {})
+      throw err
+    }
+
+    return project
+  } else {
+    throw new Error('Invalid SSH URL format');
+  }
+}
+
 async function _addExampleProjectFiles(ownerId, projectName, project) {
   const mainDocLines = await _buildTemplate(
     `${templateProjectDir}/main.tex`,
@@ -344,10 +371,12 @@ export default {
   createProjectFromSnippet: callbackify(createProjectFromSnippet),
   createBasicProject: callbackify(createBasicProject),
   createExampleProject: callbackify(createExampleProject),
+  createGitProject: callbackify(createGitProject),
   promises: {
     createBlankProject,
     createProjectFromSnippet,
     createBasicProject,
     createExampleProject,
+    createGitProject,
   },
 }

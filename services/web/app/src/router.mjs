@@ -36,6 +36,7 @@ import PasswordResetRouter from './Features/PasswordReset/PasswordResetRouter.mj
 import StaticPagesRouter from './Features/StaticPages/StaticPagesRouter.mjs'
 import ChatController from './Features/Chat/ChatController.mjs'
 import Modules from './infrastructure/Modules.mjs'
+import { GitController, setProjectIdParam, injectGitOwner } from './Features/Git/GitController.js'
 import {
   RateLimiter,
   openProjectRateLimiter,
@@ -360,6 +361,216 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
 
   // .getMessages will generate an empty response for anonymous users.
   webRouter.get('/system/messages', SystemMessageController.getMessages)
+
+  // Chaînes d'autorisation pour les routes git :
+  // 1. valide le projectId (body/query) et l'expose dans req.params
+  // 2. vérifie que l'utilisateur de la session a accès au projet (lecture/écriture)
+  // 3. injecte le userId du propriétaire du projet (jamais celui fourni par le client)
+  const gitRead = [
+    setProjectIdParam,
+    AuthorizationMiddleware.ensureUserCanReadProject,
+    injectGitOwner,
+  ]
+  const gitWrite = [
+    setProjectIdParam,
+    AuthorizationMiddleware.ensureUserCanWriteProjectContent,
+    injectGitOwner,
+  ]
+
+  webRouter.get(
+    '/ssh-key',
+    AuthenticationController.requireLogin(),
+    GitController.getKey
+  )
+
+  webRouter.get(
+    '/git-info',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.gitInfo
+  )
+
+  webRouter.post(
+    '/git-add',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.add
+  )
+
+  webRouter.post(
+    '/git-mark-deleted',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.markDeleted
+  )
+
+  webRouter.get(
+    '/git-staged',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.stagedFiles
+  )
+
+  webRouter.get(
+    '/git-notstaged',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.notStagedFiles
+  )
+
+  webRouter.get(
+    '/git-currentbranch',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.currentBranch
+  )
+
+  webRouter.get(
+    '/git-branches',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.branches
+  )
+
+  webRouter.post(
+    '/git-create-branch',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.createBranch
+  )
+
+  webRouter.post(
+    '/git-pull',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.pull
+  )
+  
+  webRouter.post(
+    '/git-init',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.init
+  )
+
+  webRouter.post(
+    '/git-commit',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.commit
+  )
+
+  webRouter.post(
+    '/git-set-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.setRemote
+  )
+
+  webRouter.post(
+    '/git-remove-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.removeRemote
+  )
+
+  webRouter.post(
+    '/git-switch-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.switchRemote
+  )
+
+  webRouter.post(
+    '/git-remove-saved-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.removeSavedRemote
+  )
+
+  webRouter.get(
+  '/git-commits',
+  AuthenticationController.requireLogin(),
+  ...gitRead,
+  GitController.commitHistory
+  )
+
+  webRouter.post(
+    '/git-push',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.push
+  )
+
+  webRouter.post(
+    '/git-rollback',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.rollback
+  )
+
+  webRouter.post(
+    '/git-switch-branch',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.switch_branch
+  )
+
+  webRouter.post(
+    '/git-add-all',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.addAll
+  )
+
+  webRouter.post(
+    '/git-unstage',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstage
+  )
+
+  webRouter.post(
+    '/git-unstage-all',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.unstageAll
+  )
+
+  webRouter.get(
+    '/git-merge-status',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.mergeStatus
+  )
+
+  webRouter.post(
+    '/git-resolve-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.resolveMerge
+  )
+
+  webRouter.post(
+    '/git-abort-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.abortMerge
+  )
+
+  webRouter.post(
+    '/git-save-token',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.saveToken
+  )
+
+  webRouter.post(
+    '/project/import',
+    AuthenticationController.requireLogin(),
+    RateLimiterMiddleware.rateLimit(rateLimiters.createProject),
+    ProjectController.importProject
+  )
 
   webRouter.get(
     '/user/settings',

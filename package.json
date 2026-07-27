@@ -1,6 +1,11 @@
 {
   "name": "overleaf",
   "private": true,
+  "dependencies": {
+    "patch-package": "^8.0.0",
+    "fs-extra": "^11.2.0",
+    "simple-git": "^3.25.0"
+  },
   "packageManager": "yarn@4.14.1",
   "devDependencies": {
     "@eslint/compat": "^2.1.0",

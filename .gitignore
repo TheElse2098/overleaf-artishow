@@ -4,3 +4,9 @@
 # user defined files
 .env
 docker-compose.override.yml
+
+# overleaf toolkit
+overleaf-toolkit/
+
+# doc interne (note locale, non committée)
+DOC-INTERNE.md
