@@ -38,7 +38,8 @@ jobs:
 
       - name: Publish
         run: |
-          export ghcr_registry="ghcr.io/${IMAGE_NAME}"
+          image_name_lower="$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          export ghcr_registry="ghcr.io/${image_name_lower}"
           docker tag docker.io/sharelatex/sharelatex:${{ github.ref_name }} ${ghcr_registry}:latest
           docker tag docker.io/sharelatex/sharelatex:${{ github.ref_name }} ${ghcr_registry}:${{ github.sha }}
           echo "Publishing ${ghcr_registry}:${{ github.sha }}"

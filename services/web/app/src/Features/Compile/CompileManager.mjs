@@ -118,6 +118,11 @@ async function compile(projectId, userId, options = {}) {
     options
   )
 
+  if(userId){
+    const { gitUpdate } = await import('../Git/GitController.js')
+    await gitUpdate(projectId, userId)
+  }
+
   return {
     status,
     outputFiles,

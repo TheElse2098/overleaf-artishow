@@ -105,6 +105,16 @@ export default HttpErrorHandler = {
     }
   },
 
+  gitMethodError(req, res, message) {
+    res.status(405);
+    switch (req.accepts(['json'])) {
+      case 'json':
+        return renderJSONError(res, message, {errorReason: message})
+      default:
+        return plainTextResponse(res, message)
+    }
+  },
+
   notFound(req, res, message = 'not found', info = {}) {
     res.status(404)
     switch (req.accepts(['html', 'json'])) {

@@ -131,16 +131,7 @@ async function validateProjectName(name) {
   if (name.length > MAX_PROJECT_NAME_LENGTH) {
     throw new Errors.InvalidNameError('Project name is too long')
   }
-  if (name.indexOf('/') > -1) {
-    throw new Errors.InvalidNameError(
-      'Project name cannot contain / characters'
-    )
-  }
-  if (name.indexOf('\\') > -1) {
-    throw new Errors.InvalidNameError(
-      'Project name cannot contain \\ characters'
-    )
-  }
+  
   if (name !== name.trim()) {
     throw new Errors.InvalidNameError(
       'Project name cannot start or end with whitespace'

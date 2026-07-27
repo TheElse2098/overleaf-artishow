@@ -28,6 +28,9 @@ import { isBlockedFilename, isCleanFilename } from '../util/safe-path'
 import { useProjectContext } from '../../../shared/context/project-context'
 import { useFileTreeData } from '../../../shared/context/file-tree-data-context'
 import { useFileTreeSelectable } from './file-tree-selectable'
+import { getFullPath } from './get-full-path'
+import { useUserContext } from '../../../shared/context/user-context'
+import { postJSON } from '../../../infrastructure/fetch-json'
 
 import {
   InvalidFilenameError,
@@ -53,6 +56,9 @@ type DroppedFiles = {
 
 const FileTreeActionableContext = createContext<
   | {
+      fileTreeData: any
+      selectedEntityIds: any
+      projectName: any
       isDeleting: boolean
       isRenaming: boolean
       isCreatingFile: boolean
@@ -235,6 +241,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
   children,
 }) => {
   const { projectId, project, updateProject } = useProjectContext()
+  const { id: userId } = useUserContext()
   const { fileTreeReadOnly } = useFileTreeData()
   const { indexAllReferences } = useReferencesContext()
   const { write } = usePermissionsContext()
@@ -312,14 +319,24 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
         const found = findInTreeOrThrow(fileTreeData, id)
         shouldReindexReferences =
           shouldReindexReferences || /\.bib$/.test(found.entity.name)
-        return syncDelete(projectId, found.type, found.entity._id).catch(
-          error => {
+        // Compute path before deletion while entity is still in the tree
+        const filePath =
+          found.type !== 'folder' ? getFullPath(fileTreeData, id).slice(1) : null
+        return syncDelete(projectId, found.type, found.entity._id)
+          .then(() => {
+            // Enregistre la suppression comme en attente dans le git menu
+            if (filePath) {
+              postJSON('/git-mark-deleted', {
+                body: { projectId, userId, filePath },
+              }).catch(() => {})
+            }
+          })
+          .catch(error => {
             // throw unless 404
             if (error.info.statusCode !== 404) {
               throw error
             }
-          }
-        )
+          })
       })
         // @ts-ignore (TODO: improve mapSeries types)
         .then(() => {
@@ -333,7 +350,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
           dispatch({ type: ACTION_TYPES.ERROR, error })
         })
     )
-  }, [fileTreeData, projectId, selectedEntityIds, indexAllReferences])
+  }, [fileTreeData, projectId, userId, selectedEntityIds, indexAllReferences])
 
   // moves entities. Tree is updated immediately and data are sync'd after.
   const finishMoving = useCallback(
@@ -520,7 +537,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
 
   // build the path for downloading a single file or doc
   const downloadPath = useMemo(() => {
-    if (selectedEntityIds.size === 1) {
+    if (selectedEntityIds?.size === 1) {
       const [selectedEntityId] = selectedEntityIds
       const selectedEntity = findInTree(fileTreeData, selectedEntityId)
 
@@ -588,6 +605,7 @@ export const FileTreeActionableProvider: FC<React.PropsWithChildren> = ({
       cancel,
       droppedFiles,
       setDroppedFiles,
+      downloadPath, // fileTreeData,selectedEntityIds,projectName,
       downloadPath,
       canSetRootDocId,
       setRootDocId,
@@ -636,7 +654,18 @@ export function useFileTreeActionable() {
     )
   }
 
-  return context
+  const { fileTreeData, selectedEntityIds } = context;
+
+  // Calculates the file path
+  const selectedFilePath = useMemo(() => {
+    if (selectedEntityIds?.size === 1) {
+      const [selectedEntityId] = selectedEntityIds
+      return getFullPath(fileTreeData, selectedEntityId).slice(1)
+    }
+    return null;
+  }, [fileTreeData, selectedEntityIds])
+
+  return {...context, selectedFilePath}
 }
 
 function getSelectedParentFolderId(

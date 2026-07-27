@@ -14,7 +14,21 @@ import OLFormLabel from '@/shared/components/ol/ol-form-label'
 import OLFormControl from '@/shared/components/ol/ol-form-control'
 import OLFormText from '@/shared/components/ol/ol-form-text'
 
+async function getKey(userId: string) {
+  const url = new URL('/ssh-key', window.origin)
+  url.searchParams.append('userId', userId)
+  try {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+    const publicKey = await response.text()
+    navigator.clipboard.writeText(publicKey)
+  } catch (error) {
+    console.error('Error:', error)
+  }
+}
+
 function AccountInfoSection() {
+  const { id: userId } = useUserContext()
   const { t } = useTranslation()
   const { hasAffiliationsFeature } = getMeta('ol-ExposedSettings')
   const isExternalAuthenticationSystemUsed = getMeta(
@@ -134,6 +148,11 @@ function AccountInfoSection() {
             </OLButton>
           </OLFormGroup>
         ) : null}
+        <div style={{ marginTop: '10px' }}>
+          <button type="button" onClick={() => getKey(userId)}>
+            Copy SSH key
+          </button>
+        </div>
       </form>
     </>
   )

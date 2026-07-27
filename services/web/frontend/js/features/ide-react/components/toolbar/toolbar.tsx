@@ -19,6 +19,7 @@ import { useFeatureFlag } from '@/shared/context/split-test-context'
 import OLIconButton from '@/shared/components/ol/ol-icon-button'
 import OLTooltip from '@/shared/components/ol/ol-tooltip'
 import SplitTestBadge from '@/shared/components/split-test-badge'
+import GitToggleButton from '@/features/editor-navigation-toolbar/components/git-toggle-button'
 
 const [publishModalModules] = importOverleafModules('publishModal')
 const SubmitProjectButton = publishModalModules?.import.NewPublishToolbarButton
@@ -135,6 +136,7 @@ export const Toolbar = () => {
         {shouldDisplaySubmitButton && cobranding && (
           <SubmitProjectButton cobranding={cobranding} />
         )}
+        <GitToggleButton /> 
         <ShareProjectButton />
         {showUpgradePrompt && !upgradeButtonRelocation && <UpgradeButton />}
       </div>

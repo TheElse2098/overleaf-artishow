@@ -12,6 +12,7 @@ import SplitTestBadge from '@/shared/components/split-test-badge'
 import { useFeatureFlag } from '@/shared/context/split-test-context'
 import { useFileTreeSelectable } from '../../contexts/file-tree-selectable'
 import { useFileTreeActionable } from '../../contexts/file-tree-actionable'
+import { useGitModifiedFiles } from '../../contexts/git-modified-files'
 import { useDragDropManager } from 'react-dnd'
 
 function FileTreeItemInner({
@@ -33,6 +34,8 @@ function FileTreeItemInner({
   const { setContextMenuCoords } = useFileTreeMainContext()
   const { isRenaming } = useFileTreeActionable()
   const { selectedEntityIds } = useFileTreeSelectable()
+  const { modifiedFileIds } = useGitModifiedFiles()
+  const isModified = type !== 'folder' && modifiedFileIds.has(id)
 
   const hasMenu =
     !fileTreeReadOnly && isSelected && selectedEntityIds.size === 1
@@ -113,6 +116,15 @@ function FileTreeItemInner({
             />
           </div>
         )}
+        {isModified ? (
+          <span
+            className="file-tree-modified-badge"
+            title="Fichier modifié (non indexé dans Git)"
+            aria-label="Fichier modifié"
+          >
+            M
+          </span>
+        ) : null}
         {hasMenu ? <FileTreeItemMenu id={id} name={name} /> : null}
       </div>
     </div>

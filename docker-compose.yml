@@ -1,27 +1,29 @@
 services:
-  sharelatex:
-    restart: always
-    # Server Pro users:
-    # image: quay.io/sharelatex/sharelatex-pro
-    image: sharelatex/sharelatex
-    container_name: sharelatex
-    depends_on:
-      mongo:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    ports:
-      - 80:80
-    stop_grace_period: 60s
-    volumes:
-      - ~/sharelatex_data:/var/lib/overleaf
-      ########################################################################
-      ####  Server Pro: Uncomment the following line to mount the docker  ####
-      ####             socket, required for Sibling Containers to work    ####
-      ########################################################################
-      # - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      OVERLEAF_APP_NAME: Overleaf Community Edition
+    sharelatex:
+        restart: always
+        # Server Pro users:
+        # image: quay.io/sharelatex/sharelatex-pro
+        image: ghcr.io/theelse2098/overleaf-artishow:latest
+        container_name: sharelatex
+        depends_on:
+            mongo:
+                condition: service_healthy
+            redis:
+                condition: service_started
+        ports:
+            - 80:80
+        stop_grace_period: 60s
+        volumes:
+            - ~/sharelatex_data:/var/lib/overleaf
+
+            ########################################################################
+            ####  Server Pro: Uncomment the following line to mount the docker  ####
+            ####             socket, required for Sibling Containers to work    ####
+            ########################################################################
+            - /var/run/docker.sock:/var/run/docker.sock
+        environment:
+
+            OVERLEAF_APP_NAME: Overleaf Community Edition
 
       OVERLEAF_MONGO_URL: mongodb://mongo/sharelatex
 
@@ -84,9 +86,9 @@ services:
       ## Sandboxed Compiles: https://docs.overleaf.com/on-premises/configuration/overleaf-toolkit/server-pro-only-configuration/sandboxed-compiles
       SANDBOXED_COMPILES: "true"
       ### Bind-mount source for /var/lib/overleaf/data/compiles inside the container.
-      SANDBOXED_COMPILES_HOST_DIR_COMPILES: "/home/user/sharelatex_data/data/compiles"
+      SANDBOXED_COMPILES_HOST_DIR_COMPILES: "${HOME}/sharelatex_data/data/compiles"
       ### Bind-mount source for /var/lib/overleaf/data/output inside the container.
-      SANDBOXED_COMPILES_HOST_DIR_OUTPUT: "/home/user/sharelatex_data/data/output"
+      SANDBOXED_COMPILES_HOST_DIR_OUTPUT: "${HOME}/sharelatex_data/data/output"
       ### Backwards compatibility (before Server Pro 5.5)
       DOCKER_RUNNER: "true"
       SANDBOXED_COMPILES_SIBLING_CONTAINERS: "true"
