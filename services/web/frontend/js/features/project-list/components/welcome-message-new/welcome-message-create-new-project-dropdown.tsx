@@ -135,6 +135,21 @@ function WelcomeMessageCreateNewProjectDropdown({
           <DropdownItem
             as="button"
             onClick={e =>
+              handleDropdownItemClick(
+                e,
+                'import_from_template',
+                'import-from-template'
+              )
+            }
+            tabIndex={-1}
+          >
+            {'Import from template'}
+          </DropdownItem>
+        </li>
+        <li role="none">
+          <DropdownItem
+            as="button"
+            onClick={e =>
               handleDropdownItemClick(e, 'upload_project', 'upload-project')
             }
             tabIndex={-1}

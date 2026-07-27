@@ -46,6 +46,27 @@ export const ProjectSchema = new Schema(
     deletedDocs: [DeletedDocSchema],
     imageName: { type: String },
     brandVariationId: { type: String },
+    // Index partiel : n'indexe QUE les projets-templates (une poignée), donc reste
+    // minuscule même sur une grosse collection. Évite un collscan à chaque listing.
+    isTemplate: {
+      type: Boolean,
+      default: false,
+      index: { partialFilterExpression: { isTemplate: true } },
+    },
+    templateDescription: { type: String, default: '' },
+    templateCategory: { type: String, default: '' },
+    // Users the owner shared this template with, as invitations: 'pending' until
+    // the recipient accepts, then 'accepted'. Only an 'accepted' share makes the
+    // template visible/instantiable for that user. Only meaningful when isTemplate.
+    templateShares: {
+      type: [
+        {
+          userId: { type: ObjectId, ref: 'User' },
+          status: { type: String, enum: ['pending', 'accepted'], default: 'pending' },
+        },
+      ],
+      default: undefined,
+    },
     track_changes: { type: Object },
     tokens: {
       readOnly: {
@@ -107,6 +128,33 @@ export const ProjectSchema = new Schema(
       },
     ],
     deferredTpdsFlushCounter: { type: Number },
+    git: {
+      remoteUrl: { type: String },
+      branch: { type: String },
+      linkedAt: { type: Date },
+      token: {
+        type: String,
+        index: {
+          unique: true,
+          sparse: true,
+        },
+      },
+      tokenType: { type: String },
+      pendingDeletions: { type: [String], default: undefined },
+      // Dépôts distants mémorisés pour pouvoir switcher entre eux (comme les
+      // branches). Chacun garde sa propre auth (token/type) ; l'actif = git.remoteUrl.
+      savedRemotes: {
+        type: [
+          {
+            url: { type: String },
+            tokenType: { type: String },
+            token: { type: String },
+            branch: { type: String },
+          },
+        ],
+        default: undefined,
+      },
+    },
   },
   { minimize: false }
 )

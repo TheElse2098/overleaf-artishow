@@ -51,6 +51,9 @@ export type ProjectApi = {
   trashed: boolean
   accessLevel: ProjectAccessLevel
   source: Source
+  isTemplate: boolean
+  templateDescription: string
+  templateCategory: string
 }
 
 export type Project = MergeAndOverride<

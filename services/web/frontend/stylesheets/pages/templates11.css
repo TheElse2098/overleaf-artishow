@@ -1,0 +1,103 @@
+/*templates.css
+/* Styles pour le modal d'import de templates */
+.templates-list {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.templates-filters {
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+  padding-bottom: 15px;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 15px;
+}
+
+.templates-grid {
+  padding-top: 10px;
+}
+
+.template-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  border: 1px solid #ddd;
+}
+
+.template-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.template-preview img {
+  transition: opacity 0.2s ease;
+}
+
+.template-card:hover .template-preview img {
+  opacity: 0.9;
+}
+
+.template-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.template-tags .badge {
+  font-size: 0.75em;
+}
+
+.card-title {
+  font-size: 1.1em;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.card-text {
+  font-size: 0.9em;
+  line-height: 1.4;
+}
+
+/* Style pour la modal plus large */
+#import-from-template-modal .modal-dialog {
+  max-width: 90vw;
+  width: 1200px;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  #import-from-template-modal .modal-dialog {
+    max-width: 95vw;
+    margin: 10px auto;
+  }
+  
+  .templates-filters .row {
+    margin: 0;
+  }
+  
+  .templates-filters .col-md-8,
+  .templates-filters .col-md-4 {
+    padding: 0;
+    margin-bottom: 10px;
+  }
+}
+
+/* Loading state */
+.template-card.loading {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Empty state */
+.templates-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
+}
+
+.templates-empty-state i {
+  font-size: 3em;
+  margin-bottom: 15px;
+  opacity: 0.5;
+}

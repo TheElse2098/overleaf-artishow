@@ -10,9 +10,69 @@ const rateLimiter = new RateLimiter('create-project-from-template', {
   duration: 60,
 })
 
+const templateStatusRateLimiter = new RateLimiter('template-status', {
+  points: 20,
+  duration: 60,
+})
+
 export default {
   rateLimiter,
+  templateStatusRateLimiter,
   apply(app) {
+    app.get(
+      '/project/templates',
+      AuthenticationController.requireLogin(),
+      TemplatesController.getLocalTemplates
+    )
+
+    app.post(
+      '/project/:projectId/template',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.setTemplateStatus
+    )
+
+    app.delete(
+      '/project/:projectId/template',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.removeTemplate
+    )
+
+    app.get(
+      '/project/:projectId/template/shares',
+      AuthenticationController.requireLogin(),
+      TemplatesController.getTemplateShares
+    )
+
+    app.post(
+      '/project/:projectId/template/shares',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.shareTemplate
+    )
+
+    app.delete(
+      '/project/:projectId/template/shares/:userId',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.unshareTemplate
+    )
+
+    app.post(
+      '/project/:projectId/template/share/accept',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.acceptShare
+    )
+
+    app.post(
+      '/project/:projectId/template/share/decline',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.declineShare
+    )
+
     app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>

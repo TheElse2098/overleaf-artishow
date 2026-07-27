@@ -693,7 +693,7 @@ async function _getProjects(
   const results = await Promise.all([
     ProjectGetter.promises.findAllUsersProjects(
       userId,
-      'name lastUpdated lastUpdatedBy publicAccesLevel archived trashed owner_ref tokens'
+      'name lastUpdated lastUpdatedBy publicAccesLevel archived trashed owner_ref tokens isTemplate templateDescription templateCategory'
     ),
     TagsHandler.promises.getAllTags(userId),
   ])
@@ -837,6 +837,9 @@ function _formatProjectInfo(project, accessLevel, source, userId) {
     source,
     archived,
     trashed,
+    isTemplate: project.isTemplate || false,
+    templateDescription: project.templateDescription || '',
+    templateCategory: project.templateCategory || '',
   }
 }
 

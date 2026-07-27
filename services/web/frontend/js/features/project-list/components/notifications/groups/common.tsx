@@ -6,6 +6,7 @@ import useAsync from '../../../../../shared/hooks/use-async'
 import { FetchError, postJSON } from '../../../../../infrastructure/fetch-json'
 import {
   NotificationProjectInvite,
+  NotificationTemplateShared,
   Notification as NotificationType,
 } from '../../../../../../../types/project/dashboard/notification'
 import GroupInvitationNotification from './group-invitation/group-invitation'
@@ -52,6 +53,22 @@ function CommonNotification({ notification }: CommonNotificationProps) {
     runAsync(
       postJSON(`/project/${projectId}/invite/token/${token}/accept`)
     ).catch(debugConsole.error)
+  }
+
+  function handleAcceptTemplateShare(notification: NotificationTemplateShared) {
+    const { templateId } = notification.messageOpts
+    // Accept makes the template visible; then dismiss the notification.
+    runAsync(postJSON(`/project/${templateId}/template/share/accept`))
+      .then(() => notification._id && handleDismiss(notification._id))
+      .catch(debugConsole.error)
+  }
+
+  function handleDeclineTemplateShare(notification: NotificationTemplateShared) {
+    const { templateId } = notification.messageOpts
+    // Decline removes the share server-side; also dismiss the notification.
+    runAsync(postJSON(`/project/${templateId}/template/share/decline`))
+      .then(() => notification._id && handleDismiss(notification._id))
+      .catch(debugConsole.error)
   }
 
   const { _id: id, templateKey, html } = notification
@@ -292,6 +309,40 @@ function CommonNotification({ notification }: CommonNotificationProps) {
           type="warning"
           onDismiss={() => id && handleDismiss(id)}
           content={html}
+        />
+      ) : templateKey === 'notification_template_shared' ? (
+        <Notification
+          type="info"
+          onDismiss={() => id && handleDismiss(id)}
+          // Contenu construit en JSX (pas le `html` serveur, qui s'afficherait
+          // avec les balises <b> littérales, ni un <Trans> dont la clé n'est pas
+          // dans le bundle frontend). React échappe sharerName / templateName →
+          // pas d'injection HTML/XSS même si un nom contient des balises.
+          content={
+            <>
+              <b>{notification.messageOpts.sharerName}</b> shared the template{' '}
+              <b>{notification.messageOpts.templateName}</b> with you.
+            </>
+          }
+          action={
+            <>
+              <OLButton
+                variant="secondary"
+                isLoading={isLoading}
+                disabled={isLoading}
+                onClick={() => handleAcceptTemplateShare(notification)}
+              >
+                {t('accept')}
+              </OLButton>
+              <OLButton
+                variant="link"
+                disabled={isLoading}
+                onClick={() => handleDeclineTemplateShare(notification)}
+              >
+                {t('decline')}
+              </OLButton>
+            </>
+          }
         />
       ) : (
         <Notification

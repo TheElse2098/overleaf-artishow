@@ -59,14 +59,7 @@ function ModalContentNewProjectForm({
   }, [])
 
   const createNewProject = () => {
-    runAsync(
-      postJSON('/project/new', {
-        body: {
-          projectName,
-          template,
-        },
-      })
-    )
+    runAsync(postJSON('/project/new', { body: { projectName, template } }))
       .then(async data => {
         if (data.project_id) {
           // prevents clicking on create again between async load of next page and pending state being finished
