@@ -11,6 +11,9 @@ type Template = {
   previewUrl?: string
   category?: string
   tags?: string[]
+  isOwnedByViewer?: boolean
+  sharedWithCount?: number
+  sharedByName?: string
 }
 
 type TemplatesListProps = {

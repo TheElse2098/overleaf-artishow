@@ -40,6 +40,40 @@ export default {
     )
 
     app.get(
+      '/project/:projectId/template/shares',
+      AuthenticationController.requireLogin(),
+      TemplatesController.getTemplateShares
+    )
+
+    app.post(
+      '/project/:projectId/template/shares',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.shareTemplate
+    )
+
+    app.delete(
+      '/project/:projectId/template/shares/:userId',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.unshareTemplate
+    )
+
+    app.post(
+      '/project/:projectId/template/share/accept',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.acceptShare
+    )
+
+    app.post(
+      '/project/:projectId/template/share/decline',
+      AuthenticationController.requireLogin(),
+      RateLimiterMiddleware.rateLimit(templateStatusRateLimiter),
+      TemplatesController.declineShare
+    )
+
+    app.get(
       '/project/new/template/:Template_version_id',
       (req, res, next) =>
         AnalyticsRegistrationSourceMiddleware.setSource(

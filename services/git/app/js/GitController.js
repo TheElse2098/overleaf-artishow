@@ -133,6 +133,45 @@ export async function pull(req, res) {
   }
 }
 
+// Indique si un merge est en cours et liste les fichiers en conflit (pour l'UI).
+export async function mergeStatus(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const inProgress = await GitManager.mergeInProgress(projectId, userId)
+    const conflicts = inProgress
+      ? await GitManager.conflictedFiles(projectId, userId)
+      : []
+    res.json({ mergeInProgress: inProgress, conflicts })
+  } catch (err) {
+    sendGitError(res, err, 'git mergeStatus failed', { projectId })
+  }
+}
+
+// Finalise le merge (git add . + commit). Renvoie d'éventuels marqueurs restants.
+export async function resolveMerge(req, res) {
+  const { projectId, userId, message } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const result = await GitManager.resolveMerge(projectId, userId, message)
+    res.json(result)
+  } catch (err) {
+    sendGitError(res, err, 'git resolveMerge failed', { projectId })
+  }
+}
+
+// Abandonne le merge en cours (filet de sécurité).
+export async function abortMerge(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const result = await GitManager.abortMerge(projectId, userId)
+    res.json(result)
+  } catch (err) {
+    sendGitError(res, err, 'git abortMerge failed', { projectId })
+  }
+}
+
 function isSafeRelativePath(filePath) {
   if (typeof filePath !== 'string' || filePath.length === 0) return false
   if (path.isAbsolute(filePath)) return false
@@ -321,6 +360,20 @@ export async function setRemote(req, res) {
     return res.status(200).json({ ...result, message })
   } catch (err) {
     logger.error({ err, projectId }, 'git setRemote failed')
+    res.status(500).json({ error: err.message })
+  }
+}
+
+export async function removeRemote(req, res) {
+  const { projectId, userId } = req.body
+  if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId requis.' })
+  try {
+    const repoExists = await GitManager.isGitRepo(projectId, userId)
+    if (!repoExists) return res.status(400).json({ error: 'Aucun repo git local trouvé pour ce projet.' })
+    await GitManager.gitRemoveRemote(projectId, userId)
+    return res.status(200).json({ message: 'Remote supprimé.' })
+  } catch (err) {
+    logger.error({ err, projectId }, 'git removeRemote failed')
     res.status(500).json({ error: err.message })
   }
 }

@@ -5,6 +5,7 @@ import { GitNotif, GitConfirm } from './GitFeedback'
 const TOKEN_TYPES = [
   { value: 'github', label: 'GitHub (Personal Access Token)' },
   { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+  { value: 'other', label: 'Autre (token générique)' },
 ]
 
 function GitTokenTab({ projectId }) {
@@ -104,6 +105,8 @@ function GitTokenTab({ projectId }) {
   const tokenTypeLabel = TOKEN_TYPES.find(function(t) { return t.value === existingTokenType })
   const githubInfo = 'GitHub : Settings > Developer settings > Personal access tokens. Permission requise : repo.'
   const gitlabInfo = 'GitLab : User Settings > Access Tokens. Permissions : read_repository, write_repository.'
+  const otherInfo = 'Autre fournisseur (Bitbucket, Gitea, self-hosted...) : entrez votre token, ou "utilisateur:token" si un nom d\'utilisateur est requis.'
+  const TOKEN_INFO = { github: githubInfo, gitlab: gitlabInfo, other: otherInfo }
 
   return (
     <div style={{ color: 'var(--git-text-strong)', fontFamily: 'sans-serif' }}>
@@ -214,7 +217,7 @@ function GitTokenTab({ projectId }) {
           color: 'var(--git-info-text)',
         }}
       >
-        {tokenType === 'github' ? githubInfo : gitlabInfo}
+        {TOKEN_INFO[tokenType] || otherInfo}
       </div>
 
       {status && (

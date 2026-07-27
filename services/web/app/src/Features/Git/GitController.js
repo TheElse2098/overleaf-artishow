@@ -339,13 +339,26 @@ async function resyncHistory(projectId) {
   }
 }
 
-// Formate le message d'erreur retourné à l'utilisateur en cas de conflit
+// Formate le message affiché en cas de conflit de merge. Le merge reste EN COURS :
+// l'utilisateur résout les marqueurs dans l'éditeur, puis "Résoudre" ou "Annuler".
 function formatConflictMessage(conflictedFiles) {
   if (conflictedFiles.length === 0) {
-    return 'Conflit de merge détecté. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.'
+    return 'Conflit de merge détecté. Résolvez les marqueurs de conflit (<<<<<<<) dans l’éditeur, puis cliquez sur « Résoudre le conflit » — ou « Annuler le merge » pour revenir en arrière.'
   }
   const fileList = conflictedFiles.join(', ')
-  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Le merge a été annulé — résolvez les conflits dans le dépôt distant puis relancez le pull.`
+  return `Conflit de merge sur ${conflictedFiles.length} fichier(s) : ${fileList}. Résolvez les marqueurs (<<<<<<<) dans l’éditeur, puis « Résoudre le conflit » — ou « Annuler le merge ».`
+}
+
+// Extrait un message lisible d'une réponse d'erreur du git-service. Le service
+// renvoie du JSON { error: "..." } ; sans ce parsing, on afficherait le JSON brut
+// à l'utilisateur (ex: {"error":"Conflit détecté..."}).
+async function readGitServiceError(response, fallbackStatus) {
+  const text = await response.text().catch(() => '')
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed && typeof parsed.error === 'string') return parsed.error
+  } catch (_) {}
+  return text || `git service: ${fallbackStatus}`
 }
 
 // Normalise une URL git (SSH ou HTTPS) pour la comparaison inter-projets
@@ -390,6 +403,22 @@ async function saveGitLink(projectId, remoteUrl, branch, token = null, tokenType
   if (token) fields['git.token'] = token
   if (tokenType) fields['git.tokenType'] = tokenType
   await Project.updateOne({ _id: projectId }, { $set: fields }).exec()
+
+  // Mémoriser ce dépôt dans la liste (dédupe par url) pour pouvoir re-switcher
+  // dessus comme une branche. On conserve le token déjà mémorisé si aucun nouveau
+  // n'est fourni.
+  if (remoteUrl) {
+    const proj = await Project.findById(projectId, 'git.savedRemotes').lean().exec()
+    const existing = (proj?.git?.savedRemotes || []).find(r => r.url === remoteUrl)
+    const entry = {
+      url: remoteUrl,
+      tokenType: tokenType || existing?.tokenType || null,
+      token: token || existing?.token || null,
+      branch: branch || existing?.branch || 'main',
+    }
+    await Project.updateOne({ _id: projectId }, { $pull: { 'git.savedRemotes': { url: remoteUrl } } }).exec()
+    await Project.updateOne({ _id: projectId }, { $push: { 'git.savedRemotes': entry } }).exec()
+  }
   console.log(`Lien git sauvegardé pour le projet ${projectId}: remote=${remoteUrl}, branch=${branch}`)
 }
 
@@ -487,11 +516,22 @@ async function withSshKey(userId, fn) {
 }
 
 // Construit une URL HTTPS authentifiée par token
-// tokenType 'github' → x-access-token, 'gitlab' → oauth2
+// tokenType 'github' → x-access-token, 'gitlab' → oauth2,
+// 'other' → token brut comme userinfo (l'utilisateur peut entrer "token" seul ou
+// "utilisateur:token" pour les fournisseurs qui exigent un nom d'utilisateur).
 function buildAuthenticatedUrl(remoteUrl, token, tokenType) {
-  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
   const sshPattern = /^git@([^:]+):(.+\.git)$/
   const match = remoteUrl.match(sshPattern)
+  if (tokenType === 'other') {
+    if (match) return `https://${token}@${match[1]}/${match[2]}`
+    try {
+      const url = new URL(remoteUrl)
+      return `${url.protocol}//${token}@${url.host}${url.pathname}${url.search}`
+    } catch {
+      return remoteUrl
+    }
+  }
+  const username = tokenType === 'gitlab' ? 'oauth2' : 'x-access-token'
   if (match) {
     return `https://${username}:${token}@${match[1]}/${match[2]}`
   }
@@ -970,6 +1010,13 @@ GitController = {
         linkedAt: info?.linkedAt || null,
         tokenType: info?.tokenType || null,
         hasToken: !!info?.token,
+        // Liste des dépôts mémorisés (sans le token, juste un booléen).
+        savedRemotes: (info?.savedRemotes || []).map(r => ({
+          url: r.url,
+          tokenType: r.tokenType || null,
+          branch: r.branch || 'main',
+          hasToken: !!r.token,
+        })),
       })
     } catch (err) {
       HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
@@ -1033,6 +1080,88 @@ GitController = {
     }
   },
 
+  // Proxifie /git-remove-remote vers le service git, puis efface le remote dans MongoDB.
+  async removeRemote(req, res) {
+    const { projectId, userId } = req.body
+    if (!projectId || !userId) {
+      return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    }
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/remove-remote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      // Effacer le remote dans MongoDB ; on garde le token pour un re-link ultérieur.
+      await Project.updateOne({ _id: projectId }, { $set: { 'git.remoteUrl': null } })
+      return res.status(200).json(result)
+    } catch (error) {
+      console.error('Erreur dans removeRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Active un dépôt déjà mémorisé (switch, comme une branche) : on relie origin
+  // sur son url avec son auth (token/type/branche) stockée, puis on le rend actif.
+  async switchRemote(req, res) {
+    const { projectId, userId, url } = req.body
+    if (!projectId || !userId || !url) {
+      return res.status(400).json({ error: 'projectId, userId et url sont requis.' })
+    }
+    try {
+      const info = await getGitInfo(projectId)
+      const saved = (info?.savedRemotes || []).find(r => r.url === url)
+      if (!saved) {
+        return res.status(404).json({ error: 'Dépôt introuvable dans la liste.' })
+      }
+      const branch = saved.branch || 'main'
+      const token = saved.token || null
+      const tokenType = saved.tokenType || null
+      const response = await fetch(`${GIT_SERVICE_URL}/set-remote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, remoteUrl: url, branch, token, tokenType }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, result?.error || `git service: ${response.status}`)
+      }
+      await saveGitLink(projectId, url, branch, token, tokenType)
+      return res.status(200).json(result)
+    } catch (error) {
+      console.error('Erreur dans switchRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Retire un dépôt de la liste mémorisée. Si c'était l'actif, on détache aussi origin.
+  async removeSavedRemote(req, res) {
+    const { projectId, userId, url } = req.body
+    if (!projectId || !userId || !url) {
+      return res.status(400).json({ error: 'projectId, userId et url sont requis.' })
+    }
+    try {
+      const info = await getGitInfo(projectId)
+      await Project.updateOne({ _id: projectId }, { $pull: { 'git.savedRemotes': { url } } })
+      if (info?.remoteUrl === url) {
+        await fetch(`${GIT_SERVICE_URL}/remove-remote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+          body: JSON.stringify({ projectId, userId }),
+        }).catch(() => {})
+        await Project.updateOne({ _id: projectId }, { $set: { 'git.remoteUrl': null } })
+      }
+      return res.status(200).json({ message: 'Dépôt retiré.' })
+    } catch (error) {
+      console.error('Erreur dans removeSavedRemote:', error)
+      HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
 
   async pull(req, res) {
     const { projectId, userId } = req.body
@@ -1062,8 +1191,7 @@ GitController = {
         body: JSON.stringify({ projectId, userId, gitInfo }),
       })
       if (!response.ok) {
-        const text = await response.text().catch(() => '')
-        return HttpErrorHandler.gitMethodError(req, res, text || `git service: ${response.status}`)
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
       }
       result = await response.json() // { status, notInitialized?, noRemote?, conflicts? }
     } catch (err) {
@@ -1074,9 +1202,24 @@ GitController = {
     if (result.notInitialized) return res.status(200).json({ notInitialized: true })
     if (result.noRemote) return res.status(200).json({ noRemote: true })
 
-    // Conflit : le merge a été annulé côté service, rien à reconstruire
+    // Conflit : le merge est laissé EN COURS côté service (marqueurs <<<<<<< dans
+    // les fichiers, MERGE_HEAD présent). On reconstruit l'éditeur avec ces marqueurs
+    // pour que l'utilisateur résolve dans Overleaf, puis on lui signale le conflit
+    // (200, pas une erreur) avec la liste des fichiers à résoudre.
     if (result.status === 'conflict') {
-      return HttpErrorHandler.gitMethodError(req, res, formatConflictMessage(result.conflicts || []))
+      try {
+        await buildProject(projectPath, projectId, userId, getRootId(projectId))
+        try { await fs.remove(outputPath + projectId + "-" + userId) } catch (_) {}
+        try { await fs.chmod(clsiCachePath, 0o777); await fs.remove(clsiCachePath + projectId) } catch (_) {}
+        resyncHistory(projectId)
+      } catch (buildErr) {
+        console.error('Erreur reconstruction éditeur après conflit:', buildErr.message)
+      }
+      return res.status(200).json({
+        status: 'conflict',
+        conflicts: result.conflicts || [],
+        message: formatConflictMessage(result.conflicts || []),
+      })
     }
 
     try {
@@ -1109,6 +1252,82 @@ GitController = {
       if (res.headersSent) return
       console.error("Erreur après le pull (buildProject):", error.message)
       HttpErrorHandler.gitMethodError(req, res, error?.message || String(error))
+    }
+  },
+
+  // Indique à l'UI si un merge est en cours (au chargement / rafraîchissement).
+  async mergeStatus(req, res) {
+    const { projectId, userId } = req.query
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/merge-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) return res.json({ mergeInProgress: false, conflicts: [] })
+      res.json(await response.json())
+    } catch (error) {
+      console.error("Error fetching merge status:", error)
+      res.json({ mergeInProgress: false, conflicts: [] })
+    }
+  },
+
+  // Finalise un merge : matérialise l'éditeur (résolu par l'utilisateur) sur le
+  // working tree, puis demande au service de commiter. Renvoie les marqueurs
+  // restants en avertissement (non bloquant).
+  async resolveMerge(req, res) {
+    const { projectId, userId, message } = req.body
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    try {
+      // L'utilisateur a édité dans Overleaf → pousser ces contenus dans le working tree git
+      try {
+        await compileProject(projectId, userId)
+      } catch (e) {
+        console.log("Compilation échouée avant resolveMerge, on continue:", e.message)
+      }
+      try {
+        await gitUpdate(projectId, userId)
+      } catch (e) {
+        console.log("gitUpdate échoué avant resolveMerge, on continue:", e.message)
+      }
+      const response = await fetch(`${GIT_SERVICE_URL}/resolve-merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId, message }),
+      })
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
+      }
+      // { status: 'resolved'|'no-merge', markerWarnings?: [{path, markers:[{line,marker}]}] }
+      res.status(200).json(await response.json())
+    } catch (err) {
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
+    }
+  },
+
+  // Abandonne le merge en cours puis reconstruit l'éditeur depuis l'état restauré.
+  async abortMerge(req, res) {
+    const { projectId, userId } = req.body
+    const projectPath = dataPath + projectId + "-" + userId
+    if (!projectId || !userId) return res.status(400).json({ error: 'projectId et userId sont requis.' })
+    try {
+      const response = await fetch(`${GIT_SERVICE_URL}/abort-merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${GIT_SERVICE_SECRET}` },
+        body: JSON.stringify({ projectId, userId }),
+      })
+      if (!response.ok) {
+        return HttpErrorHandler.gitMethodError(req, res, await readGitServiceError(response, response.status))
+      }
+      // Le working tree est revenu à l'état pré-merge → reconstruire l'éditeur
+      await buildProject(projectPath, projectId, userId, getRootId(projectId))
+      try { await fs.remove(outputPath + projectId + "-" + userId) } catch (_) {}
+      try { await fs.chmod(clsiCachePath, 0o777); await fs.remove(clsiCachePath + projectId) } catch (_) {}
+      resyncHistory(projectId)
+      res.sendStatus(200)
+    } catch (err) {
+      if (res.headersSent) return
+      HttpErrorHandler.gitMethodError(req, res, err?.message || String(err))
     }
   },
 

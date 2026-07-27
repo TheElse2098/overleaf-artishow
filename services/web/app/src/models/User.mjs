@@ -194,6 +194,20 @@ export const UserSchema = new Schema(
       type: String,
     },
     must_reconfirm: { type: Boolean, default: false },
+    // Index de PERFORMANCE pour lister rapidement les templates partagés à cet
+    // utilisateur, sans scanner les partages de toute la collection projects.
+    // ⚠️ N'est PAS l'autorité d'accès : l'autorisation reste vérifiée sur le
+    // projet (Project.templateShares via TemplatesPolicy.canUse). Ce champ n'est
+    // écrit que côté serveur (jamais via une route exposée au client).
+    sharedTemplates: {
+      type: [
+        {
+          templateId: { type: ObjectId, ref: 'Project' },
+          status: { type: String, enum: ['pending', 'accepted'], default: 'pending' },
+        },
+      ],
+      default: undefined,
+    },
     referal_id: {
       type: String,
       default() {

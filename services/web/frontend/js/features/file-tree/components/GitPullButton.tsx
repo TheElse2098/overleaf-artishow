@@ -21,6 +21,7 @@ const CONFIRM_MSG =
 const TOKEN_TYPES = [
   { value: 'github', label: 'GitHub (Personal Access Token)' },
   { value: 'gitlab', label: 'GitLab (Personal Access Token / OAuth2)' },
+  { value: 'other', label: 'Autre (token générique)' },
 ]
 
 // Section d'authentification par token, partagée par init et set-remote.
@@ -284,6 +285,19 @@ export default function GitPullButton({ projectId, userId }: Props) {
       if (response?.noRemote) {
         setIsLoading(false)
         setShowSetRemote(true)
+        return
+      }
+
+      // Conflit de merge : le merge reste en cours, les marqueurs sont dans
+      // l'éditeur. On invite l'utilisateur à résoudre via le menu Git.
+      if (response?.status === 'conflict') {
+        setNotif({
+          type: 'warning',
+          message:
+            (response.message || 'Conflit de merge détecté.') +
+            ' Ouvrez le menu Git (onglet « Commit & Push ») pour résoudre ou annuler le merge.',
+        })
+        refreshModifiedFiles()
         return
       }
 

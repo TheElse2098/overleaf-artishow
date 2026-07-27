@@ -18,6 +18,7 @@ import GitTokenTab from './GitTokenTab'
 import GitCommitTab from './GitCommitTab'
 import GitRollbackTab from './GitRollbackTab'
 import GitBranchesTab from './GitBranchesTab'
+import GitRemotesTab from './GitRemotesTab'
 
 function Modal({
   isOpen,
@@ -31,6 +32,7 @@ function Modal({
   projectId,
   userId,
   onRefresh,
+  mergeState,
 }) {
   const [activeTab, setActiveTab] = useState('commit')
   const activeOverallTheme = useActiveOverallTheme()
@@ -40,6 +42,7 @@ function Modal({
     { id: 'commit', label: 'Commit & Push' },
     { id: 'rollback', label: 'Rollback' },
     { id: 'branches', label: 'Branches' },
+    { id: 'remotes', label: 'Remotes' },
     { id: 'token', label: 'Token' },
     { id: 'documentation', label: 'Documentation' },
   ]
@@ -69,7 +72,7 @@ function Modal({
           <h2 style={{ fontFamily: 'sans-serif', fontWeight: 500 }}>Git Menu</h2>
 
           {/* Tabs */}
-          <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '1px solid var(--git-border)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px', marginBottom: '20px', borderBottom: '1px solid var(--git-border)' }}>
             {TABS.map(tab => {
               const isActive = activeTab === tab.id
               return (
@@ -77,8 +80,10 @@ function Modal({
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   style={{
-                    padding: '10px 20px',
+                    padding: '10px 14px',
                     border: 'none',
+                    borderRadius: '4px 4px 0 0',
+                    whiteSpace: 'nowrap',
                     backgroundColor: isActive ? 'var(--git-accent)' : 'transparent',
                     color: isActive ? 'white' : 'var(--git-text)',
                     cursor: 'pointer',
@@ -99,6 +104,7 @@ function Modal({
               deletedFiles={deletedFiles}
               stagedFiles={stagedFiles}
               onRefresh={onRefresh}
+              mergeState={mergeState}
             />
           )}
 
@@ -122,6 +128,15 @@ function Modal({
               onRefresh={onRefresh}
             />
           )}
+          {/* Remotes Tab */}
+          {activeTab === 'remotes' && (
+            <GitRemotesTab
+              projectId={projectId}
+              userId={userId}
+              onRefresh={onRefresh}
+            />
+          )}
+
           {/* Token Tab */}
           {activeTab === 'token' && (
             <GitTokenTab projectId={projectId} userId={userId} />
@@ -167,9 +182,18 @@ function Modal({
               <ul>
                 <li>Cliquez sur le bouton <strong>"Pull"</strong> en haut à gauche (icône en forme de flèche circulaire)</li>
               </ul>
-              <p>Vos modifications non comitées seront stash avant le pull puis pop après. <strong>Dans le cas de conflit sur un fichier, vos modifications non commitées sur ce fichier seront supprimées.</strong></p>
+              <p>Vos modifications non commitées seront automatiquement mises de côté (<em>stash</em>) avant le pull, puis réappliquées. Si le dépôt distant contient des changements incompatibles avec les vôtres, un <strong>conflit de merge</strong> est détecté : voir la section suivante.</p>
 
-              <h4>d. <code>git rollback</code> – Revenir à un ancien commit</h4>
+              <h4>d. Résoudre un conflit de merge</h4>
+              <ul>
+                <li>Si un pull entre en conflit, un bandeau <strong>"Conflit de merge en cours"</strong> s’affiche dans l’onglet <strong>"Commit &amp; Push"</strong></li>
+                <li>Les fichiers concernés s’ouvrent dans l’éditeur avec des marqueurs <code>&lt;&lt;&lt;&lt;&lt;&lt;&lt;</code>, <code>=======</code>, <code>&gt;&gt;&gt;&gt;&gt;&gt;&gt;</code></li>
+                <li>Éditez le texte pour garder ce que vous voulez et supprimez ces marqueurs</li>
+                <li>Cliquez sur <strong>"Résoudre le conflit"</strong> pour valider, ou <strong>"Annuler le merge"</strong> pour revenir en arrière</li>
+              </ul>
+              <p style={{ color: '#e0524d' }}><strong>⚠️ Assurez-vous que le projet compile avant de cliquer sur "Résoudre le conflit".</strong></p>
+
+              <h4>e. <code>git rollback</code> – Revenir à un ancien commit</h4>
               <ul>
                 <li>Cliquez sur le <strong>Git Menu</strong> (en haut à droite)</li>
                 <li>Allez dans l’onglet <strong>"Rollback"</strong></li>
@@ -177,7 +201,7 @@ function Modal({
               </ul>
               <p style={{ color: '#e0524d' }}><strong>⚠️ Cette action supprimera toutes les modifications après ce commit.</strong></p>
 
-              <h4>e. <code>git branch</code> – Voir et changer de branche</h4>
+              <h4>f. <code>git branch</code> – Voir et changer de branche</h4>
               <ul>
                 <li>Votre branche actuelle est affichée dans <strong>"Select Branch"</strong></li>
                 <li>Toutes les branches distantes sont visibles</li>
@@ -214,6 +238,7 @@ function GitToggleButton() {
   const [commitHistory, setCommitHistory] = useState([])
   const [branches, setBranches] = useState([])
   const [selectedBranch, setSelectedBranch] = useState('')
+  const [mergeState, setMergeState] = useState({ mergeInProgress: false, conflicts: [] })
 
   const classes = classNames(
     'btn',
@@ -229,20 +254,22 @@ function GitToggleButton() {
 
   const loadGitData = async () => {
     try {
-      const [notStaged, staged, commits, branchesData, currentBranch] = await Promise.all([
+      const [notStaged, staged, commits, branchesData, currentBranch, mergeStatus] = await Promise.all([
         getJSON(`/git-notstaged?projectId=${projectId}&userId=${userId}`),
         getJSON(`/git-staged?projectId=${projectId}&userId=${userId}`),
         getJSON(`/git-commits?projectId=${projectId}&userId=${userId}&limit=20`),
         getJSON(`/git-branches?projectId=${projectId}&userId=${userId}`),
-        getJSON(`/git-currentbranch?projectId=${projectId}&userId=${userId}`)
+        getJSON(`/git-currentbranch?projectId=${projectId}&userId=${userId}`),
+        getJSON(`/git-merge-status?projectId=${projectId}&userId=${userId}`)
       ])
-      
+
       setNotStagedFiles(notStaged.notStaged || [])
       setDeletedFiles(notStaged.deleted || [])
       setStagedFiles(staged)
       setCommitHistory(commits)
       setBranches(branchesData)
       setSelectedBranch(currentBranch)
+      setMergeState(mergeStatus || { mergeInProgress: false, conflicts: [] })
     } catch (error) {
       console.error('Error loading git data:', error)
     }
@@ -276,6 +303,7 @@ function GitToggleButton() {
           projectId={projectId}
           userId={userId}
           onRefresh={loadGitData}
+          mergeState={mergeState}
         />,
         document.body
       )}

@@ -467,6 +467,27 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
     GitController.setRemote
   )
 
+  webRouter.post(
+    '/git-remove-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.removeRemote
+  )
+
+  webRouter.post(
+    '/git-switch-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.switchRemote
+  )
+
+  webRouter.post(
+    '/git-remove-saved-remote',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.removeSavedRemote
+  )
+
   webRouter.get(
   '/git-commits',
   AuthenticationController.requireLogin(),
@@ -514,6 +535,27 @@ AuthenticationController.addEndpointToLoginWhitelist('/login/gitlab')
     AuthenticationController.requireLogin(),
     ...gitWrite,
     GitController.unstageAll
+  )
+
+  webRouter.get(
+    '/git-merge-status',
+    AuthenticationController.requireLogin(),
+    ...gitRead,
+    GitController.mergeStatus
+  )
+
+  webRouter.post(
+    '/git-resolve-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.resolveMerge
+  )
+
+  webRouter.post(
+    '/git-abort-merge',
+    AuthenticationController.requireLogin(),
+    ...gitWrite,
+    GitController.abortMerge
   )
 
   webRouter.post(

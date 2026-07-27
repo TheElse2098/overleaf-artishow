@@ -71,6 +71,22 @@ const defaultTextExtensions = [
   'rnw',
   'ltx',
   'inc',
+  // Common config / plain-text extensions (e.g. .env files, *.example templates,
+  // and files git/docker tooling produces) so they preview and edit as text.
+  'env',
+  'example',
+  'gitignore',
+  'gitattributes',
+  'dockerignore',
+  'editorconfig',
+  'toml',
+  'ini',
+  'conf',
+  'json',
+  'sh',
+  'csv',
+  'tsv',
+  'xml',
 ]
 
 const parseTextExtensions = function (extensions) {
@@ -890,8 +906,27 @@ module.exports = {
     parseTextExtensions(process.env.ADDITIONAL_TEXT_EXTENSIONS)
   ),
 
-  // case-insensitive file names that is editable (doc) in the editor
-  editableFilenames: ['latexmkrc', '.latexmkrc', 'makefile', 'gnumakefile'],
+  // case-insensitive file names that is editable (doc) in the editor.
+  // Dotfiles (.gitignore, .env, …) have no extension as far as Path.extname is
+  // concerned, so they must be listed here by full name to be treated as text.
+  editableFilenames: [
+    'latexmkrc',
+    '.latexmkrc',
+    'makefile',
+    'gnumakefile',
+    '.gitignore',
+    '.gitattributes',
+    '.gitmodules',
+    '.env',
+    '.env.example',
+    '.dockerignore',
+    'dockerfile',
+    '.editorconfig',
+    '.npmrc',
+    '.prettierrc',
+    '.babelrc',
+    'readme',
+  ],
 
   fileIgnorePattern:
     process.env.FILE_IGNORE_PATTERN ||
